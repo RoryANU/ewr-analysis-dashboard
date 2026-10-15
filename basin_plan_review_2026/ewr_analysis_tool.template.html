@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EWR analysis tool</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#fff;--fg:#1f2937;--mut:#6b7280;--line:#d8dde5;--panel:#f7f9fc;--acc:#1f4e8c}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font:13px system-ui,sans-serif;color:var(--fg);background:var(--bg)}
+#app{display:flex;flex-direction:column;height:100%}
+#bar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+#bar h1{font-size:15px;margin:0 6px 0 0}
+#bar label{display:flex;align-items:center;gap:6px;font-weight:600;color:#4b5563;font-size:12px}
+select,button{font:500 12.5px system-ui,sans-serif;color:var(--fg);background:#fff;border:1px solid #c5ccd6;border-radius:6px;padding:4px 8px}
+button{cursor:pointer}button:hover{border-color:var(--acc);background:#f4f8fd}
+#main{flex:1;display:flex;min-height:0}
+#map{flex:1;min-width:0}
+#panel{width:600px;max-width:55%;overflow:auto;border-left:1px solid var(--line);padding:12px 14px;background:#fff}
+#panel h2{font-size:15px;margin:0 0 2px}
+.crumbs{font-size:12px;color:var(--mut);margin-bottom:8px}.crumbs a{color:var(--acc);cursor:pointer}
+.flowp{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 10px}.flowp summary{cursor:pointer;font-weight:600;font-size:12.5px}.flowp details.multi{position:relative;display:inline-block}.flowp details.multi summary{font-weight:400;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;cursor:pointer}.flowp .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:220px;overflow:auto;min-width:230px;box-shadow:0 4px 14px #0003}.flowp .pop label{display:block;white-space:nowrap;padding:1px 0;font-size:12px}
+.flowp .mxbar{margin:8px 0 4px}.flowp input[type=number]{width:96px;font:inherit;padding:2px 4px}.flowp select{padding:2px 6px}
+.cellp{border:1px solid var(--line);border-radius:8px;margin:8px 0}.cellh{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px}.cellh span{color:var(--mut);flex:1}.cellh button{border:0;background:none;font-size:16px;line-height:1;padding:0 4px;color:var(--mut)}.cellt{max-height:300px;overflow:auto}.cellt th{position:sticky;top:0;text-align:left}.cellt td{text-align:left;white-space:normal}
+.tiles{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}.tiles .tile{min-width:110px}
+.cnts{margin:0 0 12px;font-size:12px}.cnts .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:4px 0;background:#eee}.cnts .up{color:#2a9d4a}.cnts .dn{color:#d1495b}
+.tile{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.tile b{display:block;font-size:20px;font-weight:600}.tile span{font-size:11px;color:var(--mut)}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{padding:3px 6px;border-bottom:1px solid #eef0f4;text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:#fff;font-size:11px;color:var(--mut);cursor:pointer;user-select:none}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+tr.click{cursor:pointer}tr.click:hover td{background:#f4f8fd}
+td.cur{outline:2px solid var(--acc);outline-offset:-2px}
+.row{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:10px 0 6px}
+.note{font-size:11px;color:var(--mut);line-height:1.5;margin:6px 0}
+.legend{background:#fff;padding:8px 10px;border-radius:6px;box-shadow:0 1px 4px #0004;font-size:11.5px;line-height:1.5}
+.legend .ramp{height:10px;width:160px;border:1px solid #0004;margin:3px 0}
+.legend .ends{display:flex;justify-content:space-between}
+.mxw{overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px;margin:6px 0}.mxw text{font:10px system-ui,sans-serif;fill:#222}.mxw .hd{font-size:10px;fill:#555}
+.legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:1px solid #0006}
+.mxbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin:14px 0 4px}.mxbar>b{font-size:13px}
+.seg{display:flex;align-items:center;gap:6px}.seg .lbl{font-size:11px;color:var(--mut)}
+.tabs.sm button{padding:2px 9px;font-size:11.5px}
+.ghost{border:0;background:none;color:var(--mut);font-size:12px;padding:2px 6px;opacity:.7}.ghost:hover{opacity:1;background:none;color:var(--acc)}#addScn{margin-left:auto}
+#scnDlg{border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(560px,92vw);font-size:13px}#scnDlg::backdrop{background:#0004}
+#scnDlg h3{margin:0 0 4px;font-size:15px}#scnDlg .fld{display:flex;flex-direction:column;gap:3px;margin:10px 0}#scnDlg .fld>span{font-size:11.5px;font-weight:600;color:#4b5563}
+#scnDlg input[type=text],#scnDlg select{font:inherit;padding:5px 8px;border:1px solid #c5ccd6;border-radius:6px}#scnDlg .hint{font-size:11.5px;color:var(--mut);line-height:1.5}
+#scnDlg .acts{display:flex;gap:8px;align-items:center;margin-top:12px}#scnStatus{font-size:12px;margin-top:8px;white-space:pre-wrap}#scnStatus.err{color:#b3261e}#scnStatus.ok{color:#1b7a3a}
+#scnList{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}#scnList div{display:flex;align-items:center;gap:8px;padding:2px 0}#scnList span{flex:1}
+.tabs{display:inline-flex}.tabs button{border-radius:0}.tabs button:first-child{border-radius:6px 0 0 6px}.tabs button:last-child{border-radius:0 6px 6px 0}
+.tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+@media(max-width:800px){#main{flex-direction:column}#panel{width:100%;max-width:none;height:55%;border-left:0;border-top:1px solid var(--line)}}
+</style></head><body><div id="app">
+<div id="bar">
+  <h1>EWR analysis tool</h1>
+  <span class="tabs" id="srcTabs"><button id="srcD" class="on" title="The review's built-in results: all policies and climates, all SDL units">Demo data</button><button id="srcU" title="Only the model output you add yourself, with the extra flow charts">Your data</button></span>
+  <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and ETP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
+  <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
+  <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
+  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Frequency achieved</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mET">MRIP ETP</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button></span></label>
+  <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
+  <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its ETP is at or below this value, otherwise 0">MRIP achieved when ETP ≤ <input id="ethr" type="number" min="0" max="1" step="0.01" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
+  <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Achieved when FR ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="0.9" style="width:56px;font:inherit;padding:2px 4px"></label>
+  <button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
+  <button id="share" class="ghost" title="Copy a link to this exact view">🔗 <span id="shareT"></span></button>
+</div>
+<dialog id="scnDlg"><h3>Add your own scenario</h3>
+  <div class="hint">Runs the EWR tool (py_ewr) on your model output for one SDL unit. Choose the format of your file, using the EWR tool's own format names. Only the gauges of the chosen SDL unit are used. The scenario then appears in the Scenario / Base / Comparison pickers (Historical only).</div>
+  <label class="fld"><span>Data format</span><select id="scnFmt"></select></label>
+  <div class="hint" id="scnFmtHint"></div>
+  <label class="fld"><span>SDL unit</span><select id="scnSdl"></select></label>
+  <label class="fld"><span>Scenario name</span><input id="scnName" type="text" maxlength="40" placeholder="e.g. My Lachlan option"></label>
+  <label class="fld"><span>Time-series file (.csv)</span><input id="scnFile" type="file" accept=".csv,.txt,text/csv"></label>
+  <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download a CSV with the header for this SDL unit's gauges">Download template header</button><span style="flex:1"></span><button id="scnClose">Close</button></div>
+  <div id="scnStatus"></div><div id="scnList"></div></dialog>
+<div id="main"><div id="map"></div><div id="panel"></div></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<script>
+const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__;
+// ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28]]
+ROWS.forEach(r=>{ const t=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=t.length?t:[META.themes.indexOf("Unclassified")]; });
+const NC=META.climates.length;
+const POL_L={"Without Development":"Without development","Pre Basin Plan":"Pre Basin Plan","Basin plan 2024":"Basin Plan 2024","Basin plan full implementation":"Full implementation"};
+const CLI_L={"Historical Climate":"Historical","Warmer and Wetter 1.5 C":"Warmer, wetter 1.5°C","Warmer and Drier 1.5 C":"Warmer, drier 1.5°C","Warmer and Much Drier 1.5 C":"Warmer, much drier 1.5°C","Hotter and Wetter 2.0 C":"Hotter, wetter 2.0°C","Hotter and Drier 2.0 C":"Hotter, drier 2.0°C","Hotter and Much Drier 2.0 C":"Hotter, much drier 2.0°C"};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const $=id=>document.getElementById(id);
+
+const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
+const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,days:"any",ewr:""},sort:"default",cell:null,thr:0.9,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+         sel:{type:"none"}};
+
+// ---- values and averages -----------------------------------------------------------------------------------------
+// Hierarchy: EWR -> gauge (mean of its EWRs) -> planning unit (mean of its gauges) -> SDL unit (mean of its planning units).
+const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c;
+const isDiff=()=>S.mode==="diff";
+const MN={fr:"mean FR",et:"mean ETP",ach:"% EWRs achieving",mz:"% EWRs achieving MRIP",fb:"% EWRs failed badly"}, MS={fr:"FR",et:"ETP",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
+const FAM={fr:"f",ach:"f",fb:"f",et:"e",mz:"e"}, inFam=k=>FAM[k]===FAM[S.metric];   // frequency-ratio family (FR, achieved, failed badly) vs ETP family (ETP, MRIP achieved): only the selected family's diagnostics are shown
+const METRICS=["fr","et","ach","mz","fb"], LOWER={et:1,fb:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
+// per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (|change| under 1 point)
+function cnts(rows,m){ const o={up:0,dn:0,same:0,n:0}; for(const r of rows){ const d=val(r,m); if(d==null) continue; const g=LOWER[m]?-d:d; o.n++; if(g>0.01) o.up++; else if(g<-0.01) o.dn++; else o.same++; } return o; }
+function val(r,m,i){ const a=m==="et"||m==="mz"?r[7]:r[6], one=k=>{ const v=a[k]; return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; };   // "ach": FR >= threshold; "mz": ETP <= threshold (0 = MRIP never exceeded)
+  if(!isDiff()) return one(i);
+  const x=one(scnIdx()), b=one(scnIdx(S.bpol,S.bcli)); return x==null||b==null?null:x-b; }   // differential: comparison - base
+const KEYF={pu:r=>r[0],gauge:r=>r[2]};
+// levels: outer -> inner grouping keys; the mean is taken innermost first, so each level weights its members equally
+function agg(rows,levels,m,i){
+  if(!levels.length){ let s=0,n=0; for(const r of rows){ const v=val(r,m,i); if(v!=null){s+=v;n++;} } return {n,mean:n?s/n:null}; }
+  const g=new Map(); for(const r of rows){ const k=KEYF[levels[0]](r); if(!g.has(k)) g.set(k,[]); g.get(k).push(r); }
+  let s=0,k=0,n=0; for(const rs of g.values()){ const a=agg(rs,levels.slice(1),m,i); if(a.mean!=null){s+=a.mean;k++;n+=a.n;} }
+  return {n,mean:k?s/k:null};
+}
+const LEVELS={sdl:["pu","gauge"],pu:["gauge"],gauge:[]};
+const scopeLevels=()=>LEVELS[S.sel.type]||[];
+// differential values (FR and ETP) are shown as whole percentage points, e.g. +14%
+const pct=v=>(v>0?"+":"")+Math.round(v*100)+"%", dfr=m=>isDiff();
+const pa=v=>Math.round(v*100)+"%";
+const f3=(v,m)=>v==null?"–":dfr(m)?pct(v):isBin(m)?pa(v):(isDiff()&&v>0?"+":"")+v.toFixed(3), fs2=(v,m)=>dfr(m)?pct(v):isBin(m)?pa(v):(isDiff()&&v>0?"+":"")+v.toFixed(2);
+
+// ---- selection ---------------------------------------------------------------------------------------------------
+function selRows(){
+  const s=S.sel;
+  if(s.type==="sdl") return ROWS.filter(r=>r[1]===s.i);
+  if(s.type==="pu") return ROWS.filter(r=>r[0]===s.i&&r[1]===s.sdl);
+  if(s.type==="gauge") return ROWS.filter(r=>r[2]===s.i&&(s.sdl==null||r[1]===s.sdl)&&(s.pu==null||r[0]===s.pu));
+  return [];
+}
+// ---- colours -----------------------------------------------------------------------------------------------------
+const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
+const ramp=(s)=>`rgb(${s<.5?mixc([209,73,91],[233,162,59],s/.5):mixc([233,162,59],[42,157,74],(s-.5)/.5)})`;   // 0 red .. 1 green
+const ETP_MAX=0.5, DIV={fr:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25};   // differential: differences of this size (or more) get the full colour
+function colour(v,m){ if(v==null) return "#bbb";
+  if(isDiff()){ const x=Math.max(-1,Math.min(1,(LOWER[m]?-v:v)/DIV[m])), g=[236,236,236];   // green = improvement (higher FR, lower ETP), red = decline
+    return `rgb(${x>=0?mixc(g,[42,157,74],x):mixc(g,[209,73,91],-x)})`; }
+  return m==="fr"||m==="ach"||m==="mz"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
+
+// ---- map (same look as the original SDL map) ---------------------------------------------------------------------
+const colours={NSW:"#4e79a7",VIC:"#59a14f",QLD:"#e15759",SA:"#f28e2b",ACT:"#b07aa1"};
+const map=L.map("map").fitBounds([[-39,138],[-24.5,153]]);
+const ESRI="Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors | SDL units: MDBA (CC BY 4.0) | Rivers: HydroSHEDS | Gauges: BoM";
+const gray=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,attribution:ESRI}).addTo(map);
+map.createPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,pane:"labels"}).addTo(map);
+const activeSdl=i=>i>=0&&(S.src!=="user"||CUSTOM.some(c=>!c.removed&&c.sdl===META.sdls[i]));   // demo: every SDL unit in the review; your data: units you have added a scenario for
+const inReview=f=>activeSdl(f.properties.sdl);
+const clickable=f=>!(f.properties.state==="SA"&&!inReview(f));   // other SA units are drawn but not interactive
+const style=f=>({color:"#333",weight:1,fillColor:colours[f.properties.state]||"#888",fillOpacity:inReview(f)?0.6:0.2,dashArray:inReview(f)?null:"4",interactive:clickable(f)});
+const sdlRows={}; ROWS.forEach(r=>(sdlRows[r[1]]??=[]).push(r));
+const units=L.geoJSON(DATA,{style,onEachFeature:(f,l)=>{
+  const p=f.properties; if(!clickable(f)) return;
+  l.bindTooltip(()=>{ if(p.sdl<0) return esc(p.name); return esc(p.name); },{sticky:true});
+  l.on({click:e=>{ L.DomEvent.stopPropagation(e); if(activeSdl(p.sdl)) select({type:"sdl",i:p.sdl}); },mouseover:e=>e.target.setStyle({weight:3}),mouseout:()=>paintMap()});
+}}).addTo(map);
+// Barwon-Darling is a thin corridor under other units: an invisible wide hit-layer makes it easy to click
+units.eachLayer(l=>{ const p=l.feature.properties; if(!/barwon.?darling/i.test(p.name)||p.sdl<0) return;
+  L.geoJSON(l.feature,{style:{color:"#000",weight:22,opacity:0,fill:true,fillOpacity:0,lineCap:"round",lineJoin:"round"}}).addTo(map).eachLayer(x=>{
+    x.bindTooltip(esc(p.name),{sticky:true}); x.on("click",e=>{ L.DomEvent.stopPropagation(e); if(activeSdl(p.sdl)) select({type:"sdl",i:p.sdl}); }); }); });
+map.createPane("rivers").style.zIndex=401; map.getPane("rivers").style.pointerEvents="none";
+map.createPane("gauges").style.zIndex=420;
+const riverW=o=>({3:0.7,4:1.1,5:1.6,6:2.2}[o]??3);
+L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:L.canvas({pane:"rivers"}),style:f=>({color:"#1f78b4",weight:riverW(f.properties.o),opacity:0.85})}).addTo(map);
+const GM={}, gaugeRows={}; ROWS.forEach(r=>(gaugeRows[r[2]]??=[]).push(r));
+GAUGES.forEach(g=>{
+  const mk=L.circleMarker([g.lat,g.lon],{pane:"gauges",radius:4.5,weight:1,color:"#111",fillColor:"#ffd92f",fillOpacity:.95});
+  mk.bindTooltip(()=>`${esc(g.id)} – ${esc(g.name)}`);
+  mk.on("click",e=>{ L.DomEvent.stopPropagation(e); if(S.src!=="user"||gaugeHasUser(g.i)) gaugeFromMap(g.i); });
+  mk.addTo(map); GM[g.i]=mk;
+});
+function gaugeFromMap(gi){   // keep the SDL / planning-unit context if the gauge sits in it, else show the gauge across the SDL units it serves
+  const s=S.sel;
+  if(s.type==="pu"&&ROWS.some(r=>r[2]===gi&&r[0]===s.i&&r[1]===s.sdl)) return select({type:"gauge",i:gi,sdl:s.sdl,pu:s.i});
+  const sdl=s.type==="sdl"?s.i:s.type==="pu"?s.sdl:(s.type==="gauge"?s.sdl:null);
+  if(sdl!=null&&ROWS.some(r=>r[2]===gi&&r[1]===sdl)) return select({type:"gauge",i:gi,sdl});
+  select({type:"gauge",i:gi});
+}
+const gaugeHasUser=gi=>(gaugeRows[gi]||[]).some(r=>CUSTOM.some(c=>!c.removed&&(r[6][c.P*NC]!=null||r[7][c.P*NC]!=null)));
+function paintMap(){   // map look is fixed; only the selection is highlighted
+  units.setStyle(style);
+  const s=S.sel, sdlSel=s.type==="sdl"?s.i:(s.type==="pu"||s.type==="gauge")&&s.sdl!=null?s.sdl:null;
+  units.eachLayer(l=>{ const p=l.feature.properties; if(!activeSdl(p.sdl)) return; const sel=sdlSel===p.sdl; l.setStyle({weight:sel?3:1,color:sel?"#000":"#333"}); });
+  const scope=new Set(selRows().map(r=>r[2]));
+  for(const g of GAUGES){ const on=(S.src!=="user"||gaugeHasUser(g.i))&&(s.type==="none"||s.type==="gauge"||scope.has(g.i)), sel=s.type==="gauge"&&s.i===g.i;
+    GM[g.i].setStyle({fillOpacity:on?.95:.25,opacity:on?1:.3,weight:sel?3:1,radius:sel?7:4.5,color:sel?"#d1495b":"#111"}); if(sel) GM[g.i].bringToFront(); }
+}
+const lg=L.control({position:"bottomleft"});
+lg.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); L.DomEvent.disableClickPropagation(d);
+  const btn=L.DomUtil.create("button","",d); btn.type="button"; btn.textContent="Legend ▸"; btn.style.cssText="border:0;background:none;font:600 12px system-ui;cursor:pointer;padding:0";
+  const body=L.DomUtil.create("div","",d); body.style.display="none";
+  body.innerHTML="<b>Surface water SDL units</b><br>"+Object.entries(colours).map(([k,c])=>`<i style="background:${c}"></i>${k}<br>`).join("")+
+    `<i style="background:#ffd92f;border-radius:50%"></i>Gauge with EWR results<br><i style="background:#1f78b4;height:3px;vertical-align:3px"></i>River (thicker = larger)<br><small>Solid = in 2026 review EWR results<br>Faded/dashed = not in results</small>`;
+  btn.onclick=()=>{ const open=body.style.display==="none"; body.style.display=open?"block":"none"; btn.textContent=open?"Legend ▾":"Legend ▸"; body.style.marginTop=open?"4px":"0"; };
+  return d; };
+lg.addTo(map);
+function paintLegend(){}
+
+// ---- panel -------------------------------------------------------------------------------------------------------
+const sdlOf=()=>{ const s=S.sel; return s.type==="sdl"?s.i:s.sdl; };
+function gaugeName(i){ const g=GAUGES.find(x=>x.i===i); return META.gauges[i]+(g?" · "+g.name:""); }
+function title(){
+  const s=S.sel;
+  if(s.type==="sdl") return META.sdls[s.i];
+  if(s.type==="pu") return META.pus[s.i];
+  return gaugeName(s.i);
+}
+function crumbHtml(){
+  const s=S.sel, c=[`<a data-act="reset">All SDL units</a>`];
+  const sdl=sdlOf(); if(sdl!=null) c.push(s.type==="sdl"?esc(META.sdls[sdl]):`<a data-act="sdl" data-i="${sdl}">${esc(META.sdls[sdl])}</a>`);
+  if(s.type==="pu") c.push(esc(META.pus[s.i]));
+  if(s.type==="gauge"){ if(s.pu!=null) c.push(`<a data-act="pu" data-i="${s.pu}" data-sdl="${s.sdl}">${esc(META.pus[s.pu])}</a>`); c.push(esc(META.gauges[s.i])); }
+  return c.join(" ▸ ");
+}
+function render(){
+  const s=S.sel;
+  if(s.type==="none"){
+    const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
+    if(S.src==="user"&&!names.length){ $("panel").innerHTML=`<h2>Your data</h2><div class="note">This mode uses only model output you add yourself, and unlocks the flow charts (threshold × duration heat map, hydrograph, flow duration curves). Add a scenario for an SDL unit to begin.</div><div class="row"><button data-act="addscn">＋ Add scenario</button></div>`; return; }
+    $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.</div>
+      <table><tbody>${names.map(([n,i])=>`<tr class="click" data-act="sdl" data-i="${i}"><td>${esc(n)}</td></tr>`).join("")}</tbody></table>`;
+    return;
+  }
+  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
+  const what=s.type==="sdl"?"planning units":s.type==="pu"?"gauges":"EWRs";
+  let h=`<div class="crumbs">${crumbHtml()}</div><h2>${esc(title())}</h2>
+    <div class="note">${isDiff()?`<b>${esc(POL_L[META.policies[S.pol]])} · ${esc(CLI_L[META.climates[S.cli]])}</b> minus base <b>${esc(POL_L[META.policies[S.bpol]])} · ${esc(CLI_L[META.climates[S.bcli]])}</b>`:`${esc(POL_L[META.policies[S.pol]])} · ${esc(CLI_L[META.climates[S.cli]])}`}</div>
+    ${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile"><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"mean FR difference":"mean frequency ratio"} · ${fr.n} EWRs</span></div>`:""}
+    ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"change in EWRs achieving":"EWRs achieving"} · ${ac.n} EWRs</span></div>`:""}
+    ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"change in EWRs achieving MRIP":"EWRs achieving MRIP"} · ${mz.n} EWRs</span></div>`:""}
+    ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"change in EWRs failing badly":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
+    ${inFam("et")?`<div class="tile"><b>${f3(et.mean,"et")}</b><span>${isDiff()?"mean ETP difference":"mean MRIP ETP"} · ${et.n} EWRs</span></div>`:""}</div>`}
+    ${isDiff()&&s.type!=="sdl"?(()=>{ const c=cnts(rows,S.metric), p=x=>c.n?Math.round(100*x/c.n):0;
+      return `<div class="cnts"><b>${MS[S.metric]==="FR"?"Frequency ratio":MS[S.metric][0].toUpperCase()+MS[S.metric].slice(1)}: EWRs changed (comparison vs base)</b><div class="bar"><span style="width:${p(c.up)}%;background:#2a9d4a"></span><span style="width:${p(c.same)}%;background:#c9ced6"></span><span style="width:${p(c.dn)}%;background:#d1495b"></span></div>
+        <span class="up">▲ ${c.up} improved (${p(c.up)}%)</span> · <span class="dn">▼ ${c.dn} declined (${p(c.dn)}%)</span> · = ${c.same} unchanged (${p(c.same)}%) <span style="color:#6b7280">of ${c.n} EWRs with a result in both scenarios</span></div>`; })():""}
+    <div class="note">Matrix: ecological ${S.sel.type==="gauge"?"themes (rows) by flow regime (columns)":`themes (rows) by ${what} (columns)`}.</div>
+    <div class="mxbar"><b>Matrix</b>
+      <div class="seg"><span class="lbl">Rows · themes</span><span class="tabs sm"><button data-act="expand-y" class="${COLL_THEME.size===0?"on":""}" title="Expand every theme into its objectives">Expand</button><button data-act="collapse-y" class="${META.themes.every(x=>COLL_THEME.has(x))?"on":""}" title="Collapse every theme into one row">Collapse</button></span></div>
+      <div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>
+      ${s.type==="gauge"?`<div class="seg"><span class="lbl">Columns · flow regimes</span><span class="tabs sm"><button data-act="expand-x" class="${COLL_REG.size===0?"on":""}" title="Expand every flow regime into its EWRs">Expand</button><button data-act="collapse-x" class="${META.regimes.every(x=>COLL_REG.has(x))?"on":""}" title="Collapse every flow regime into one column">Collapse</button></span></div>`:""}
+    </div>
+    <div class="mxw">${matrixSvg(rows)}</div>${cellDetail()}${flowPanel()}`;
+
+  $("panel").innerHTML=h; wireFlow();
+}
+
+// ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
+const REG_ORDER=["Cease to flow","Very low flow","Baseflow","Fresh","Small fresh","Large fresh","Bankfull","Bankfull flow","Annabranch connection","Overbank","Overbank small","Overbank large","Low overbank flow","Low to moderate overbank flow","Moderate overbank flow","Moderate to large overbank flow","Wetland inundation","Wetland Large Fresh","Nesting support flow","High lake level fill","Mid level lake fill","Low level lake fill","Very high level fill","lower lakes","coorong","Annual Barrage flow","three yearly barrage flows","excluded","Unmapped"];
+const REG_ABBR={"Cease to flow":"CF","Very low flow":"VF","Baseflow":"BF","Fresh":"F","Small fresh":"SF","Large fresh":"LF","Bankfull":"BK","Bankfull flow":"BK","Overbank":"OB","Overbank small":"OB-S","Overbank large":"OB-L","Low overbank flow":"OB low","Low to moderate overbank flow":"OB low-mod","Moderate overbank flow":"OB mod","Moderate to large overbank flow":"OB mod-lg","Annabranch connection":"AC","Wetland inundation":"WL","Wetland Large Fresh":"W-LF","Nesting support flow":"Nest","High lake level fill":"HLLF","Mid level lake fill":"MLLF","Low level lake fill":"LLLF","Very high level fill":"VHLL","lower lakes":"Lakes","coorong":"Coorong","Annual Barrage flow":"Barrage 1y","three yearly barrage flows":"Barrage 3y","excluded":"Excl.","Unmapped":"–"};
+const THEME_ABBR={"Flows & Connectivity":"FC","Native Fish":"NF","Waterbirds":"WB","Native Vegetation":"NV","Ecosystem Functions":"EF","Other Species":"OS","Unclassified":"?"};
+const TCOL={"Flows & Connectivity":"#8c6bb1","Native Fish":"#4e79a7","Waterbirds":"#f28e2b","Native Vegetation":"#59a14f","Ecosystem Functions":"#76b7b2","Other Species":"#b07aa1","Unclassified":"#888"};
+const COLL_REG=new Set(REG_ORDER), COLL_THEME=new Set(META.themes);   // default: every regime and theme collapsed
+let LASTMX=null;
+function matrixSvg(rows){
+  const i=scnIdx(), m=S.metric, t=S.sel.type, lv=scopeLevels(), clv=lv.slice(1);   // columns are one level below the selection
+  const cnt=t==="sdl";   // SDL view: planning unit x theme cells are counts of EWR-objective mappings; no FR / ETP shown
+  if(cnt) rows=rows.filter(r=>val(r,"fr",i)!=null||val(r,"et",i)!=null);   // EWRs with no result in this scenario are not shown
+  if(!rows.length) return "<i>No data for this selection and scenario.</i>";
+  const cols=[];
+  if(t==="sdl"||t==="pu"){   // columns = planning units (SDL view) or gauges (planning-unit view)
+    const kf=t==="sdl"?r=>r[0]:r=>r[2], g=new Map(); rows.forEach(r=>{ const k=kf(r); if(!g.has(k)) g.set(k,[]); g.get(k).push(r); });
+    [...g].sort((a,b)=>t==="sdl"?META.pus[a[0]].localeCompare(META.pus[b[0]]):META.gauges[a[0]].localeCompare(META.gauges[b[0]])).forEach(([k,rs])=>
+      cols.push({id:"k"+k,label:t==="sdl"?META.pus[k]:META.gauges[k],full:t==="sdl"?META.pus[k]:gaugeName(k),rows:rs,key:k,grp:true,open:true}));
+  } else {   // gauge: flow regimes small -> large; collapsed = one aggregated column, else one per EWR
+    const regs=META.regimes.map((n,k)=>[n,k]).sort((a,b)=>{const x=REG_ORDER.indexOf(a[0]),y=REG_ORDER.indexOf(b[0]); return (x<0?99:x)-(y<0?99:y);});
+    for(const [rg,k] of regs){ const ids=rows.filter(r=>r[5].includes(k)); if(!ids.length) continue;
+      if(COLL_REG.has(rg)&&ids.length>1) cols.push({id:"g"+rg,label:`${(REG_ABBR[rg]||rg)} (${ids.length})`,full:rg,rows:ids,reg:rg,grp:true});
+      else ids.forEach(r=>cols.push({id:"e"+r[3]+"|"+r[2]+"|"+r[0],label:r[3],full:r[3],rows:[r],reg:rg,grp:false})); }
+  }
+  const present=new Set(rows.flatMap(r=>r[4])), orows=[];
+  META.themes.forEach((th,ti)=>{ const ids=[...present].filter(o=>META.objTheme[o]===ti).sort((a,b)=>META.objs[a].localeCompare(META.objs[b],undefined,{numeric:true})); if(!ids.length) return;
+    if(COLL_THEME.has(th)) orows.push({id:"t"+th,label:th,objs:ids,theme:th,grp:true});
+    else ids.forEach(o=>orows.push({id:"o"+META.objs[o],label:META.objs[o],objs:[o],theme:th,grp:false,desc:META.objDesc[o]})); });
+  for(const o of orows){ const set=new Set(o.objs); o.rows=rows.filter(r=>r[4].some(x=>set.has(x))); o.vals=Object.fromEntries(METRICS.map(k=>[k,agg(o.rows,lv,k,i).mean])); o.cn=cnts(o.rows,m); }
+  for(const c of cols) c.v=agg(c.rows,clv,m,i).mean;
+  // missing data is not shown: rows and columns with no value for the selected metric are dropped
+  const mc=(rs,o)=>{ const set=new Set(o.objs); return rs.reduce((n,r)=>n+r[4].filter(x=>set.has(x)).length,0); };
+  if(cnt){ for(let k=orows.length-1;k>=0;k--) if(!mc(rows,orows[k])) orows.splice(k,1); for(let k=cols.length-1;k>=0;k--) if(!orows.some(o=>mc(cols[k].rows,o))) cols.splice(k,1); }
+  else{ for(let k=orows.length-1;k>=0;k--) if(orows[k].vals[m]==null) orows.splice(k,1);
+    for(let k=cols.length-1;k>=0;k--) if(cols[k].v==null) cols.splice(k,1); }
+  if(!orows.length||!cols.length) return "<i>No data for this selection and scenario.</i>";
+  cols.forEach(c=>{ c.sv=cnt?orows.reduce((n,o)=>n+mc(c.rows,o),0):c.v; });
+  if(S.sort!=="default"){   // sort columns by the value shown (bar height; mapping count in the SDL view)
+    const sg=S.sort==="high"?-1:1, cmp=(a,b)=>(a.sv-b.sv)*sg;
+    if(t!=="gauge"||new Set(cols.map(c=>c.reg)).size===cols.length) cols.sort(cmp);
+    else { const out=[]; for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++; out.push(...cols.slice(a,b+1).sort(cmp)); a=b+1; } cols.splice(0,cols.length,...out); }   // expanded flow regimes: sort within each regime so the bands stay intact
+  }
+  LASTMX={cols,orows,cnt};
+  const cell=cols.map(c=>orows.map(o=>{ const set=new Set(o.objs), rs=c.rows.filter(r=>r[4].some(x=>set.has(x))); return cnt?{n:mc(rs,o),v:null}:{n:rs.length,v:rs.length?agg(rs,clv,m,i).mean:null,cn:cnts(rs,m)}; }));
+  const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+"…":s;
+  cols.forEach(c=>c.show=trunc(c.label,t==="sdl"?30:26));
+  const C=isDiff()&&!cnt?26:21, PH=cnt?0:60, bandH=t==="gauge"?15:0, bandGap=t==="gauge"?6:0;
+  const lab=Math.max(...orows.map(o=>o.label.length))*6.1+8, labH=Math.max(...cols.map(c=>c.show.length))*5.6+10;
+  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","ETP"],["mz","MRIP ✓"]].filter(([k])=>inFam(k)), CW=38, CS=40, CX=k=>16+k*CS, chipsEnd=16+CHIPS.length*CS+(isDiff()?62:0), xL=cnt?20:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:26)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
+  const D=isDiff(), step=0.05, mid=base-PH/2;
+  const vmax=D?Math.max(2*step,Math.ceil(Math.max(0,...cols.map(c=>Math.abs(c.v||0)))/step)*step):(isBin(m)?1:m==="fr"?Math.max(1.25,Math.ceil(Math.max(...cols.map(c=>c.v||0))*4)/4):Math.max(0.5,Math.ceil(Math.max(...cols.map(c=>c.v||0))*10)/10));
+  const by=D?v=>mid-Math.max(-vmax,Math.min(vmax,v))/vmax*(PH/2):v=>base-Math.min(v,vmax)/vmax*PH;
+  let g=cnt?"":`<rect x="${x0-2}" y="${base-PH-4}" width="${W-x0}" height="${PH+8}" fill="#f3f6fa"/>`;
+  if(!cnt&&D) g+=`<line x1="${x0-2}" x2="${W-4}" y1="${mid}" y2="${mid}" stroke="#b9c3d1"/>`;   // differential: a zero line only, values are printed above the bars
+  if(!cnt&&!D) g+=[...new Set(D?[-vmax,0,vmax]:m==="fr"?[0,1,vmax]:[0,vmax])].map(v=>`<line x1="${x0-2}" x2="${W-4}" y1="${by(v)}" y2="${by(v)}" stroke="#d5dce6"/><text x="${x0-5}" y="${by(v)+3}" text-anchor="end" style="font-size:8.5px">${(dfr(m)?pct(v):isBin(m)?pa(v):+v.toFixed(2))}</text>`).join("");
+  if(!cnt){ if(!D) g+=`<text transform="translate(${x0-30},${base-PH/2}) rotate(-90)" text-anchor="middle" style="font-size:9px;font-weight:700">${D?"Δ ":""}${MN[m]}</text>`;
+    g+=CHIPS.map(([k,l],n)=>`<text class="hd" x="${CX(n)+CW/2}" y="${my-6}" text-anchor="middle">${l}</text>`).join("")+(isDiff()?`<text class="hd" x="${CX(CHIPS.length)+28}" y="${my-6}" text-anchor="middle">▲ ▼</text>`:""); }
+  orows.forEach((o,ri)=>{ const y=my+ri*C, cy=y+C/2;
+    const chip=(x,v,mm)=>v==null?`<text x="${x+CW/2}" y="${cy+3.5}" text-anchor="middle" style="fill:#999;font-size:9px">n/a</text>`:`<rect x="${x}" y="${y+2}" width="${CW}" height="${C-4}" rx="3" fill="${colour(v,mm)}" stroke="#0002"/><text x="${x+CW/2}" y="${cy+3.5}" text-anchor="middle" style="font-size:9px;fill:#111">${fs2(v,mm)}</text>`;
+    const cchip=()=>{ const x=CX(CHIPS.length); return `<rect x="${x}" y="${y+2}" width="56" height="${C-4}" rx="3" fill="#f1f3f6" stroke="#0002"/><text x="${x+28}" y="${cy+3.5}" text-anchor="middle" style="font-size:9px"><tspan style="fill:#2a9d4a">▲${o.cn.up}</tspan> <tspan style="fill:#d1495b;font-weight:${o.cn.dn?700:400}">▼${o.cn.dn}</tspan></text>`; };
+    const tip=o.grp?`${o.label}: ${o.objs.map(x=>META.objs[x]).join(", ")}`:`${o.label} (${o.theme}): ${o.desc||"no description"}`;
+    const sep=ri>0&&orows[ri-1].theme!==o.theme?`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="#8a8a8a"/>`:"";
+    g+=`<g><title>${esc(tip)}${cnt?"":` — ${CHIPS.map(([k])=>MN[k]+" "+f3(o.vals[k],k)).join(", ")}${isDiff()?` — ▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged (${MS[m]})`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+3.5}">${esc(o.label)}</text></g>`; });
+  cols.forEach((c,ci)=>{ const x=x0+ci*C+C/2, hit=orows.map((o,ri)=>cell[ci][ri].n>0?ri:-1).filter(r=>r>=0);
+    const go=t==="sdl"?` class="colsel" data-act="pu" data-i="${c.key}" data-sdl="${S.sel.i}" style="cursor:pointer"`:t==="pu"?` class="colsel" data-act="gauge" data-i="${c.key}" style="cursor:pointer"`:"";
+    g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+c.rows.map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${MN[m]} ${f3(c.v,m)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
+    if(!cnt&&c.v!=null) g+=`<rect x="${x-6}" y="${D?Math.min(by(c.v),mid):by(c.v)}" width="12" height="${D?Math.abs(by(c.v)-mid)||1:base-by(c.v)}" fill="${colour(c.v,m)}" stroke="#0004"${go}/>`;
+    if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid; g+=`<text x="${x}" y="${top-3}" text-anchor="middle" style="font-size:8px;font-weight:600">${pct(c.v)}</text>`; }   // exact change above the bar
+    if(!cnt&&c.v==null) g+=`<text x="${x}" y="${base-3}" text-anchor="middle" style="font-size:7px;fill:#999">n/a</text>`;
+    g+=`<rect x="${x-C/2}" y="${base}" width="${C}" height="${H-base}" fill="transparent"/>`;
+    if(hit.length>1) g+=`<line x1="${x}" x2="${x}" y1="${my+hit[0]*C+C/2}" y2="${my+hit[hit.length-1]*C+C/2}" stroke="#999" stroke-width="2"/>`;
+    orows.forEach((o,ri)=>{ const q=cell[ci][ri], cy=my+ri*C+C/2; if(!q.n){ g+=`<circle cx="${x}" cy="${cy}" r="3.2" fill="#e4e4e4"/>`; return; }
+      const f=t==="sdl"?"#e8edf4":q.v==null?"#fff":colour(q.v,m), masked=D&&q.cn&&q.cn.dn>0&&q.v!=null&&(LOWER[m]?q.v<=0:q.v>=0), isSel=S.cell&&S.cell.c===c.id&&S.cell.r===o.id, ring=isSel?`stroke="#1f4e8c" stroke-width="3"`:masked?`stroke="#c0392b" stroke-width="2.2"`:`stroke="#0004"`;   // red ring: net result is not worse, yet some EWRs declined   // SDL view: planning unit x theme cells are plain EWR counts
+      g+=`<g data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((c.grp||o.grp||t==="sdl")?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${esc(c.full)} · ${esc(o.label)}: ${t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+`, mean ${MS[m]} ${f3(q.v,m)}`+(D&&q.cn?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(masked?" (decline hidden by the average)":""):"")}</title></circle><text x="${x}" y="${cy+3.3}" text-anchor="middle" style="font-size:9px">${q.n}</text>`
+        :`<circle cx="${x}" cy="${cy}" r="4.8" fill="${f}" stroke="${isSel?"#1f4e8c":"#222"}" stroke-width="${isSel?3:1}"><title>${esc(c.full)} → ${esc(o.label)}: ${MS[m]} ${f3(q.v,m)}</title></circle>`)+`</g>`; });
+    g+=`<text transform="translate(${x+3.5},${my-4}) rotate(-90)"${go?go.replace('style="cursor:pointer"','style="cursor:pointer;fill:#1f4e8c"'):""}>${esc(c.show)}</text></g>`; });
+  if(t==="gauge") for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++;
+    const rg=cols[a].reg, single=b===a&&!cols[a].grp, closed=COLL_REG.has(rg)&&!single, bx=x0+a*C+1, bw=(b-a+1)*C-2;
+    g+=`<g${single?"":` class="tog" data-k="reg" data-v="${esc(rg)}" style="cursor:pointer"`}><title>${esc(rg)}${single?"":` — click to ${closed?"expand into EWRs":"collapse into one column"}`}</title><rect x="${bx}" y="${bandTop}" width="${bw}" height="${bandH-2}" rx="3" fill="${closed?"#9fb3cc":"#dde5ef"}" stroke="#8aa0bd"/><text x="${bx+bw/2}" y="${bandTop+bandH-5}" text-anchor="middle" style="font-size:${bw<34?8:9}px;font-weight:600">${bw<34||single?"":(closed?"▸ ":"▾ ")}${esc((REG_ABBR[rg]||rg).slice(0,bw<34?4:12))}</text></g>`; a=b+1; }
+  for(let a=0;a<orows.length;){ let b=a; while(b+1<orows.length&&orows[b+1].theme===orows[a].theme) b++;
+    const th=orows[a].theme, closed=COLL_THEME.has(th), yy=my+a*C+1, bh=(b-a+1)*C-2;
+    g+=`<g class="tog" data-k="theme" data-v="${esc(th)}" style="cursor:pointer"><title>${esc(th)} — click to ${closed?"expand into objectives":"collapse into one row"}</title><rect x="0" y="${yy}" width="14" height="${bh}" rx="3" fill="${TCOL[th]||"#888"}" opacity="${closed?1:.55}" stroke="#0004"/><text transform="translate(10.5,${yy+bh/2}) rotate(-90)" text-anchor="middle" style="font-size:9px;font-weight:600;fill:#fff">${closed?"▸ ":"▾ "}${esc(THEME_ABBR[th]||th)}</text></g>`; a=b+1; }
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+
+function singlePU(sel){   // a level with only one child (with data in this scenario) is skipped: SDL -> its only planning unit -> its only gauge
+  const k=scnIdx(), has=r=>val(r,"fr",k)!=null||val(r,"et",k)!=null;
+  if(sel.type==="sdl"){ const pus=new Set(ROWS.filter(r=>r[1]===sel.i&&has(r)).map(r=>r[0]));
+    if(pus.size===1) sel={type:"pu",i:[...pus][0],sdl:sel.i}; }
+  if(sel.type==="pu"){ const gs=new Set(ROWS.filter(r=>r[0]===sel.i&&r[1]===sel.sdl&&has(r)).map(r=>r[2]));
+    if(gs.size===1) sel={type:"gauge",i:[...gs][0],sdl:sel.sdl,pu:sel.i}; }
+  return sel;
+}
+function cellDetail(){
+  const L=LASTMX; if(!S.cell||!L) return "";
+  const c=L.cols.find(x=>x.id===S.cell.c), o=L.orows.find(x=>x.id===S.cell.r); if(!c||!o){ S.cell=null; return ""; }
+  const set=new Set(o.objs), m=S.metric, D=isDiff(), cnt=L.cnt, t=S.sel.type, bin=isBin(m), fam=FAM[m]==="f"?"fr":"et";
+  const rs=c.rows.filter(r=>r[4].some(x=>set.has(x)));
+  const bad=r=>{ const v=val(r,m); return v==null?null:(LOWER[m]?v:-v); };   // larger = worse
+  if(!cnt) rs.sort((a,b)=>{ const x=bad(a),y=bad(b); if(x==null) return 1; if(y==null) return -1; return y-x; });
+  const shown=rs.slice(0,300), k1=scnIdx(), k0=scnIdx(S.bpol,S.bcli), arr=r=>fam==="fr"?r[6]:r[7], f=v=>v==null?"–":v.toFixed(3);
+  const words={ach:["achieved","not achieved"],fb:["failed badly","ok"],mz:["achieved","not achieved"]};
+  const res=r=>{ const v=val(r,m); if(v==null) return "–"; if(!D) return v?words[m][0]:words[m][1]; const g=LOWER[m]?-v:v; return g>0?"improved":g<0?"declined":"unchanged"; };
+  const good=d=>d==null?"":((LOWER[fam==="fr"?"fr":"et"]?-d:d)>0.01?"color:#2a9d4a":(LOWER[fam==="fr"?"fr":"et"]?-d:d)<-0.01?"color:#d1495b":"");
+  const head=["EWR",t!=="gauge"?"Gauge":"",t==="sdl"?"Planning unit":"","Objectives"].filter(Boolean);
+  if(!cnt) head.push(...(D?[`${fam==="fr"?"FR":"ETP"} base`,`${fam==="fr"?"FR":"ETP"} comparison`,"change"]:[fam==="fr"?"FR":"ETP"]), ...(bin?["result"]:[]));
+  const body=shown.map(r=>{ const a=arr(r)[k1], b=arr(r)[k0], d=a==null||b==null?null:a-b, objs=r[4].filter(x=>set.has(x)).map(x=>META.objs[x]).join(", ");
+    return `<tr><td>${esc(r[3])}</td>${t!=="gauge"?`<td>${esc(META.gauges[r[2]])}</td>`:""}${t==="sdl"?`<td>${esc(META.pus[r[0]])}</td>`:""}<td>${esc(objs)}</td>`+
+      (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td><td style="${good(d)}">${d==null?"–":pct(d)}</td>`:`<td>${f(a)}</td>`)+(bin?`<td style="${D?(res(r)==="improved"?"color:#2a9d4a":res(r)==="declined"?"color:#d1495b":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
+  return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · worst first"}</span><button data-act="cellclose" title="Close">×</button></div>
+    <div class="cellt"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></div>`;
+}
+// ---- flow analysis (uploaded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
+// colour scales as in the reference plots (plotly express RdBu: red = negative, blue = positive; Blues for absolute values)
+const RDBU=["rgb(103,0,31)","rgb(178,24,43)","rgb(214,96,77)","rgb(244,165,130)","rgb(253,219,199)","rgb(247,247,247)","rgb(209,229,240)","rgb(146,197,222)","rgb(67,147,195)","rgb(33,102,172)","rgb(5,48,97)"];
+const BLUES=["rgb(247,251,255)","rgb(222,235,247)","rgb(198,219,239)","rgb(158,202,225)","rgb(107,174,214)","rgb(66,146,198)","rgb(33,113,181)","rgb(8,81,156)","rgb(8,48,107)"];
+const scale=a=>a.map((c,i)=>[i/(a.length-1),c]);
+const EWRLIST=new Map();   // gauge -> EWRs handled by flow_handle / lowflow_handle
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], FLOWCACHE=new Map();
+let FLOWTOKEN=0;
+const customOf=P=>CUSTOM.find(c=>c.P===P&&!c.removed&&c.id);
+function flowCtx(){
+  if(S.src!=="user"||S.sel.type!=="gauge"||!CUSTOM.some(c=>!c.removed)) return null;
+  const g=META.gauges[S.sel.i], comp=customOf(S.pol), base=customOf(S.bpol);
+  const need=isDiff()?"In Differential mode both the Base and the Comparison must be uploaded scenarios.":"Select one of your uploaded scenarios.";
+  const has=c=>c&&c.flowGauges.includes(g);
+  if(isDiff()){ if(has(comp)&&has(base)) return {ok:true,gauge:g,base:base.id,comp:comp.id,bn:base.name,cn:comp.name}; }
+  else if(has(comp)) return {ok:true,gauge:g,base:comp.id,comp:null,bn:comp.name};
+  return {ok:false,msg:"Flow charts need uploaded flows for this gauge. "+need};
+}
+const CHARTS={heat:"Heat map",hydro:"Hydrograph",fdc:"Flow duration curve",dfdc:"Differential flow duration curve"};
+const chartsFor=D=>D?["heat","dfdc"]:["heat","hydro"];
+const thrKey=e=>e.code+"|"+e.pu, TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
+function flowPanel(){
+  const c=flowCtx(); if(!c) return "";
+  const f=S.flow, D=isDiff();
+  if(!c.ok) return `<div class="note">${esc(c.msg)}</div>`;
+  if(!f.chart||!chartsFor(D).includes(f.chart)) f.chart="heat";
+  const tabs=(items,cur,act)=>`<span class="tabs sm">${items.map(([v,l])=>`<button data-fl="${act}" data-v="${v}" class="${cur===v?"on":""}">${l}</button>`).join("")}</span>`;
+  const mo=(cur,k)=>`<select data-fl="${k}">${MONTHS.map((m,i)=>`<option value="${i+1}"${cur===i+1?" selected":""}>${m}</option>`).join("")}</select>`;
+  const multi=f.chart==="dfdc";
+  return `<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${esc(gaugeName(S.sel.i))}</summary>
+    <div class="mxbar"><div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${chartsFor(D).map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</select></div>
+      ${f.chart==="heat"&&D?`<div class="seg"><span class="lbl">Show</span>${tabs([["diff","Difference"],["base","Base"],["comp","Comparison"]],f.show,"show")}</div>`:""}
+      ${multi?`<div class="seg"><span class="lbl">Thresholds</span><details class="multi" id="flowThrD"><summary id="flowThrS">${f.thr.length?f.thr.length+" selected":"none"}</summary><div class="pop" id="flowThr"></div></details></div>`
+             :`<div class="seg"><span class="lbl">EWR</span><select id="flowEwr" data-fl="ewr"><option value="">none</option></select></div>`}
+      ${f.chart==="heat"?`<div class="seg"><span class="lbl">Days</span>${tabs([["any","Any days"],["consec","Consecutive"]],f.days,"days")}</div>
+        <div class="seg"><span class="lbl">Max threshold (ML/d)</span><input type="number" min="10" step="10" data-fl="xlim" value="${esc(f.xlim)}" placeholder="${f.xlimAuto||"auto"}"></div>
+        <div class="seg"><span class="lbl">Max duration (days)</span><input type="number" min="2" max="366" data-fl="dmax" value="${f.dmax}"></div>
+        <div class="seg"><span class="lbl">Timing window</span>${mo(f.sm,"sm")} to ${mo(f.em,"em")}</div>`:(f.chart==="hydro"?`<label class="seg"><input type="checkbox" data-fl="ylog"${f.ylog?" checked":""}> <span class="lbl">log scale</span></label>`:"")}
+    </div><div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div></details>`;
+}
+function wireFlow(){
+  const d=$("flowDet"); if(!d) return;
+  d.addEventListener("toggle",()=>{ if(ev_target_is(d)){ S.flow.open=d.open; if(d.open) drawFlow(); } });
+  d.querySelectorAll("[data-fl]").forEach(el=>{ const k=el.dataset.fl;
+    if(el.tagName==="BUTTON") el.onclick=()=>{ S.flow[k]=el.dataset.v; render(); };
+    else if(k==="ewr") return;
+    else if(el.type==="checkbox") el.onchange=()=>{ S.flow[k]=el.checked; render(); };
+    else if(k==="chart") el.onchange=()=>{ S.flow.chart=el.value; render(); };
+    else el.onchange=()=>{ S.flow[k]=k==="xlim"?el.value.trim():+el.value; render(); }; });
+  fillEwrSelect();
+  if(S.flow.open) drawFlow();
+}
+const ev_target_is=d=>true;
+const niceUp=x=>{ const k=Math.pow(10,Math.max(Math.floor(Math.log10(x))-1,0)); return Math.ceil(x/k)*k; };
+async function fillEwrSelect(){
+  const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
+  if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } }
+  const list=EWRLIST.get(g), cur=S.flow.ewr, puN=new Set(list.map(e=>e.pu)).size>1, key=thrKey, lab=e=>`${esc(e.code)}${puN?" ("+esc(e.pu.slice(0,24))+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+  if($("flowEwr")){
+    $("flowEwr").innerHTML=`<option value="">none</option>`+list.map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.maxint>0?` · max gap ${e.maxint} yr`:""}</option>`).join("");
+    $("flowEwr").onchange=ev=>{ const e=list.find(x=>key(x)===ev.target.value); S.flow.ewr=e?key(e):"";
+      if(e){ Object.assign(S.flow,{xlim:String(niceUp(e.thr*1.6)),dmax:Math.min(366,Math.max(30,Math.ceil(e.dur*1.25))),sm:e.sm,em:e.em,days:e.consecutive?"consec":"any"}); }   // the parameters follow the EWR; they stay editable
+      render(); };
+  }
+  if($("flowThr")){   // several thresholds can be drawn at once on the flow duration charts
+    const pop=$("flowThr"); pop.innerHTML=list.map((e,i)=>`<label><input type="checkbox" value="${esc(key(e))}"${S.flow.thr.includes(key(e))?" checked":""}> ${lab(e)}</label>`).join("")||"<i>No flow-threshold EWRs at this gauge</i>";
+    pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
+  }
+}
+const curEwr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
+const curThr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return S.flow.thr.map(k=>l.find(e=>thrKey(e)===k)).filter(Boolean); };
+async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
+const thrLine=e=>e?[{type:"line",xref:"paper",x0:0,x1:1,yref:"y",y0:e.thr,y1:e.thr,line:{color:"#c0392b",width:1.5,dash:"dash"}}]:[];
+async function drawFlow(){
+  const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
+  if(typeof Plotly==="undefined"){ $("flowMsg").textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
+  const f=S.flow, D=isDiff(), tok=++FLOWTOKEN, msg=$("flowMsg"), base=`base=${encodeURIComponent(c.base)}${c.comp?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}`;
+  msg.textContent="Loading …"; $("flowPlot2").innerHTML="";
+  const lay=(extra)=>Object.assign({height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},hovermode:"closest",hoverlabel:{bgcolor:"white",bordercolor:"#9aa3b0",font:{size:11,color:"#1f2937"},align:"left"}},extra);
+  const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
+  const cfg={responsive:true,displaylogo:false};
+  try{
+    if(!EWRLIST.has(c.gauge)) await fillEwrSelect();
+    if(f.chart==="heat"){
+      if(f.ewr&&!EWRLIST.has(c.gauge)) await fillEwrSelect();
+      const ew=curEwr(), q=`/api/heatmap?${base}&xlim=${encodeURIComponent(f.xlim)}&dmax=${f.dmax}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d=await flowGet(q); if(tok!==FLOWTOKEN) return;
+      f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
+      const kind=D?f.show:"base", z=d[kind]||d.base, diff=D&&kind==="diff";
+      let zmax=100, zmin=0; if(diff){ zmax=Math.max(10,Math.ceil(Math.max(...z.flat().map(Math.abs))/10)*10); zmin=-zmax; }
+      const title=diff?`% change from ${c.bn} to ${c.cn}`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
+      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=Math.round((m[1]-m[0])*10)/10;
+        hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
+      // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
+      const cx=ew?Math.round(ew.thr/d.spacing)*d.spacing:0, cellShapes=ew&&ew.dur>=1&&ew.dur<=d.durations.length?[
+        {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
+        {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"black",width:1.5},fillcolor:"rgba(0,0,0,0)"}]:[];
+      Plotly.newPlot("flowPlot",[
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.0f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
+        {type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:diff?zmin:5,end:zmax,size:5,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}].concat(ew?[{type:"scatter",mode:"markers+text",x:[ew.thr],y:[ew.dur],text:[ew.code],textposition:"top right",textfont:{size:11,color:"black"},
+          marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
+        lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:cellShapes}),cfg);
+      let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}.`;
+      if(ew&&d.mark){ const m=d.mark, pc=v=>v+"% of years";
+        info+=`\n▢ ${ew.code} (${ew.handler==="flow_handle"?"flow_handle, consecutive":"lowflow_handle, non-consecutive"}): ≥${ew.thr} ML/d for ${ew.dur} days, ${MONTHS[ew.sm-1]}–${MONTHS[ew.em-1]}. `+
+          (D?`${c.bn} ${pc(m[0])} → ${c.cn} ${pc(m[1])} (${m[1]-m[0]>=0?"+":""}${Math.round((m[1]-m[0])*10)/10} points)`:`Achieved in ${pc(m[0])}`)+(ew.target!=null?`; EWR target ${ew.target}% of years.`:"."); }
+      msg.style.whiteSpace="pre-wrap"; msg.textContent=info;
+    } else {
+      const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(","):"";
+      const d=await flowGet(`/api/curves?${base}&kind=${f.chart}${tq}`); if(tok!==FLOWTOKEN) return;
+      msg.style.whiteSpace="pre-wrap";
+      const markNote=()=>thr.map(e=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}; return `\n▢ ${e.code} ≥${e.thr.toLocaleString()} ML/d: `+(c.comp?`${c.bn} ${m.base}% of time → ${c.cn} ${m.comp}% (${m.comp-m.base>=0?"+":""}${Math.round((m.comp-m.base)*100)/100} pts)`:`flow at or above it ${m.base}% of the time`); }).join("");
+      if(f.chart==="hydro"){
+        const ew=curEwr(); let shade=[], note="";
+        if(ew&&ew.maxint>0){
+          const ie=await flowGet(`/api/interevents?scn=${encodeURIComponent(c.base)}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(ew.code)}&pu=${encodeURIComponent(ew.pu)}`); if(tok!==FLOWTOKEN) return;
+          const nextDay=s=>{ const t=new Date(s+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+1); return t.toISOString().slice(0,10); };
+          shade=ie.exceed.map(g=>({type:"rect",xref:"x",x0:g.start,x1:nextDay(g.end),yref:"paper",y0:0,y1:1,fillcolor:"rgba(192,57,43,.20)",line:{width:0},layer:"below"}));
+          note=`\n▢ ${ew.code}: max recommended inter-event period ${ew.maxint} yr (${ie.mrip_days} days). ${ie.exceed.length} of ${ie.n_gaps} gaps between successful events exceed it (shaded)`+(ie.exceed.length?`, longest ${Math.max(...ie.exceed.map(g=>g.days))} days.`:".");
+        } else if(ew) note=`\n▢ ${ew.code} has no maximum inter-event period, so there is nothing to shade.`;
+        Plotly.newPlot("flowPlot",[{type:"scattergl",mode:"lines",x:d.dates,y:d.flow,line:{width:1,color:"#1f4e8c"},name:c.bn,hovertemplate:"<b>%{y:,.0f} ML/d</b><br>%{x|%d %b %Y}<extra></extra>"}],
+          lay({xaxis:ax("Date"),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear"}),showlegend:false,shapes:shade.concat(thrLine(ew))}),cfg);
+        msg.textContent=`${c.bn}: daily flow at ${c.gauge}.`+note;
+      } else {   // dfdc: change in the % of time flow is at or above each flow (comparison - base)
+        const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
+        const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=Math.round((m.comp-m.base)*100)/100; return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
+          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
+        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"<b>%{y:+.1f} pts</b> of time<br>flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
+          lay({xaxis:ax("Flow (ML/day)",{type:"log"}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000"}),showlegend:false,shapes:vl}),cfg);
+        msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow).`+markNote();
+      }
+    }
+  }catch(e){ if(tok===FLOWTOKEN) msg.textContent="Could not draw: "+e.message; }
+}
+
+function select(sel){ S.cell=null;  S.sel=singlePU(sel); refresh(); }
+function refresh(){ if(typeof syncSrc==="function") syncSrc(); if(typeof updateClimDisable==="function") updateClimDisable(); S.sel=singlePU(S.sel); paintMap(); render(); if(typeof pushHash==="function") pushHash(); }
+
+// ---- user scenarios: py_ewr is run by server.py on an uploaded Standard time-series file; the results join the picker as extra policies --
+const KEYROW=new Map(); ROWS.forEach(r=>KEYROW.set(META.pus[r[0]]+"|"+META.gauges[r[2]]+"|"+r[3]+"|"+r[1],r));
+const isCustom=p=>p>=4;   // the four built-in policies come first
+function addCustom(name,sdlName,vals,id,flowGauges,fmt){
+  const sdl=META.sdls.indexOf(sdlName), P=META.policies.length, key="custom:"+name; META.policies.push(key); POL_L[key]=`${name} (${sdlName})`;
+  ROWS.forEach(r=>{ for(let k=0;k<NC;k++){ r[6].push(null); r[7].push(null); } });
+  const matched=[]; for(const v of vals){ const r=KEYROW.get(v[0]+"|"+v[1]+"|"+v[2]+"|"+sdl); if(!r) continue; r[6][P*NC]=v[3]; r[7][P*NC]=v[4]; matched.push(v); }
+  CUSTOM.push({key,name,sdl:sdlName,P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],fmt:fmt||"Standard time-series"}); persistCustom(); return {P,matched:matched.length};
+}
+function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,sdl:c.sdl,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
+function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) if(META.sdls.includes(c.sdl)) addCustom(c.name,c.sdl,c.vals,c.id,c.flowGauges,c.fmt); }catch(e){} }
+function removeCustom(i){ const c=CUSTOM[i]; c.removed=true; if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id)).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
+  if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
+  persistCustom(); fillPolicyOptions(); renderCustomList(); refresh(); }
+function renderCustomList(){ const live=CUSTOM.map((c,i)=>[c,i]).filter(([c])=>!c.removed);
+  $("scnList").innerHTML=live.length?`<b style="font-size:12px">Your scenarios</b>`+live.map(([c,i])=>`<div><span>${esc(c.name)} · ${esc(c.sdl)} · ${esc(c.fmt)} · ${c.vals.length} EWRs</span><button class="ghost" data-rm="${i}" title="Remove">remove</button></div>`).join(""):""; }
+const FORMATS={
+  "Standard time-series":{hint:"CSV. First column Date (YYYY-MM-DD or DD/MM/YYYY), then one column per gauge named <gauge>_flow or <gauge>_level, e.g. 409025_flow.",tpl:true,flows:true,accept:".csv,.txt,text/csv"},
+  "Bigmod - MDBA":{hint:"Bigmod formatted output file (MDBA). Columns are matched to gauges through the EWR tool's Bigmod node list.",accept:".csv,.txt,text/csv"},
+  "FIRM - MDBA":{hint:"FIRM ID formatted output file (MDBA). Columns are matched to gauges through the EWR tool's FIRM site list.",accept:".csv,.txt,text/csv"},
+  "res.csv - MDBA":{hint:"MDBA res.csv formatted output. Columns are matched to gauges by the EWR tool.",accept:".csv,.txt,text/csv"},
+  "Source - NSW (res.csv)":{hint:"Source (NSW) res.csv output. Columns are matched to gauges through the EWR tool's NSW node list.",accept:".csv,.txt,text/csv"},
+  "IQQM - netcdf":{hint:"IQQM netCDF (.nc) output. Stations are matched to gauges through the EWR tool's IQQM station list.",accept:".nc,application/x-netcdf"},
+  "ten thousand year":{hint:"Same layout as Standard time-series, for 10,000-year runs (the dates may be in any year, e.g. 105-07-01). Flow charts are not available for these runs.",tpl:true,accept:".csv,.txt,text/csv"}};
+function syncFormat(){ const f=FORMATS[$("scnFmt").value]; $("scnFmtHint").textContent=f.hint; $("scnFile").accept=f.accept; $("scnTpl").style.display=f.tpl?"":"none"; }
+$("scnFmt").innerHTML=Object.keys(FORMATS).map(k=>`<option>${esc(k)}</option>`).join(""); $("scnFmt").onchange=syncFormat; syncFormat();
+const sdlGauges=name=>{ const i=META.sdls.indexOf(name); return [...new Set(ROWS.filter(r=>r[1]===i).map(r=>META.gauges[r[2]]))]; };
+function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=cls||""; }
+async function serverUp(){ try{ const r=await fetch("/api/ping",{cache:"no-store"}); return r.ok; }catch(e){ return false; } }
+$("addScn").onclick=async()=>{
+  const cur=S.sel.type==="sdl"?S.sel.i:S.sel.sdl, names=META.sdls.slice().sort((a,b)=>a.localeCompare(b));
+  $("scnSdl").innerHTML=names.map(n=>`<option>${esc(n)}</option>`).join(""); if(cur!=null) $("scnSdl").value=META.sdls[cur];
+  renderCustomList(); setStatus(""); $("scnRun").disabled=false; $("scnDlg").showModal();
+  if(!(await serverUp())) setStatus("The analysis server is not running, so scenarios can't be run. Start it with:  python3 basin_plan_review_2026/server.py  and open this page from http://localhost:8792/.","err");
+};
+$("scnClose").onclick=()=>$("scnDlg").close();
+$("scnList").onclick=e=>{ const b=e.target.closest("[data-rm]"); if(b) removeCustom(+b.dataset.rm); };
+$("scnTpl").onclick=()=>{ const g=sdlGauges($("scnSdl").value), a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["Date,"+g.map(x=>x+"_flow").join(",")+"\n2000-07-01,"+g.map(()=>"0").join(",")+"\n2000-07-02,"+g.map(()=>"0").join(",")+"\n"],{type:"text/csv"}));
+  a.download="standard_time_series_"+$("scnSdl").value.replace(/\W+/g,"_")+"_template.csv"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); };
+$("scnRun").onclick=async()=>{
+  const name=$("scnName").value.trim(), file=$("scnFile").files[0], sdlName=$("scnSdl").value, fmt=$("scnFmt").value;
+  if(!name) return setStatus("Give the scenario a name.","err");
+  if(CUSTOM.some(c=>!c.removed&&c.name===name)) return setStatus("A scenario with that name already exists; choose another name.","err");
+  if(!file) return setStatus("Choose a "+fmt+" file.","err");
+  if(!(await serverUp())) return setStatus("The analysis server is not running. Start it with:  python3 basin_plan_review_2026/server.py  and open this page from http://localhost:8792/.","err");
+  $("scnRun").disabled=true; setStatus("Uploading "+file.name+" …");
+  try{
+    const scnId="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv","X-Gauges":sdlGauges(sdlName).join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Filename":file.name},body:file}), j=await r.json();
+    if(!j.job) throw new Error(j.message||"upload failed");
+    for(;;){ await new Promise(res=>setTimeout(res,1000));
+      const q=await (await fetch("/api/job?id="+j.job,{cache:"no-store"})).json();
+      if(q.status==="running"){ setStatus(`Running the EWR tool … ${Math.round(q.elapsed)} s`); continue; }
+      if(q.status==="error") throw new Error(q.message||"run failed");
+      const vals=q.rows.map(x=>[x.pu,x.gauge,x.ewr,x.fr,x.et]), st=q.stats||{}, res=addCustom(name,sdlName,vals,scnId,st.flow_gauges||[],fmt), sk=Object.keys(st.skipped||{});
+      fillPolicyOptions(); renderCustomList();
+      S.pol=res.P; S.cli=0; $("pol").value=S.pol; $("cli").value=0;
+      select({type:"sdl",i:META.sdls.indexOf(sdlName)});
+      setStatus(`Added "${name}" (${fmt}, ${q.elapsed} s). ${res.matched} of ${vals.length} EWR results match the EWRs in this review for ${sdlName}.`+
+        (st.missing_gauges&&st.missing_gauges.length?`\nNo columns for gauges: ${st.missing_gauges.join(", ")}.`:"")+(sk.length?`\nCould not evaluate: ${sk.join(", ")} (${st.skipped[sk[0]]}).`:"")+
+        (!(st.flow_gauges||[]).length?"\nFlow charts are not available for this run (no daily flow series kept).":"")+(isDiff()?"\nSet as the Comparison scenario.":"\nSet as the Scenario."),"ok"); break; }
+  }catch(e){ setStatus("Failed: "+e.message,"err"); }
+  $("scnRun").disabled=false;
+};
+function updateClimDisable(){ if(isCustom(S.pol)&&S.cli!==0){ S.cli=0; $("cli").value=0; } if(isCustom(S.bpol)&&S.bcli!==0){ S.bcli=0; $("bcli").value=0; }
+  $("cli").disabled=isCustom(S.pol); $("bcli").disabled=isCustom(S.bpol); }
+function syncSrc(){ $("srcD").classList.toggle("on",S.src==="demo"); $("srcU").classList.toggle("on",S.src==="user");
+  $("addScn").style.display=S.src==="user"?"":"none"; $("cli").style.display=$("bcli").style.display=S.src==="user"?"none":""; }
+function setSrc(src){ S.src=src; S.cell=null;
+  if(src==="demo"){ S.pol=META.policies.indexOf("Basin plan full implementation"); S.bpol=META.policies.indexOf("Pre Basin Plan"); }
+  else { const u=CUSTOM.filter(c=>!c.removed).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } S.cli=0; S.bcli=0; }
+  S.sel={type:"none"}; fillPolicyOptions(); syncSrc(); refresh(); }
+$("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
+
+// ---- events ------------------------------------------------------------------------------------------------------
+const policyChoices=()=>S.src==="user"?CUSTOM.filter(c=>!c.removed).map(c=>c.P):[0,1,2,3];   // demo: the four built-in policies; your data: your scenarios
+function fillPolicyOptions(){
+  const ch=policyChoices();
+  if(ch.length){ if(!ch.includes(S.pol)) S.pol=ch[ch.length-1]; if(!ch.includes(S.bpol)) S.bpol=ch[0]; }
+  const html=ch.map(i=>`<option value="${i}">${esc(POL_L[META.policies[i]])}</option>`).join("");
+  $("pol").innerHTML=html; $("bpol").innerHTML=html; $("pol").value=S.pol; $("bpol").value=S.bpol; }
+fillPolicyOptions();
+$("cli").innerHTML=META.climates.map((c,i)=>`<option value="${i}">${esc(CLI_L[c])}</option>`).join("");
+$("pol").value=S.pol;
+$("pol").onchange=e=>{ S.pol=+e.target.value; refresh(); };
+$("cli").onchange=e=>{ S.cli=+e.target.value; refresh(); };
+$("bpol").innerHTML=$("pol").innerHTML; $("bcli").innerHTML=$("cli").innerHTML; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
+$("bpol").onchange=e=>{ S.bpol=+e.target.value; refresh(); }; $("bcli").onchange=e=>{ S.bcli=+e.target.value; refresh(); };
+function setMode(md){ S.mode=md; $("modeS").classList.toggle("on",md==="single"); $("modeD").classList.toggle("on",md==="diff");
+  $("baseL").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
+$("modeS").onclick=()=>setMode("single"); $("modeD").onclick=()=>setMode("diff");
+function setMetric(m){ S.metric=m; $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mMZ").classList.toggle("on",m==="mz"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
+  $("thrL").style.display=m==="ach"?"":"none"; $("ethrL").style.display=m==="mz"?"":"none"; refresh(); }
+$("mAC").onclick=()=>setMetric("ach"); $("mFB").onclick=()=>setMetric("fb");
+$("fbthr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.fbthr=v; refresh(); } }; $("mMZ").onclick=()=>setMetric("mz");
+$("ethr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.ethr=v; refresh(); } };
+$("thr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.thr=v; refresh(); } };
+$("mFR").onclick=()=>setMetric("fr"); $("mET").onclick=()=>setMetric("et");
+map.on("click",()=>select({type:"none"}));
+$("panel").addEventListener("click",e=>{
+  const ce=e.target.closest("[data-ci]");
+  if(ce&&LASTMX){ const c=LASTMX.cols[+ce.dataset.ci], o=LASTMX.orows[+ce.dataset.ri]; if(c&&o){ const same=S.cell&&S.cell.c===c.id&&S.cell.r===o.id; S.cell=same?null:{c:c.id,r:o.id}; render(); return; } }
+  const tg=e.target.closest(".tog");
+  if(tg){ const set=tg.dataset.k==="reg"?COLL_REG:COLL_THEME, v=tg.dataset.v; set.has(v)?set.delete(v):set.add(v); render(); return; }
+  const t=e.target.closest("[data-act]"); if(!t) return;
+  const a=t.dataset.act;
+  if(a==="reset") select({type:"none"});
+  else if(a==="sdl") select({type:"sdl",i:+t.dataset.i});
+  else if(a==="pu") select({type:"pu",i:+t.dataset.i,sdl:+t.dataset.sdl});
+  else if(a==="gauge"){ const s=S.sel, gi=+t.dataset.i;
+    select(s.type==="pu"?{type:"gauge",i:gi,sdl:s.sdl,pu:s.i}:{type:"gauge",i:gi,sdl:sdlOf()}); }
+  else if(a==="addscn") $("addScn").click();
+  else if(a==="sort"){ S.sort=t.dataset.v; refresh(); }
+  else if(a==="cellclose"){ S.cell=null; render(); }
+  else if(a==="expand-y"){ COLL_THEME.clear(); render(); }
+  else if(a==="collapse-y"){ META.themes.forEach(x=>COLL_THEME.add(x)); render(); }
+  else if(a==="expand-x"){ COLL_REG.clear(); render(); }
+  else if(a==="collapse-x"){ META.regimes.forEach(x=>COLL_REG.add(x)); render(); }
+});
+// ---- shareable link: the view (mode, scenarios, metric, thresholds, sort, selection) lives in the URL hash ------------------
+function encodeState(){
+  const p=new URLSearchParams(), s=S.sel;
+  p.set("src",S.src); p.set("mode",S.mode); p.set("pol",META.policies[S.pol]); p.set("cli",META.climates[S.cli]);
+  if(isDiff()){ p.set("bpol",META.policies[S.bpol]); p.set("bcli",META.climates[S.bcli]); }
+  p.set("metric",S.metric);
+  if(S.thr!==0.9) p.set("thr",S.thr); if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
+  if(S.sort!=="default") p.set("sort",S.sort);
+  if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
+  else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
+  else if(s.type==="gauge") p.set("sel","gauge~"+META.gauges[s.i]+"~"+(s.sdl!=null?META.sdls[s.sdl]:"")+"~"+(s.pu!=null?META.pus[s.pu]:""));
+  return p.toString();
+}
+function applyHash(){
+  const p=new URLSearchParams(location.hash.slice(1)); if(![...p.keys()].length) return;
+  if(["demo","user"].includes(p.get("src"))) S.src=p.get("src");
+  const pi=n=>META.policies.indexOf(n), ci=n=>META.climates.indexOf(n);
+  if(pi(p.get("pol"))>=0) S.pol=pi(p.get("pol")); if(ci(p.get("cli"))>=0) S.cli=ci(p.get("cli"));
+  if(pi(p.get("bpol"))>=0) S.bpol=pi(p.get("bpol")); if(ci(p.get("bcli"))>=0) S.bcli=ci(p.get("bcli"));
+  if(["single","diff"].includes(p.get("mode"))) S.mode=p.get("mode");
+  if(METRICS.includes(p.get("metric"))) S.metric=p.get("metric");
+  const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",0.9); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
+  if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort");
+  const sel=(p.get("sel")||"").split("~"), sdl=n=>META.sdls.indexOf(n), pu=n=>META.pus.indexOf(n), ga=n=>META.gauges.indexOf(n);
+  S.sel={type:"none"};
+  if(sel[0]==="sdl"&&sdl(sel[1])>=0) S.sel={type:"sdl",i:sdl(sel[1])};
+  else if(sel[0]==="pu"&&sdl(sel[1])>=0&&pu(sel[2])>=0) S.sel={type:"pu",i:pu(sel[2]),sdl:sdl(sel[1])};
+  else if(sel[0]==="gauge"&&ga(sel[1])>=0) S.sel={type:"gauge",i:ga(sel[1]),sdl:sdl(sel[2])>=0?sdl(sel[2]):null,pu:pu(sel[3])>=0?pu(sel[3]):null};
+  S.cell=null; fillPolicyOptions(); syncUI();
+}
+function syncUI(){   // bring the header controls in line with the state
+  syncSrc();
+  $("pol").value=S.pol; $("cli").value=S.cli; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
+  $("modeS").classList.toggle("on",S.mode==="single"); $("modeD").classList.toggle("on",S.mode==="diff");
+  $("baseL").style.display=S.mode==="diff"?"":"none"; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
+  for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"]]) $(id).classList.toggle("on",S.metric===k);
+  $("thrL").style.display=S.metric==="ach"?"":"none"; $("fbL").style.display=S.metric==="fb"?"":"none"; $("ethrL").style.display=S.metric==="mz"?"":"none";
+  $("thr").value=S.thr; $("fbthr").value=S.fbthr; $("ethr").value=S.ethr;
+}
+function pushHash(){ try{ history.replaceState(null,"",location.pathname+location.search+"#"+encodeState()); }catch(e){} }
+$("share").onclick=()=>{ pushHash(); const done=()=>{ $("shareT").textContent="copied"; setTimeout(()=>{ $("shareT").textContent=""; },1500); };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(done,()=>prompt("Copy this link",location.href)); else prompt("Copy this link",location.href); };
+window.addEventListener("hashchange",()=>{ if(location.hash.slice(1)!==encodeState()){ applyHash(); refresh(); } });
+restoreCustom(); fillPolicyOptions();
+applyHash();
+refresh();
+</script></body></html>
