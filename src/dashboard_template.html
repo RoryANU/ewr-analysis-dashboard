@@ -554,7 +554,7 @@ function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=
 async function serverUp(){ try{ const r=await fetch("/api/ping",{cache:"no-store"}); return r.ok; }catch(e){ return false; } }
 $("addScn").onclick=async()=>{
   renderCustomList(); setStatus(""); $("scnRun").disabled=false; $("scnDlg").showModal();
-  if(!(await serverUp())) setStatus("The analysis server is not running, so scenarios can't be run. Start it with:  python3 basin_plan_review_2026/server.py  and open this page from http://localhost:8792/.","err");
+  if(!(await serverUp())) setStatus("The analysis server is not running, so scenarios can't be run. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
 };
 $("scnClose").onclick=()=>$("scnDlg").close();
 $("scnList").onclick=e=>{ const b=e.target.closest("[data-rm]"); if(b) removeCustom(+b.dataset.rm); };
@@ -568,7 +568,7 @@ $("scnRun").onclick=async()=>{
   if(!name) return setStatus("Give the scenario a name.","err");
   if(CUSTOM.some(c=>!c.removed&&c.name===name)) return setStatus("A scenario with that name already exists; choose another name.","err");
   if(!file) return setStatus("Choose a "+fmt+" file.","err");
-  if(!(await serverUp())) return setStatus("The analysis server is not running. Start it with:  python3 basin_plan_review_2026/server.py  and open this page from http://localhost:8792/.","err");
+  if(!(await serverUp())) return setStatus("The analysis server is not running. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
   $("scnRun").disabled=true; setStatus("Uploading "+file.name+" …");
   try{
     const scnId="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv","X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Filename":file.name},body:file}), j=await r.json();
