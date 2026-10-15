@@ -61,6 +61,51 @@ Then open <http://localhost:8792/ewr_analysis_dashboard.html> (the page must be 
 - The server listens on localhost only. Uploaded flows are kept in `.user_scenarios/` (not committed) so the flow charts can be drawn.
 - The EWR calculations are done by [py_ewr](https://pypi.org/project/py-ewr/) (version 2.4.11 or later).
 
+## If you are working from a Databricks Git folder
+
+A Databricks cluster cannot serve a page to the browser on your own computer, so `http://localhost:8792/` only works when the server runs on your machine. Use Databricks for storing and editing the code, and generate and view the dashboard locally:
+
+1. **Get the files onto your computer.** Either clone the repository (`git clone https://github.com/RoryANU/ewr-analysis-dashboard.git`) or, in the Databricks workspace, open the Git folder, choose the folder's menu, then **Download** (a zip), and unzip it. Keep the folder layout (`src/`, `data/`, ...).
+2. **Install Python 3.9 or later** (<https://www.python.org/downloads/>) and open a terminal in the repository folder.
+3. **Install the packages** (a virtual environment is optional but tidy):
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate        # Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+4. **Generate the HTML** (only needed after you change `src/dashboard_template.html` or anything in `data/`; a built copy is already in the repository):
+
+   ```bash
+   python3 src/build_dashboard.py
+   ```
+
+   This rewrites `ewr_analysis_dashboard.html` in the repository root.
+5. **Start the local server** and leave the terminal open:
+
+   ```bash
+   python3 src/server.py
+   ```
+
+6. **Open <http://localhost:8792/ewr_analysis_dashboard.html>** in your browser. Choose **Your data**, then **Add scenario**, and pick your model output file. To try it first, use a file from `data/example_scenarios/`. Stop the server with Ctrl+C.
+
+If you change the code in Databricks, commit and push from the Git folder, then pull on your computer (`git pull`) and repeat steps 4 to 6.
+
+**Generating the HTML inside Databricks instead (demo data only).** The build needs no server, so you can run it in a notebook cell to refresh the HTML after a template change:
+
+```python
+%pip install pandas numpy shapely
+```
+
+```python
+import subprocess, sys
+print(subprocess.run([sys.executable, "src/build_dashboard.py"], capture_output=True, text=True,
+                     cwd="/Workspace/Repos/<your-user>/ewr-analysis-dashboard").stdout)   # use your Git folder's path
+```
+
+Download the rebuilt `ewr_analysis_dashboard.html` from the Git folder and open it in a browser. "Your data" will not work from Databricks, because it needs the server above.
+
 ## Notes
 
 - The "Your data" mode needs the local server in `src/server.py` (see below); without it the page works in Demo data mode only.
