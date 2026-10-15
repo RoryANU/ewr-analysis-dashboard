@@ -182,9 +182,9 @@ function paintMap(){   // map look is fixed; only the selection is highlighted
   units.eachLayer(l=>{ const p=l.feature.properties; if(!activeSdl(p.sdl)) return; const sel=sdlSel===p.sdl; l.setStyle({weight:sel?3:1,color:sel?"#000":"#333"}); });
   const scope=new Set(selRows().map(r=>r[2]));
   for(const g of GAUGES){ const on=(S.src!=="user"||gaugeHasUser(g.i))&&(s.type==="none"||s.type==="gauge"||scope.has(g.i)), sel=s.type==="gauge"&&s.i===g.i;
-    const hide=S.src==="user"&&!gaugeHasUser(g.i);   // your data: only the gauges found in your files are shown
+    const nodata=S.src==="user"&&!gaugeHasUser(g.i), hide=nodata&&!(gaugeRows[g.i]||[]).some(r=>activeSdl(r[1]));   // your data: gauges in an SDL unit you have data for stay visible (transparent) if nothing was read in for them; gauges elsewhere are hidden
     if(hide){ if(map.hasLayer(GM[g.i])) map.removeLayer(GM[g.i]); continue; } if(!map.hasLayer(GM[g.i])) GM[g.i].addTo(map);
-    GM[g.i].setStyle({fillOpacity:on?.95:.25,opacity:on?1:.3,weight:sel?3:1,radius:sel?7:4.5,color:sel?"#d1495b":"#111"}); if(sel) GM[g.i].bringToFront(); }
+    GM[g.i].setStyle({fillOpacity:on?.95:nodata?.4:.25,opacity:on?1:nodata?.6:.3,weight:sel?3:1,radius:sel?7:4.5,color:sel?"#d1495b":"#111"}); if(sel) GM[g.i].bringToFront(); }
 }
 const lg=L.control({position:"bottomleft"});
 lg.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); L.DomEvent.disableClickPropagation(d);
