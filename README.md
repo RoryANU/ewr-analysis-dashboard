@@ -7,9 +7,11 @@ An interactive page for exploring environmental water requirement (EWR) results 
 
 It can show a single scenario or the difference between a base and a comparison scenario, with an objective × EWR matrix for each SDL unit, planning unit and gauge.
 
-The dashboard is one self-contained HTML file (`ewr_analysis_tool.html`). This repository holds the script, the page template and the input data needed to generate it.
+The dashboard is one self-contained HTML file, `basin_plan_review_2026/ewr_analysis_tool.html`, which is included here already built. This repository also holds the script, the page template and the input data needed to regenerate it.
 
 ## Generate the HTML
+
+To just use the dashboard, download `basin_plan_review_2026/ewr_analysis_tool.html` and open it in a browser. To rebuild it:
 
 You need Python 3.9 or later.
 
