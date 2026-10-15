@@ -1,6 +1,6 @@
 """Run py_ewr on your own model output files and write a copy of the dashboard with the results embedded.
 
-No server and no command line are needed, so this works from a Databricks notebook (see notebooks/run_your_scenarios.py).
+No server and no command line are needed, so this works from a Databricks notebook (see notebooks/run_your_scenarios.ipynb).
 
     from embed_scenarios import build_with_scenarios
     build_with_scenarios([{"name": "My option", "path": "/Volumes/.../run.csv", "format": "Standard time-series"}], "dashboard.html")

@@ -20,7 +20,7 @@ src/
   dashboard_template.html        the page itself (markup, styles, JavaScript) with data placeholders
   flow_regime_mappings.py        maps an EWR code to its flow regime when the results do not give one
 notebooks/
-  run_your_scenarios.py          Databricks notebook: your model output in, a dashboard HTML with your results out
+  run_your_scenarios.ipynb        Databricks notebook: your model output in, a dashboard HTML with your results out
 data/
   results/
     frequency_ratio.csv          FR per EWR, gauge, planning unit, policy and climate scenario
@@ -66,12 +66,12 @@ Then open <http://localhost:8792/ewr_analysis_dashboard.html> (the page must be 
 
 ## Working from Databricks (no command line, no server)
 
-If you can only run code in Databricks notebooks, use the notebook `notebooks/run_your_scenarios.py`. It runs the EWR tool on your model output inside Databricks and writes a copy of the dashboard with your results built in. You then download that one HTML file and open it in your browser: no localhost and no terminal.
+If you can only run code in Databricks notebooks, use the notebook `notebooks/run_your_scenarios.ipynb`. It runs the EWR tool on your model output inside Databricks and writes a copy of the dashboard with your results built in. You then download that one HTML file and open it in your browser: no localhost and no terminal.
 
 1. **Add the repository as a Git folder** (Workspace, Create, Git folder, paste `https://github.com/RoryANU/ewr-analysis-dashboard.git`). Keep the folder layout.
 2. **Upload your model output file(s)** to a Unity Catalog volume (Catalog, your volume, Upload to this volume), or into the workspace. Note the path, e.g. `/Volumes/<catalog>/<schema>/<volume>/my_run.csv`.
-3. **Open `notebooks/run_your_scenarios`** and attach it to a cluster (Python 3.9 or later; serverless is fine).
-4. **Edit the `SCENARIOS` list** in the third cell: one entry per file, with the file `path`, its `format` (the notebook lists the options) and an optional `name` (it defaults to the file name). You do not choose an SDL unit: each file is scanned for every gauge in the review, so one file can cover several SDL units.
+3. **Open `notebooks/run_your_scenarios.ipynb`** and attach it to a cluster (Python 3.9 or later; serverless is fine).
+4. **Edit the `SCENARIOS` list** in the `SCENARIOS` cell (the first cell with a list in it): one entry per file, with the file `path`, its `format` (the notebook lists the options) and an optional `name` (it defaults to the file name). You do not choose an SDL unit: each file is scanned for every gauge in the review, so one file can cover several SDL units.
 5. **Run all.** The first cells install `py_ewr` (about a minute). The notebook prints how many EWR results and gauges it found in each file, saves `ewr_dashboard_with_scenarios.html` in the Git folder, and shows the dashboard under the last cell.
 6. **Download `ewr_dashboard_with_scenarios.html`** (Git folder, the file's menu, Download) and open it in your browser. It opens in **Your data** with your scenarios in the Scenario / Base / Comparison pickers. For differences between two runs, put both files in `SCENARIOS` and switch to Differential. To share it, send the HTML file: everything is inside it (it loads the map libraries from the internet).
 
