@@ -79,6 +79,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script>
 const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__;
+const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et],...]}]
 // ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28]]
 ROWS.forEach(r=>{ const t=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=t.length?t:[META.themes.indexOf("Unclassified")]; });
 const NC=META.climates.length;
@@ -691,7 +692,10 @@ function pushHash(){ try{ history.replaceState(null,"",location.pathname+locatio
 $("share").onclick=()=>{ pushHash(); const done=()=>{ $("shareT").textContent="copied"; setTimeout(()=>{ $("shareT").textContent=""; },1500); };
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(done,()=>prompt("Copy this link",location.href)); else prompt("Copy this link",location.href); };
 window.addEventListener("hashchange",()=>{ if(location.hash.slice(1)!==encodeState()){ applyHash(); refresh(); } });
-restoreCustom(); fillPolicyOptions();
+restoreCustom();
+for(const c of PRELOADED) if(!CUSTOM.some(x=>!x.removed&&x.name===c.name)) addCustom(c.name,c.vals,null,[],c.fmt||"Standard time-series");
+fillPolicyOptions();
+if(PRELOADED.length&&!location.hash.slice(1)){ S.src="user"; const c=CUSTOM.find(x=>!x.removed&&x.name===PRELOADED[0].name); if(c) S.pol=c.P; fillPolicyOptions(); syncUI(); }   // a page with embedded scenarios opens in Your data
 applyHash();
 refresh();
 </script></body></html>

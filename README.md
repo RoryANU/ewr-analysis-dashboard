@@ -7,17 +7,20 @@ An interactive page for exploring environmental water requirement (EWR) results 
 
 It can show a single scenario or the difference between a base and a comparison scenario, with an objective × EWR matrix for each SDL unit, planning unit and gauge.
 
-**To explore the review results, download [`ewr_analysis_dashboard.html`](ewr_analysis_dashboard.html) and open it in a web browser.** To run your own model output through it ("Your data"), start the local server as described under [Your data](#your-data-run-your-own-scenarios). It is a single self-contained file with all the data embedded. It loads Leaflet, Plotly and the map tiles from the internet, so it needs a connection.
+**To explore the review results, download [`ewr_analysis_dashboard.html`](ewr_analysis_dashboard.html) and open it in a web browser.** To run your own model output through it ("Your data"), either start the local server ([Your data](#your-data-run-your-own-scenarios)) or, without a command line, use the Databricks notebook ([Working from Databricks](#working-from-databricks-no-command-line-no-server)). It is a single self-contained file with all the data embedded. It loads Leaflet, Plotly and the map tiles from the internet, so it needs a connection.
 
 ## Repository layout
 
 ```
 ewr_analysis_dashboard.html      the built dashboard (open this)
 src/
+  embed_scenarios.py             runs py_ewr on your files and embeds the results in a copy of the page (used by the notebook)
   server.py                      local server: serves the page and runs py_ewr on your own model output
   build_dashboard.py             build script: reads data/, fills the template, writes the HTML
   dashboard_template.html        the page itself (markup, styles, JavaScript) with data placeholders
   flow_regime_mappings.py        maps an EWR code to its flow regime when the results do not give one
+notebooks/
+  run_your_scenarios.py          Databricks notebook: your model output in, a dashboard HTML with your results out
 data/
   results/
     frequency_ratio.csv          FR per EWR, gauge, planning unit, policy and climate scenario
@@ -61,50 +64,22 @@ Then open <http://localhost:8792/ewr_analysis_dashboard.html> (the page must be 
 - The server listens on localhost only. Uploaded flows are kept in `.user_scenarios/` (not committed) so the flow charts can be drawn.
 - The EWR calculations are done by [py_ewr](https://pypi.org/project/py-ewr/) (version 2.4.11 or later).
 
-## If you are working from a Databricks Git folder
+## Working from Databricks (no command line, no server)
 
-A Databricks cluster cannot serve a page to the browser on your own computer, so `http://localhost:8792/` only works when the server runs on your machine. Use Databricks for storing and editing the code, and generate and view the dashboard locally:
+If you can only run code in Databricks notebooks, use the notebook `notebooks/run_your_scenarios.py`. It runs the EWR tool on your model output inside Databricks and writes a copy of the dashboard with your results built in. You then download that one HTML file and open it in your browser: no localhost and no terminal.
 
-1. **Get the files onto your computer.** Either clone the repository (`git clone https://github.com/RoryANU/ewr-analysis-dashboard.git`) or, in the Databricks workspace, open the Git folder, choose the folder's menu, then **Download** (a zip), and unzip it. Keep the folder layout (`src/`, `data/`, ...).
-2. **Install Python 3.9 or later** (<https://www.python.org/downloads/>) and open a terminal in the repository folder.
-3. **Install the packages** (a virtual environment is optional but tidy):
+1. **Add the repository as a Git folder** (Workspace, Create, Git folder, paste `https://github.com/RoryANU/ewr-analysis-dashboard.git`). Keep the folder layout.
+2. **Upload your model output file(s)** to a Unity Catalog volume (Catalog, your volume, Upload to this volume), or into the workspace. Note the path, e.g. `/Volumes/<catalog>/<schema>/<volume>/my_run.csv`.
+3. **Open `notebooks/run_your_scenarios`** and attach it to a cluster (Python 3.9 or later; serverless is fine).
+4. **Edit the `SCENARIOS` list** in the third cell: one entry per file, with the file `path`, its `format` (the notebook lists the options) and an optional `name` (it defaults to the file name). You do not choose an SDL unit: each file is scanned for every gauge in the review, so one file can cover several SDL units.
+5. **Run all.** The first cells install `py_ewr` (about a minute). The notebook prints how many EWR results and gauges it found in each file, saves `ewr_dashboard_with_scenarios.html` in the Git folder, and shows the dashboard under the last cell.
+6. **Download `ewr_dashboard_with_scenarios.html`** (Git folder, the file's menu, Download) and open it in your browser. It opens in **Your data** with your scenarios in the Scenario / Base / Comparison pickers. For differences between two runs, put both files in `SCENARIOS` and switch to Differential. To share it, send the HTML file: everything is inside it (it loads the map libraries from the internet).
 
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate        # Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+Limits of this route: the flow charts (heat map, hydrograph, flow duration curves) need the local server, so they are not in the page; the page itself cannot add a new scenario, so to add or change a scenario edit `SCENARIOS` and run the notebook again. The file is not committed (it is in `.gitignore`).
 
-4. **Generate the HTML** (only needed after you change `src/dashboard_template.html` or anything in `data/`; a built copy is already in the repository):
+To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install pandas numpy shapely`, then `!python src/build_dashboard.py` from the repository folder, and commit the new `ewr_analysis_dashboard.html`.
 
-   ```bash
-   python3 src/build_dashboard.py
-   ```
-
-   This rewrites `ewr_analysis_dashboard.html` in the repository root.
-5. **Start the local server** and leave the terminal open:
-
-   ```bash
-   python3 src/server.py
-   ```
-
-6. **Open <http://localhost:8792/ewr_analysis_dashboard.html>** in your browser. Choose **Your data**, then **Add scenario**, and pick your model output file. To try it first, use a file from `data/example_scenarios/`. Stop the server with Ctrl+C.
-
-If you change the code in Databricks, commit and push from the Git folder, then pull on your computer (`git pull`) and repeat steps 4 to 6.
-
-**Generating the HTML inside Databricks instead (demo data only).** The build needs no server, so you can run it in a notebook cell to refresh the HTML after a template change:
-
-```python
-%pip install pandas numpy shapely
-```
-
-```python
-import subprocess, sys
-print(subprocess.run([sys.executable, "src/build_dashboard.py"], capture_output=True, text=True,
-                     cwd="/Workspace/Repos/<your-user>/ewr-analysis-dashboard").stdout)   # use your Git folder's path
-```
-
-Download the rebuilt `ewr_analysis_dashboard.html` from the Git folder and open it in a browser. "Your data" will not work from Databricks, because it needs the server above.
+If you can run a terminal somewhere (for example a laptop or a Databricks web terminal), the "Your data" section above (`python3 src/server.py`) lets you add scenarios inside the page and use the flow charts.
 
 ## Notes
 

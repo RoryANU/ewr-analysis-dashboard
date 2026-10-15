@@ -125,7 +125,7 @@ META = {"policies": POLICIES, "climates": CLIMATES, "pus": pus, "sdls": sdls, "g
 def build(template_text, out_name):
     html = template_text
     for tag, val in {"__DATA__": gj, "__GAUGES__": GAUGES, "__ROWS__": ROWS,
-                     "__RIVERS__": json.load(open(ROOT / "data/map/rivers.geojson")), "__META__": META}.items():
+                     "__RIVERS__": json.load(open(ROOT / "data/map/rivers.geojson")), "__META__": META, "__SCENARIOS__": []}.items():
         html = html.replace(tag, json.dumps(val, separators=(",", ":")))
     open(ROOT / out_name, "w").write(html)
     print(len(html) // 1024, "KB written to", out_name)
