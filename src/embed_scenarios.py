@@ -20,6 +20,18 @@ from server import FORMATS, run_scenario        # the same EWR run as the local 
 PLACEHOLDER = "const PRELOADED=[];"
 
 
+def resolve_path(path):
+    """A file path as given in a notebook: /Volumes/..., /Workspace/..., /dbfs/... or dbfs:/..., a relative path or ~/...  Raises a clear error if it is not a file."""
+    p = str(path).strip()
+    if p.startswith("dbfs:/"):
+        p = "/dbfs/" + p[len("dbfs:/"):].lstrip("/")
+    f = Path(p).expanduser()
+    if not f.is_file():
+        near = ", ".join(sorted(x.name for x in f.parent.iterdir())[:8]) if f.parent.is_dir() else "(that folder does not exist)"
+        raise FileNotFoundError(f"No file at {str(f)!r}. Give the full path of the file (not a folder). Files in {str(f.parent)!r}: {near}")
+    return f
+
+
 def review_gauges():
     import pandas as pd
     return sorted(pd.read_csv(ROOT / "data/results/frequency_ratio.csv", dtype={"Gauge": str}, usecols=["Gauge"]).Gauge.dropna().unique())
@@ -29,8 +41,8 @@ def run_file(path, fmt="Standard time-series", gauges=None):
     """py_ewr on one model output file -> (list of [planning unit, gauge, EWR, FR, ETP], stats)."""
     if fmt not in FORMATS:
         raise ValueError(f"format must be one of {FORMATS}")
-    body = Path(path).read_bytes()
-    rows, stats = run_scenario(body, gauges or review_gauges(), None, fmt, Path(path).name)
+    f = resolve_path(path)
+    rows, stats = run_scenario(f.read_bytes(), gauges or review_gauges(), None, fmt, f.name)
     return [[r["pu"], r["gauge"], r["ewr"], r["fr"], r["et"]] for r in rows], stats
 
 
@@ -42,7 +54,7 @@ def build_with_scenarios(scenarios, out_path, template=None):
         raise ValueError(f"{template} has no embedded-scenarios slot; rebuild it with src/build_dashboard.py")
     gauges, out, used = review_gauges(), [], set()
     for sc in scenarios:
-        name = (sc.get("name") or Path(sc["path"]).stem)[:40]
+        name = (sc.get("name") or resolve_path(sc["path"]).stem)[:40]
         if name in used:
             raise ValueError(f"two scenarios are called {name!r}; give each a different name")
         used.add(name)
@@ -51,6 +63,12 @@ def build_with_scenarios(scenarios, out_path, template=None):
               + (f", could not evaluate {sorted(stats['skipped'])}" if stats.get("skipped") else ""))
         out.append({"name": name, "fmt": sc.get("format", "Standard time-series"), "vals": vals})
     html = html.replace(PLACEHOLDER, "const PRELOADED=" + json.dumps(out, separators=(",", ":")).replace("</", "<\\/") + ";")
-    Path(out_path).write_text(html)
+    out_path = Path(out_path).expanduser()
+    try:
+        out_path.write_text(html)
+    except OSError:                                                   # a folder that cannot be written (e.g. read-only): fall back to the temp folder
+        import tempfile
+        out_path = Path(tempfile.gettempdir()) / out_path.name
+        out_path.write_text(html)
     print("written", out_path, f"({len(html) // 1024} KB)")
     return html
