@@ -419,7 +419,12 @@ function flowCtx(){
 const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
 const CHARTS={heat:"Heat map",hydro:"Hydrograph",fdc:"Flow duration curve",dfdc:"Differential flow duration curve"};
 const chartsFor=D=>D?["heat","dfdc"]:["heat","hydro"];
-const thrKey=e=>e.code+"|"+e.pu, TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
+const thrKey=e=>e.code+"|"+e.pu;
+// differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
+const stemOf=c=>c.replace(/_[^_]+$/,"");
+function thrGroups(list){ const m=new Map(); list.forEach(e=>{ const k=[stemOf(e.code),e.thr,e.sm,e.em].join("|"); (m.get(k)||m.set(k,[]).get(k)).push(e); });
+  return [...m].map(([k,es])=>({key:"g:"+k,code:es.length>1?stemOf(es[0].code):es[0].code,thr:es[0].thr,sm:es[0].sm,em:es[0].em,codes:es.map(e=>e.code),pu:es[0].pu,pus:es[0].pus,members:es})); }
+const TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
 function flowPanel(){
   const c=flowCtx(); if(!c) return "";
   const f=S.flow, D=isDiff();
@@ -472,14 +477,15 @@ async function fillEwrSelect(){
       render(); };
   }
   if($("flowThr")){   // several thresholds can be drawn at once on the flow duration charts
-    const pop=$("flowThr"); pop.innerHTML=list.map((e,i)=>`<label><input type="checkbox" value="${esc(key(e))}"${S.flow.thr.includes(key(e))?" checked":""}> ${lab(e)} · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</label>`).join("")||"<i>No flow-threshold EWRs at this gauge</i>";
-    const lock=()=>{ const on=S.flow.thr.map(k=>list.find(e=>key(e)===k)).filter(Boolean), w=on[0];   // EWRs are selectable together only when they share one timing window
-      pop.querySelectorAll("input").forEach(i=>{ const e=list.find(x=>key(x)===i.value); i.disabled=!!w&&!i.checked&&(e.sm!==w.sm||e.em!==w.em); i.parentElement.style.opacity=i.disabled?.45:1; i.parentElement.title=i.disabled?`Different timing window (${MONTHS[w.sm-1]}–${MONTHS[w.em-1]} is selected)`:""; }); }; lock();
+    const grp=thrGroups(list), pop=$("flowThr"), glab=e=>`${esc(e.code)}${e.codes.length>1?" ("+esc(e.codes.join(", "))+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+    pop.innerHTML=grp.map(e=>`<label><input type="checkbox" value="${esc(e.key)}"${S.flow.thr.includes(e.key)?" checked":""}> ${glab(e)} · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</label>`).join("")||"<i>No flow-threshold EWRs at this gauge</i>";
+    const lock=()=>{ const on=S.flow.thr.map(k=>grp.find(e=>e.key===k)).filter(Boolean), w=on[0];   // EWRs are selectable together only when they share one timing window
+      pop.querySelectorAll("input").forEach(i=>{ const e=grp.find(x=>x.key===i.value); i.disabled=!!w&&!i.checked&&(e.sm!==w.sm||e.em!==w.em); i.parentElement.style.opacity=i.disabled?.45:1; i.parentElement.title=i.disabled?`Different timing window (${MONTHS[w.sm-1]}–${MONTHS[w.em-1]} is selected)`:""; }); }; lock();
     pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); lock(); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
   }
 }
 const curEwr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
-const curThr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return S.flow.thr.map(k=>l.find(e=>thrKey(e)===k)).filter(Boolean); };
+const curThr=()=>{ const g=thrGroups(EWRLIST.get(META.gauges[S.sel.i])||[]); return S.flow.thr.map(k=>g.find(e=>e.key===k)).filter(Boolean); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
 const thrLine=e=>e?[{type:"line",xref:"paper",x0:0,x1:1,yref:"y",y0:e.thr,y1:e.thr,line:{color:"#c0392b",width:1.5,dash:"dash"}}]:[];
 async function drawFlow(){
