@@ -59,6 +59,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <span class="tabs" id="srcTabs"><button id="srcD" class="on" title="The review's built-in results: all policies and climates, all SDL units">Demo data</button><button id="srcU" title="Only the model output you add yourself, with the extra flow charts">Your data</button></span>
   <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and years in 10 exceeding MRIP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
+  <button id="swapBC" title="Swap base and comparison" style="display:none">⇄ Reverse</button>
   <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
   <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion scaled to ten years: how many years in 10 the MRIP is exceeded (lower is better)">Years in 10 exceeding MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Frequency achieved</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button></div></details></span></label>
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
@@ -679,8 +680,9 @@ $("pol").onchange=e=>{ S.pol=+e.target.value; refresh(); };
 $("cli").onchange=e=>{ S.cli=+e.target.value; refresh(); };
 $("bpol").innerHTML=$("pol").innerHTML; $("bcli").innerHTML=$("cli").innerHTML; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
 $("bpol").onchange=e=>{ S.bpol=+e.target.value; refresh(); }; $("bcli").onchange=e=>{ S.bcli=+e.target.value; refresh(); };
+$("swapBC").onclick=()=>{ [S.pol,S.bpol]=[S.bpol,S.pol]; [S.cli,S.bcli]=[S.bcli,S.cli]; $("pol").value=S.pol; $("bpol").value=S.bpol; $("cli").value=S.cli; $("bcli").value=S.bcli; refresh(); };
 function setMode(md){ S.mode=md; $("modeS").classList.toggle("on",md==="single"); $("modeD").classList.toggle("on",md==="diff");
-  $("baseL").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
+  $("baseL").style.display=md==="diff"?"":"none"; $("swapBC").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
 $("modeS").onclick=()=>setMode("single"); $("modeD").onclick=()=>setMode("diff");
 const MORE={ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved"};
 function syncMore(){ const k=S.metric, on=k in MORE; $("mMore").classList.toggle("on",on); $("mMoreS").textContent=on?MORE[k]:"More"; $("mMore").open=false; }
@@ -749,7 +751,7 @@ function syncUI(){   // bring the header controls in line with the state
   syncSrc();
   $("pol").value=S.pol; $("cli").value=S.cli; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
   $("modeS").classList.toggle("on",S.mode==="single"); $("modeD").classList.toggle("on",S.mode==="diff");
-  $("baseL").style.display=S.mode==="diff"?"":"none"; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
+  $("baseL").style.display=$("swapBC").style.display=S.mode==="diff"?"":"none"; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
   for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
   $("thrL").style.display=S.metric==="ach"?"":"none"; $("fbL").style.display=S.metric==="fb"?"":"none"; $("ethrL").style.display=S.metric==="mz"?"":"none";
   $("thr").value=S.thr; $("fbthr").value=S.fbthr; $("ethr").value=+(S.ethr*ETY).toFixed(2);
