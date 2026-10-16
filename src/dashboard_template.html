@@ -48,6 +48,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .tabs.sm button{padding:2px 9px;font-size:11.5px}
 .ghost{border:0;background:none;color:var(--mut);font-size:12px;padding:2px 6px;opacity:.7}.ghost:hover{opacity:1;background:none;color:var(--acc)}#addScn{margin-left:auto}
 #scnDlg{border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(560px,92vw);font-size:13px}#scnDlg::backdrop{background:#0004}
+#scnDlg{position:fixed}#scnClose{position:absolute;top:8px;right:10px;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#4b5563;padding:2px 8px}#scnClose:hover{color:#111}
 #scnDlg h3{margin:0 0 4px;font-size:15px}#scnDlg .fld{display:flex;flex-direction:column;gap:3px;margin:10px 0}#scnDlg .fld>span{font-size:11.5px;font-weight:600;color:#4b5563}
 #scnDlg input[type=text],#scnDlg select{font:inherit;padding:5px 8px;border:1px solid #c5ccd6;border-radius:6px}#scnDlg .hint{font-size:11.5px;color:var(--mut);line-height:1.5}
 #scnDlg .acts{display:flex;gap:8px;align-items:center;margin-top:12px}#scnStatus{font-size:12px;margin-top:8px;white-space:pre-wrap}#scnStatus.err{color:#b3261e}#scnStatus.ok{color:#1b7a3a}
@@ -70,7 +71,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
   <button id="share" class="ghost" title="Copy a link to this exact view">🔗 <span id="shareT"></span></button>
 </div>
-<dialog id="scnDlg"><h3>Add your own scenario</h3>
+<dialog id="scnDlg"><button id="scnClose" class="ghost" title="Close" aria-label="Close">×</button><h3>Add your own scenario</h3>
   <div class="hint">Runs the EWR tool (py_ewr) on your model output. Choose the format of your file, using the EWR tool's own format names. The file is scanned for every gauge in this review, so a file can cover more than one SDL unit. The scenario then appears in the Scenario / Base / Comparison pickers (Historical only).</div>
   <label class="fld"><span>Data format</span><select id="scnFmt"></select></label>
   <div class="hint" id="scnFmtHint"></div>
@@ -78,7 +79,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label class="fld" id="scnNameWrap"><span>Scenario name (defaults to the file name)</span><input id="scnName" type="text" maxlength="40" placeholder="taken from the file name"></label>
   <label class="fld" id="scnSubWrap" style="display:none"><span>Scenario in workbook (e.g. CP1A; blank = first)</span><input id="scnSub" type="text" maxlength="40" placeholder="first scenario in the sheet"></label>
   <label class="fld"><span>Time-series file (.csv)</span><input id="scnFile" type="file" accept=".csv,.txt,text/csv"></label>
-  <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download an example CSV header (one column per gauge, named <gauge>_flow)">Download template header</button><span style="flex:1"></span><button id="scnClose">Close</button></div>
+  <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download an example CSV header (one column per gauge, named <gauge>_flow)">Download template header</button></div>
   <div id="scnStatus"></div><div id="scnList"></div></dialog>
 <div id="main"><div id="map"></div><div id="divider" title="Drag to resize the panel (double-click to reset)"></div><div id="panel"></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
