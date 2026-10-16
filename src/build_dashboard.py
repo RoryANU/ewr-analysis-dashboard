@@ -91,7 +91,7 @@ for c in ("station_latitude", "station_longitude"):
     bom[c] = pd.to_numeric(bom[c], errors="coerce")
 bom = bom.dropna(subset=["station_latitude"]).drop_duplicates("station_no").set_index("station_no")
 # constraint sites (data/map/constraint_sites.csv): points drawn on the map; the file is hand-maintained
-CONSTRAINTS = [{"name": r.name, "river": r.river, "lat": float(r.lat), "lon": float(r.lon), "note": r.flow_note, "source": r.source, "url": r.source_url}
+CONSTRAINTS = [{"name": r.name, "river": r.river, "lat": float(r.lat), "lon": float(r.lon), "site": "" if pd.isna(r.site) else r.site, "cur": r.current_ml_d, "rel": r.relaxed_ml_d, "status": r.status, "source": r.source, "url": r.source_url}
                for r in pd.read_csv(ROOT / "data/map/constraint_sites.csv").itertuples()]
 GAUGES, unplotted = [], []
 for gid in gids:
