@@ -141,8 +141,8 @@ const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
 const ramp=(s)=>`rgb(${s<.5?mixc([209,73,91],[233,162,59],s/.5):mixc([233,162,59],[42,157,74],(s-.5)/.5)})`;   // 0 red .. 1 green
 const ETP_MAX=0.5, DIV={fr:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25};   // differential: differences of this size (or more) get the full colour
 function colour(v,m){ if(v==null) return "#bbb";
-  if(isDiff()){ const x=Math.max(-1,Math.min(1,(LOWER[m]?-v:v)/DIV[m])), g=[236,236,236];   // green = improvement (higher FR, lower ETP), red = decline
-    return `rgb(${x>=0?mixc(g,[42,157,74],x):mixc(g,[209,73,91],-x)})`; }
+  if(isDiff()){ const x=Math.max(-1,Math.min(1,(LOWER[m]?-v:v)/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
+    return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
   if(m==="fr"){ const x=Math.max(0,Math.min(1.0,v)), w=[255,255,255];   // frequency ratio: 0 red, 0.9 white, 1 blue (as in the Excel version)
     return `rgb(${x<=0.9?mixc([215,48,39],w,x/0.9):mixc(w,[33,102,172],(x-0.9)/0.1)})`; }
   if(m==="et"){ const x=Math.max(0,Math.min(1,v*ETY/10));   // years in 10 exceeding the MRIP: 0 green, 5 yellow, 10 red (Excel green-yellow-red)
@@ -415,6 +415,12 @@ function cellDetail(){
 const RDBU=["rgb(103,0,31)","rgb(178,24,43)","rgb(214,96,77)","rgb(244,165,130)","rgb(253,219,199)","rgb(247,247,247)","rgb(209,229,240)","rgb(146,197,222)","rgb(67,147,195)","rgb(33,102,172)","rgb(5,48,97)"];
 const BLUES=["rgb(247,251,255)","rgb(222,235,247)","rgb(198,219,239)","rgb(158,202,225)","rgb(107,174,214)","rgb(66,146,198)","rgb(33,113,181)","rgb(8,81,156)","rgb(8,48,107)"];
 const scale=a=>a.map((c,i)=>[i/(a.length-1),c]);
+// diverging scale for differences: the colour depends only on the size of the change (0 white, the biggest change blue if an improvement, red if a decline),
+// so the same change looks the same on both sides even when the plotted range (zmin..zmax) is lopsided
+const RDBU_RGB=RDBU.map(c=>c.match(/\d+/g).map(Number));
+RDBU_RGB[5]=[255,255,255];   // the middle of the scale is pure white
+function divScale(lo,hi){ const m=Math.max(-lo,hi)||1, at=t=>{ const x=Math.max(0,Math.min(1,t))*(RDBU_RGB.length-1), i=Math.min(RDBU_RGB.length-2,Math.floor(x)), f=x-i, a=RDBU_RGB[i], b=RDBU_RGB[i+1]; return `rgb(${a.map((v,k)=>Math.round(v+(b[k]-v)*f)).join(",")})`; };
+  return Array.from({length:41},(_,k)=>{ const p=k/40, v=lo+p*(hi-lo); return [p,at((v/m+1)/2)]; }); }
 const CEWR=(()=>{ try{ return JSON.parse(localStorage.getItem("ewrCustomEwr")||"[]"); }catch(e){ return []; } })();   // user-defined constraints: {code (name), thr, dur, sm, em, consecutive, target}
 const saveCEWR=()=>{ try{ localStorage.setItem("ewrCustomEwr",JSON.stringify(CEWR)); }catch(e){} };
 const ewrsFor=g=>(EWRLIST.get(g)||[]).concat(CEWR);
@@ -549,12 +555,12 @@ async function drawMonthly(){
       if(!isFinite(mn)) return [-5,5]; mn=Math.min(mn,0); mx=Math.max(mx,0); let lo=Math.floor(mn/5)*5, hi=Math.ceil(mx/5)*5; if(hi===lo){ lo=-5; hi=5; } return [lo,hi]; };
     const [zlo,zhi]=fitZ();
     const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
-    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,zmid:0,colorscale:scale(RDBU),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
+    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,colorscale:divScale(zlo,zhi),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
         hovertemplate:"<b>%{z:+.3f} pts</b><br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
       {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category",range:S.mflow.xr||undefined}),yaxis:ax("Flow (ML/day)",{range:S.mflow.yr||undefined}),showlegend:false},{responsive:true,displaylogo:false});
     const mp=$("mflowPlot"); if(mp.removeAllListeners) mp.removeAllListeners("plotly_relayout");
     mp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to the cells in view, and fetch finer flow steps for the zoomed flow range
-      const xa=mp.layout.xaxis, ya=mp.layout.yaxis, [a,b]=fitZ(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(mp,{zmin:[a],zmax:[b]},[0]);
+      const xa=mp.layout.xaxis, ya=mp.layout.yaxis, [a,b]=fitZ(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(mp,{zmin:[a],zmax:[b],colorscale:[divScale(a,b)]},[0]);
       const yr=ya.autorange?null:[Math.max(0,+ya.range[0]),+ya.range[1]], same=(u,v)=>(!u&&!v)||(u&&v&&Math.abs(u[0]-v[0])<1e-6&&Math.abs(u[1]-v[1])<1e-6);
       if(!same(yr,S.mflow.yr)){ S.mflow.xr=xa.autorange?null:[...xa.range]; S.mflow.yr=yr; clearTimeout(MTIMER); MTIMER=setTimeout(drawMonthly,250); }
       else S.mflow.xr=xa.autorange?null:[...xa.range]; });
@@ -596,7 +602,7 @@ async function drawFlow(){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,...(diff?{zmid:0}:{}),colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.3f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.3f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
         lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}}));   // the EWR label can be dragged out of the way
@@ -604,7 +610,7 @@ async function drawFlow(){
       const hp=$("flowPlot"); if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
       hp.on("plotly_relayout",ev=>{ if("annotations[0].ax" in ev||"annotations[0].ay" in ev){ const an=hp.layout.annotations[0]; f.lblOff=[an.ax,an.ay]; return; }   // remember where the label was put
         if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to what is in view
-        const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b]},[0]); });
+        const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b],colorscale:[diff?divScale(a,b):scale(BLUES)]},[0]); });
       let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}.`;
       let tbl=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(3);
         tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
