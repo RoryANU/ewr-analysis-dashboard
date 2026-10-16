@@ -211,8 +211,7 @@ const lg=L.control({position:"bottomleft"});
 lg.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); L.DomEvent.disableClickPropagation(d);
   const btn=L.DomUtil.create("button","",d); btn.type="button"; btn.textContent="Legend ▸"; btn.style.cssText="border:0;background:none;font:600 12px system-ui;cursor:pointer;padding:0";
   const body=L.DomUtil.create("div","",d); body.style.display="none";
-  body.innerHTML="<b>Surface water SDL units</b><br>"+Object.entries(colours).map(([k,c])=>`<i style="background:${c}"></i>${k}<br>`).join("")+
-    `<i style="background:#ffd92f;border-radius:50%"></i>Gauge with EWR results<br><i style="background:#1f78b4;height:3px;vertical-align:3px"></i>River (thicker = larger)<br><small>Solid = in 2026 review EWR results<br>Faded/dashed = not in results</small><br><label style="cursor:pointer"><input type="checkbox" id="conToggle" checked> <i style="background:#d1495b;transform:rotate(45deg);width:9px;height:9px"></i>Constraint sites (MDBA focus areas)</label>`;
+  body.innerHTML=`<label style="cursor:pointer"><input type="checkbox" id="conToggle" checked> <i style="background:#d1495b;transform:rotate(45deg);width:9px;height:9px"></i>Constraint sites</label>`;
   setTimeout(()=>{ const t=document.getElementById("conToggle"); if(t) t.onchange=()=>t.checked?conLayer.addTo(map):map.removeLayer(conLayer); },0);
   btn.onclick=()=>{ const open=body.style.display==="none"; body.style.display=open?"block":"none"; btn.textContent=open?"Legend ▾":"Legend ▸"; body.style.marginTop=open?"4px":"0"; };
   return d; };
