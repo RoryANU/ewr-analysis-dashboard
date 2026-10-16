@@ -174,8 +174,9 @@ map.createPane("rivers").style.zIndex=401; map.getPane("rivers").style.pointerEv
 map.createPane("gauges").style.zIndex=420;
 map.createPane("constraints").style.zIndex=425;
 const conLayer=L.layerGroup(CONSTRAINTS.map(c=>{ const m=L.marker([c.lat,c.lon],{pane:"constraints",icon:L.divIcon({className:"",html:'<div class="con"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
-  m.bindTooltip(`<b>${esc(c.name)}</b><br>${esc(c.river)}<br>Current: ${esc(c.cur)} ML/d<br>Relaxed: ${esc(c.rel)} ML/d`,{sticky:true,maxWidth:260});
-  m.bindPopup(`<b>${esc(c.name)}</b> (${esc(c.river)})<br>${c.site?"Site: "+esc(c.site)+"<br>":""}Current constraint: ${esc(c.cur)} ML/d<br>Relaxed / assessed: ${esc(c.rel)} ML/d<br>${esc(c.status)}<br><small>Source: ${esc(c.source)}<br>Figures come from documents of different dates; the marker is an approximate anchor point in the reach.<br><a href="${esc(c.url)}" target="_blank" rel="noopener">Source link</a></small>`,{maxWidth:300});
+  const body=`${c.site?"Site: "+esc(c.site)+"<br>":""}Current: ${esc(c.cur)} ML/d<br>Relaxed: ${esc(c.rel)} ML/d`;
+  m.bindTooltip(`<b>${esc(c.name)}</b><br>${esc(c.river)}<br>${body}`,{sticky:true});
+  m.bindPopup(`<b>${esc(c.name)}</b> (${esc(c.river)})<br>${body}`);
   return m; })).addTo(map);
 const riverW=o=>({3:0.7,4:1.1,5:1.6,6:2.2}[o]??3);
 L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:L.canvas({pane:"rivers"}),style:f=>({color:"#1f78b4",weight:riverW(f.properties.o),opacity:0.85})}).addTo(map);
