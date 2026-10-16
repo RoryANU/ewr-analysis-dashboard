@@ -490,7 +490,6 @@ async function fillEwrSelect(){
 const curEwr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
 const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(EWRLIST.get(gg)||[],gg); return S.flow.thr.map(k=>g.find(e=>e.key===k)).filter(Boolean); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
-const thrLine=e=>e?[{type:"line",xref:"paper",x0:0,x1:1,yref:"y",y0:e.thr,y1:e.thr,line:{color:"#c0392b",width:1.5,dash:"dash"}}]:[];
 async function drawFlow(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
   if(typeof Plotly==="undefined"){ $("flowMsg").textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
@@ -552,10 +551,9 @@ async function drawFlow(){
         const stat=(a,b)=>{ if(!hasStat) return; a=Math.max(a,t0); b=Math.min(b,t1); const ex=gaps.reduce((n,g)=>n+Math.max(0,Math.min(parse(g.end)+dayMs,b)-Math.max(parse(g.start),a)),0); $("hydroStat").textContent=(b>a?(ex/(b-a)*10).toFixed(1):"–")+" (visible range "+new Date(a).toISOString().slice(0,10)+" to "+new Date(b-dayMs).toISOString().slice(0,10)+")"; };
         const fitY=(a,b)=>{ const i0=d.dates.findIndex(x=>x>=new Date(a).toISOString().slice(0,10)), i1=d.dates.length-1-[...d.dates].reverse().findIndex(x=>x<=new Date(b).toISOString().slice(0,10)); let mx=-Infinity, mn=Infinity;
           for(let i=Math.max(i0,0);i<=i1&&i<d.flow.length;i++){ const v=d.flow[i]; if(v>mx) mx=v; if(v>0&&v<mn) mn=v; }
-          if(!isFinite(mx)) return; if(ew) mx=Math.max(mx,ew.thr);   // keep the EWR threshold line in view
-          Plotly.relayout(hp,{"yaxis.range":f.ylog?[Math.log10(Math.min(mn,ew?ew.thr:mn)||1),Math.log10(mx*1.1)]:[0,mx*1.05]}); };
+          if(!isFinite(mx)) return;           Plotly.relayout(hp,{"yaxis.range":f.ylog?[Math.log10(mn||1),Math.log10(mx*1.1)]:[0,mx*1.05]}); };
         await Plotly.newPlot("flowPlot",[{type:"scattergl",mode:"lines",x:d.dates,y:d.flow,line:{width:1,color:"#1f4e8c"},name:c.bn,hovertemplate:"<b>%{y:,.0f} ML/d</b><br>%{x|%d %b %Y}<extra></extra>"}],
-          lay({xaxis:ax("Date"),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear"}),showlegend:false,shapes:shade.concat(thrLine(ew))}),cfg);
+          lay({xaxis:ax("Date"),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear"}),showlegend:false,shapes:shade}),cfg);
         stat(t0,t1);
         if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
         const setDates=(a,b)=>{ $("hydFrom").value=new Date(a).toISOString().slice(0,10); $("hydTo").value=new Date(b-dayMs).toISOString().slice(0,10); };
