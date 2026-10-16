@@ -135,7 +135,7 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [x] Heatmap colour scale min/max should rescale dynamically based on the data in the current field of view, snapping in 5% increments only
 - [ ] *(Backburner)* Replace the binary consecutive/any-days toggle with a sliding scale: consecutive (no gaps) → increasing max allowed gaps within an event → any days
 - [x] Prevent selecting the same scenario as both base and comparison in differential mode
-- [ ] When loading new data, allow adding it to an existing scenario (not just creating a new one)
+- [x] When loading new data, allow adding it to an existing scenario (not just creating a new one)
 - [ ] Allow manually adding custom constraints / flow regimes to the heatmap (user-defined thresholds and timing windows)
 - [ ] *(Backburner)* Expand the map to show key constraint sites, storages, towns, etc.
 - [x] The right-hand info panel should be resizable (draggable divider) to adjust how much of the window it occupies; flow analysis plots should resize accordingly

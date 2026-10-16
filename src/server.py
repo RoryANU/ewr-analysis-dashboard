@@ -5,7 +5,7 @@
 Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/ping                     -> {"ok": true}
     POST /api/run                      body = a model output file in one of the EWR tool's formats (FORMATS below)
-                                       headers X-Format (model_format), X-Filename, X-Scn-Id, X-Gauges (gauge ids to look for in the file)
+                                       headers X-Format (model_format), X-Filename, X-Scn-Id, X-Merge (1 = add the flows to the scenario stored under X-Scn-Id), X-Gauges (gauge ids to look for in the file)
                                        -> {"job": id}
     GET  /api/job?id=<id>              -> {"status": "running" | "done" | "error", ...}
 
@@ -87,7 +87,7 @@ def load_frames(fmt, path, sub=""):
     return df_F, df_L
 
 
-def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series", filename="", sub=""):
+def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series", filename="", sub="", merge=False):
     """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats)."""
     import tempfile
     import numpy as np
@@ -131,7 +131,12 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
     flow_gauges = sorted({str(g) for g in df_F.columns} & set(sdl_gauges))
     if scn_id and flow_gauges and isinstance(df_F.index, pd.DatetimeIndex):      # flows are kept for the flow charts (not for 10,000-year runs)
         STORE.mkdir(exist_ok=True)
-        df_F[[g for g in df_F.columns if str(g) in flow_gauges]].to_csv(STORE / f"{scn_id}.csv")
+        new = df_F[[g for g in df_F.columns if str(g) in flow_gauges]]
+        old_path = STORE / f"{scn_id}.csv"
+        if merge and old_path.exists():                                              # add to an existing scenario: keep its other gauges, replace overlapping ones
+            old = pd.read_csv(old_path, index_col=0, parse_dates=True)
+            new = old.drop(columns=[c for c in old.columns if c in new.columns]).join(new, how="outer")
+        new.to_csv(old_path)
         FLOWS.pop(scn_id, None)
     sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
@@ -165,10 +170,10 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
     return rows, stats
 
 
-def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filename="", sub=""):
+def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filename="", sub="", merge=False):
     job = JOBS[job_id]
     try:
-        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub)
+        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge)
         job["status"] = "done"
     except Exception as e:                                    # reported to the page
         job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"
@@ -448,7 +453,7 @@ class Handler(SimpleHTTPRequestHandler):
         jid = uuid.uuid4().hex[:10]
         JOBS[jid] = {"status": "running", "t0": time.time()}
         threading.Thread(target=worker, args=(jid, body, gauges, re.sub(r"[^A-Za-z0-9_-]", "", self.headers.get("X-Scn-Id", "")) or None,
-                                           self.headers.get("X-Format", "Standard time-series"), self.headers.get("X-Filename", ""), self.headers.get("X-Subscenario", "")), daemon=True).start()
+                                           self.headers.get("X-Format", "Standard time-series"), self.headers.get("X-Filename", ""), self.headers.get("X-Subscenario", ""), self.headers.get("X-Merge") == "1"), daemon=True).start()
         self._json({"job": jid})
 
     def end_headers(self):
