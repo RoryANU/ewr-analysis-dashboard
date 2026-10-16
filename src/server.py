@@ -133,7 +133,7 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
         STORE.mkdir(exist_ok=True)
         df_F[[g for g in df_F.columns if str(g) in flow_gauges]].to_csv(STORE / f"{scn_id}.csv")
         FLOWS.pop(scn_id, None)
-    sh = ScenarioHandler("scenario.csv", fmt)
+    sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
     res = sh.get_ewr_results()
     inter = sh.get_all_successful_interEvents()
@@ -290,16 +290,16 @@ def interevents(q):
     df_L = pd.DataFrame(index=df_F.index)
     calc_config = data_inputs.get_ewr_calc_config(None)
     results, events = evaluate_EWRs.calc_sorter(df_F, df_L, gauge, sel, calc_config)
-    sh = ScenarioHandler("scenario.csv", fmt)
+    sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": {gauge: results}}, {"scenario": {gauge: events}}, df_F, df_L
     inter = sh.get_all_successful_interEvents()
     inter = inter[(inter.Gauge == gauge) & (inter.Code == code) & (inter.PlanningUnit == pu)].copy()
     inter["interEventLength"] = pd.to_numeric(inter["interEventLength"], errors="coerce")
     mrip = int(round(float(mi) * 365))
     big = inter[inter.interEventLength > mrip]
-    fmt = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
     return {"mrip_days": mrip, "maxint_years": float(mi), "n_gaps": int(len(inter)),
-            "exceed": [{"start": fmt(a), "end": fmt(b), "days": int(n)} for a, b, n in zip(big.startDate, big.endDate, big.interEventLength)]}
+            "exceed": [{"start": fdate(a), "end": fdate(b), "days": int(n)} for a, b, n in zip(big.startDate, big.endDate, big.interEventLength)]}
 
 
 def heatmap(q):
@@ -348,7 +348,17 @@ def curves(q):
     if kind == "hydro":
         s = gauge_series(q["base"], gauge).dropna()
         return {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in s.index], "flow": np.round(s.to_numpy(), 2).tolist()}
-    vals = {k: np.sort(gauge_series(q[k], gauge).dropna().to_numpy(dtype=float)) for k in ("base", "comp") if q.get(k)}
+    sm, em = int(q.get("sm") or 0), int(q.get("em") or 0)       # optional timing window (months, may wrap the year end): only days in it are used
+
+    def windowed(series):
+        series = series.dropna()
+        if not (1 <= sm <= 12 and 1 <= em <= 12):
+            return series
+        m = series.index.month
+        return series[(m >= sm) & (m <= em)] if sm <= em else series[(m >= sm) | (m <= em)]
+    vals = {k: np.sort(windowed(gauge_series(q[k], gauge)).to_numpy(dtype=float)) for k in ("base", "comp") if q.get(k)}
+    if any(len(v) == 0 for v in vals.values()):
+        raise ValueError("no flow data inside that timing window")
     thrs = [float(t) for t in (q.get("thr") or "").split(",") if t.strip()]
     marks = [{"thr": t, **{k: round(float(exceed_pct(v, t)), 2) for k, v in vals.items()}} for t in thrs]
     if kind == "fdc":

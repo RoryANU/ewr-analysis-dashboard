@@ -175,8 +175,10 @@ function gaugeFromMap(gi){   // keep the SDL / planning-unit context if the gaug
   const s=S.sel;
   if(s.type==="pu"&&ROWS.some(r=>r[2]===gi&&r[0]===s.i&&r[1]===s.sdl)) return select({type:"gauge",i:gi,sdl:s.sdl,pu:s.i});
   const sdl=s.type==="sdl"?s.i:s.type==="pu"?s.sdl:(s.type==="gauge"?s.sdl:null);
-  if(sdl!=null&&ROWS.some(r=>r[2]===gi&&r[1]===sdl)) return select({type:"gauge",i:gi,sdl});
-  select({type:"gauge",i:gi});
+  // keep the full trail (all SDL units > SDL unit > planning unit > gauge) whenever the gauge sits in exactly one SDL unit / planning unit
+  const trail=(rs)=>{ const sd=new Set(rs.map(r=>r[1])), pu=new Set(rs.map(r=>r[0])); return sd.size===1&&pu.size===1?{type:"gauge",i:gi,sdl:rs[0][1],pu:rs[0][0]}:sd.size===1?{type:"gauge",i:gi,sdl:rs[0][1]}:{type:"gauge",i:gi}; };
+  if(sdl!=null&&ROWS.some(r=>r[2]===gi&&r[1]===sdl)) return select(trail(ROWS.filter(r=>r[2]===gi&&r[1]===sdl)));
+  select(trail(ROWS.filter(r=>r[2]===gi)));
 }
 const gaugeHasUser=gi=>(gaugeRows[gi]||[]).some(r=>CUSTOM.some(c=>!c.removed&&(r[6][c.P*NC]!=null||r[7][c.P*NC]!=null)));
 function paintMap(){   // map look is fixed; only the selection is highlighted
@@ -352,8 +354,9 @@ function matrixSvg(rows,mxk){
     if(hit.length>1) g+=`<line x1="${x}" x2="${x}" y1="${my+hit[0]*C+C/2}" y2="${my+hit[hit.length-1]*C+C/2}" stroke="#999" stroke-width="2"/>`;
     orows.forEach((o,ri)=>{ const q=cell[ci][ri], cy=my+ri*C+C/2; if(!q.n){ g+=`<circle cx="${x}" cy="${cy}" r="3.2" fill="#e4e4e4"/>`; return; }
       const f=t==="sdl"?"#e8edf4":q.v==null?"#fff":colour(q.v,m), masked=D&&q.cn&&q.cn.dn>0&&q.v!=null&&(LOWER[m]?q.v<=0:q.v>=0), isSel=S.cell&&S.cell.c===c.id&&S.cell.r===o.id, ring=isSel?`stroke="#1f4e8c" stroke-width="3"`:masked?`stroke="#c0392b" stroke-width="2.2"`:`stroke="#0004"`;   // red ring: net result is not worse, yet some EWRs declined   // SDL view: planning unit x theme cells are plain EWR counts
-      g+=`<g data-mx="${mk}" data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((c.grp||o.grp||t==="sdl")?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${esc(c.full)} · ${esc(o.label)}: ${t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+`, mean ${MS[m]} ${f3(q.v,m)}`+(D&&q.cn?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(masked?" (decline hidden by the average)":""):"")}</title></circle><text x="${x}" y="${cy+3.3}" text-anchor="middle" style="font-size:9px">${q.n}</text>`
-        :`<circle cx="${x}" cy="${cy}" r="4.8" fill="${f}" stroke="${isSel?"#1f4e8c":"#222"}" stroke-width="${isSel?3:1}"><title>${esc(c.full)} → ${esc(o.label)}: ${MS[m]} ${f3(q.v,m)}</title></circle>`)+`</g>`; });
+      const grouped=c.grp||o.grp||t==="sdl", ttl=esc(c.full)+" · "+esc(o.label)+": "+(t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+`, mean ${MS[m]} ${f3(q.v,m)}`)+(D&&q.cn&&grouped?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(masked?" (decline hidden by the average)":""):"");
+      g+=`<g data-mx="${mk}" data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((grouped&&q.n>1)?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${ttl}</title></circle><text x="${x}" y="${cy+3.3}" text-anchor="middle" style="font-size:9px">${q.n}</text>`   // a count of 1 is not printed: it is drawn as the plain circle used when drilled in
+        :`<circle cx="${x}" cy="${cy}" r="4.8" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+MS[m]+" "+f3(q.v,m)}</title></circle>`)+`</g>`; });
     g+=`<text transform="translate(${x+3.5},${my-4}) rotate(-90)"${go?go.replace('style="cursor:pointer"','style="cursor:pointer;fill:#1f4e8c"'):""}>${esc(c.show)}</text></g>`; });
   if(t==="gauge") for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++;
     const rg=cols[a].reg, single=b===a&&!cols[a].grp, closed=COLL_REG.has(rg)&&!single, bx=x0+a*C+1, bw=(b-a+1)*C-2;
@@ -409,6 +412,7 @@ function flowCtx(){
   else if(has(comp)) return {ok:true,gauge:g,base:comp.id,comp:null,bn:comp.name};
   return {ok:false,msg:"Flow charts need uploaded flows for this gauge. "+need};
 }
+const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
 const CHARTS={heat:"Heat map",hydro:"Hydrograph",fdc:"Flow duration curve",dfdc:"Differential flow duration curve"};
 const chartsFor=D=>D?["heat","dfdc"]:["heat","hydro"];
 const thrKey=e=>e.code+"|"+e.pu, TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
@@ -464,8 +468,10 @@ async function fillEwrSelect(){
       render(); };
   }
   if($("flowThr")){   // several thresholds can be drawn at once on the flow duration charts
-    const pop=$("flowThr"); pop.innerHTML=list.map((e,i)=>`<label><input type="checkbox" value="${esc(key(e))}"${S.flow.thr.includes(key(e))?" checked":""}> ${lab(e)}</label>`).join("")||"<i>No flow-threshold EWRs at this gauge</i>";
-    pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
+    const pop=$("flowThr"); pop.innerHTML=list.map((e,i)=>`<label><input type="checkbox" value="${esc(key(e))}"${S.flow.thr.includes(key(e))?" checked":""}> ${lab(e)} · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</label>`).join("")||"<i>No flow-threshold EWRs at this gauge</i>";
+    const lock=()=>{ const on=S.flow.thr.map(k=>list.find(e=>key(e)===k)).filter(Boolean), w=on[0];   // EWRs are selectable together only when they share one timing window
+      pop.querySelectorAll("input").forEach(i=>{ const e=list.find(x=>key(x)===i.value); i.disabled=!!w&&!i.checked&&(e.sm!==w.sm||e.em!==w.em); i.parentElement.style.opacity=i.disabled?.45:1; i.parentElement.title=i.disabled?`Different timing window (${MONTHS[w.sm-1]}–${MONTHS[w.em-1]} is selected)`:""; }); }; lock();
+    pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); lock(); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
   }
 }
 const curEwr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
@@ -506,20 +512,36 @@ async function drawFlow(){
           (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${df>=0?"+":""}${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
       msg.style.whiteSpace="pre-wrap"; msg.textContent=info; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
     } else {
-      const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(","):"";
+      const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(",")+"&sm="+thr[0].sm+"&em="+thr[0].em:"";   // the curve covers the shared timing window of the selected EWRs
       const d=await flowGet(`/api/curves?${base}&kind=${f.chart}${tq}`); if(tok!==FLOWTOKEN) return;
       msg.style.whiteSpace="pre-wrap";
       const markNote=()=>thr.map(e=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}; return `\n▢ ${e.code} ≥${e.thr.toLocaleString()} ML/d: `+(c.comp?`${c.bn} ${m.base}% of time → ${c.cn} ${m.comp}% (${m.comp-m.base>=0?"+":""}${Math.round((m.comp-m.base)*100)/100} pts)`:`flow at or above it ${m.base}% of the time`); }).join("");
       if(f.chart==="hydro"){
-        const ew=curEwr(); let shade=[], note="";
+        const ew=curEwr(); let shade=[], note="", ie=null;
         if(ew&&ew.maxint>0){
-          const ie=await flowGet(`/api/interevents?scn=${encodeURIComponent(c.base)}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(ew.code)}&pu=${encodeURIComponent(ew.pu)}`); if(tok!==FLOWTOKEN) return;
+          ie=await flowGet(`/api/interevents?scn=${encodeURIComponent(c.base)}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(ew.code)}&pu=${encodeURIComponent(ew.pu)}`); if(tok!==FLOWTOKEN) return;
           const nextDay=s=>{ const t=new Date(s+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+1); return t.toISOString().slice(0,10); };
           shade=ie.exceed.map(g=>({type:"rect",xref:"x",x0:g.start,x1:nextDay(g.end),yref:"paper",y0:0,y1:1,fillcolor:"rgba(192,57,43,.20)",line:{width:0},layer:"below"}));
           note=`\n▢ ${ew.code}: max recommended inter-event period ${ew.maxint} yr (${ie.mrip_days} days). ${ie.exceed.length} of ${ie.n_gaps} gaps between successful events exceed it (shaded)`+(ie.exceed.length?`, longest ${Math.max(...ie.exceed.map(g=>g.days))} days.`:".");
         } else if(ew) note=`\n▢ ${ew.code} has no maximum inter-event period, so there is nothing to shade.`;
-        Plotly.newPlot("flowPlot",[{type:"scattergl",mode:"lines",x:d.dates,y:d.flow,line:{width:1,color:"#1f4e8c"},name:c.bn,hovertemplate:"<b>%{y:,.0f} ML/d</b><br>%{x|%d %b %Y}<extra></extra>"}],
+        const hp=$("flowPlot"), gaps=ie?ie.exceed:[], dayMs=864e5, parse=v=>Date.parse(String(v).replace(" ","T").slice(0,19)+"Z"), t0=parse(d.dates[0]), t1=parse(d.dates[d.dates.length-1])+dayMs;
+        const hasStat=ew&&ew.maxint>0;
+        document.querySelectorAll("#hydroTools").forEach(x=>x.remove());
+        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div>${hasStat?`<div class="seg"><span class="lbl">Years in 10 with an inter-event gap beyond ${ew.maxint} yr</span><b id="hydroStat"></b></div>`:""}</div>`);
+        const stat=(a,b)=>{ if(!hasStat) return; a=Math.max(a,t0); b=Math.min(b,t1); const ex=gaps.reduce((n,g)=>n+Math.max(0,Math.min(parse(g.end)+dayMs,b)-Math.max(parse(g.start),a)),0); $("hydroStat").textContent=(b>a?(ex/(b-a)*10).toFixed(1):"–")+" (visible range "+new Date(a).toISOString().slice(0,10)+" to "+new Date(b-dayMs).toISOString().slice(0,10)+")"; };
+        const fitY=(a,b)=>{ const i0=d.dates.findIndex(x=>x>=new Date(a).toISOString().slice(0,10)), i1=d.dates.length-1-[...d.dates].reverse().findIndex(x=>x<=new Date(b).toISOString().slice(0,10)); let mx=-Infinity, mn=Infinity;
+          for(let i=Math.max(i0,0);i<=i1&&i<d.flow.length;i++){ const v=d.flow[i]; if(v>mx) mx=v; if(v>0&&v<mn) mn=v; }
+          if(!isFinite(mx)) return; if(ew) mx=Math.max(mx,ew.thr);   // keep the EWR threshold line in view
+          Plotly.relayout(hp,{"yaxis.range":f.ylog?[Math.log10(Math.min(mn,ew?ew.thr:mn)||1),Math.log10(mx*1.1)]:[0,mx*1.05]}); };
+        await Plotly.newPlot("flowPlot",[{type:"scattergl",mode:"lines",x:d.dates,y:d.flow,line:{width:1,color:"#1f4e8c"},name:c.bn,hovertemplate:"<b>%{y:,.0f} ML/d</b><br>%{x|%d %b %Y}<extra></extra>"}],
           lay({xaxis:ax("Date"),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear"}),showlegend:false,shapes:shade.concat(thrLine(ew))}),cfg);
+        stat(t0,t1);
+        if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
+        hp.on("plotly_relayout",ev=>{   // the visible time range drives the y-axis range and the years-in-10 statistic
+          if(ev["xaxis.autorange"]){ stat(t0,t1); Plotly.relayout(hp,{"yaxis.autorange":true}); return; }
+          const r=ev["xaxis.range"]||(ev["xaxis.range[0]"]!==undefined?[ev["xaxis.range[0]"],ev["xaxis.range[1]"]]:null); if(!r) return;
+          stat(parse(r[0]),parse(r[1])); fitY(parse(r[0]),parse(r[1])); });
+        $("hydroTools").onclick=e=>{ const b=e.target.closest("button[data-dr]"); if(!b) return; if(b.dataset.dr==="all") Plotly.relayout(hp,{"xaxis.autorange":true}); else Plotly.relayout(hp,{"xaxis.range":[b.dataset.a,b.dataset.b]}); };
         msg.textContent=`${c.bn}: daily flow at ${c.gauge}.`+note;
       } else {   // dfdc: change in the % of time flow is at or above each flow (comparison - base)
         const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
@@ -527,7 +549,7 @@ async function drawFlow(){
           marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
         Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"<b>%{y:+.1f} pts</b> of time<br>flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
           lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear"}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000"}),showlegend:false,shapes:vl}),cfg);
-        msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow).`+markNote();
+        msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow). `+(thr.length?`Only days in the EWR timing window (${MONTHS[thr[0].sm-1]}–${MONTHS[thr[0].em-1]}) are used.`:"All days of the year are used; select EWRs to restrict the curve to their timing window.")+markNote();
       }
     }
   }catch(e){ if(tok===FLOWTOKEN) msg.textContent="Could not draw: "+e.message; }

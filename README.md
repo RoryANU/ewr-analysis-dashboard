@@ -124,11 +124,11 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [x] The EWR description in the dropdown should not say "max gap"
 - [x] The EWR overlay explanation on the heatmap (e.g. "▢ OB1 (flow_handle, consecutive): ≥20000 ML/d for 4 days …") should not restate the EWR definition; replace it with a simple table showing achievement % for scenario A, scenario B, the difference, and the target
 - [x] The differential flow duration curve should not default to log scale; log scale should be optional
-- [ ] UpSet plots should not display values of 1; bars should just be circles (matching the drilled-in style)
-- [ ] Differential flow duration curves should be filtered by the EWR's timing window; only EWR thresholds that share a common timing window should be selectable together
-- [ ] Hydrograph with interevent exceedance display should include a "years in 10" summary statistic that dynamically updates as the visible time range is filtered
-- [ ] Add quick-filter buttons for key drought periods: Millennium, Tinderbox, Federation, WWII
-- [ ] Y-axis range should auto-resize to the new max when the hydrograph time range is filtered
+- [x] UpSet plots should not display values of 1; bars should just be circles (matching the drilled-in style)
+- [x] Differential flow duration curves should be filtered by the EWR's timing window; only EWR thresholds that share a common timing window should be selectable together
+- [x] Hydrograph with interevent exceedance display should include a "years in 10" summary statistic that dynamically updates as the visible time range is filtered
+- [x] Add quick-filter buttons for key drought periods: Millennium, Tinderbox, Federation, WWII
+- [x] Y-axis range should auto-resize to the new max when the hydrograph time range is filtered
 - [ ] Add manual start/end date entry fields for the hydrograph in addition to the Plotly drag-to-zoom selection
 - [ ] Frequency ratio colour scale should use red → white → blue (matching the standard Excel version): 0 = red, 0.9 = white, 1 = blue
 - [ ] Interevent colour scale should use the standard Excel green → yellow/orange → red regime: 0 = green, 10 = red
