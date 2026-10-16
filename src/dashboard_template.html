@@ -544,11 +544,16 @@ async function drawFlow(){
         $("hydroTools").onclick=e=>{ const b=e.target.closest("button[data-dr]"); if(!b) return; if(b.dataset.dr==="all") Plotly.relayout(hp,{"xaxis.autorange":true}); else Plotly.relayout(hp,{"xaxis.range":[b.dataset.a,b.dataset.b]}); };
         msg.textContent=`${c.bn}: daily flow at ${c.gauge}.`+note;
       } else {   // dfdc: change in the % of time flow is at or above each flow (comparison - base)
+        // auto range: x runs to the flow still reached 1% of the time (or past the selected thresholds), y fits the difference within it
+        let xm=0; for(let i=0;i<d.x.length;i++) if(Math.max(d.base[i],d.comp[i])>=1) xm=d.x[i];
+        xm=Math.max(xm,...thr.map(e=>e.thr*1.4),d.x[0]*2); xm=niceUp(xm);
+        let lo=0, hi=0; for(let i=0;i<d.x.length;i++) if(d.x[i]<=xm){ lo=Math.min(lo,d.diff[i]); hi=Math.max(hi,d.diff[i]); }
+        const pad=Math.max((hi-lo)*0.12,1), xr=f.xlog?[Math.log10(d.x[0]),Math.log10(xm)]:[0,xm], yr=[lo-pad,hi+pad];
         const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
         const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=Math.round((m.comp-m.base)*100)/100; return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
           marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
         Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"<b>%{y:+.1f} pts</b> of time<br>flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
-          lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear"}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000"}),showlegend:false,shapes:vl}),cfg);
+          lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear",range:xr}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000",range:yr}),showlegend:false,shapes:vl}),cfg);
         msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow). `+(thr.length?`Only days in the EWR timing window (${MONTHS[thr[0].sm-1]}–${MONTHS[thr[0].em-1]}) are used.`:"All days of the year are used; select EWRs to restrict the curve to their timing window.")+markNote();
       }
     }
