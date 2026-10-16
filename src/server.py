@@ -47,10 +47,10 @@ MAX_BYTES = 400 * 1024 * 1024
 
 
 # Model output formats, as named in the EWR tool (ScenarioHandler model_format). 'All Bigmod' needs many files, so it is not offered.
-FORMATS = ["Standard time-series", "Bigmod - MDBA", "FIRM - MDBA", "res.csv - MDBA", "Source - NSW (res.csv)", "IQQM - netcdf", "ten thousand year"]
+FORMATS = ["Standard time-series", "Bigmod - MDBA", "FIRM - MDBA", "res.csv - MDBA", "Source - NSW (res.csv)", "IQQM - netcdf", "ten thousand year", "Northern connectivity"]
 
 
-def load_frames(fmt, path):
+def load_frames(fmt, path, sub=""):
     """The reading step of ScenarioHandler.process_scenarios for one model_format: file -> (flow frame, level frame),
     one column per gauge number (py_ewr's own cleaners and node-matching tables do the work)."""
     import pandas as pd
@@ -75,12 +75,19 @@ def load_frames(fmt, path):
     elif fmt == "ten thousand year":
         df = pd.read_csv(path, index_col="Date")
         df_F, df_L = sc.cleaner_ten_thousand_year(df, ps)
+    elif fmt == "Northern connectivity":
+        import northern_connectivity as nc
+        scenarios = nc.unpack_northern_connectivity(path)         # one workbook, several scenarios: pick one by its code
+        key = next((k for k in scenarios if k.lower() == sub.lower()), None) if sub else next(iter(scenarios), None)
+        if key is None:
+            raise ValueError(f"scenario {sub!r} not found in the workbook; available: {', '.join(scenarios)}")
+        df_F, df_L = nc.cleaner_northern_connectivity(scenarios[key], ps)
     else:
         raise ValueError(f"unknown data format {fmt!r}")
     return df_F, df_L
 
 
-def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series", filename=""):
+def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series", filename="", sub=""):
     """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats)."""
     import tempfile
     import numpy as np
@@ -101,7 +108,7 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
         path = Path(tmp) / f"scenario{suffix}"
         path.write_bytes(csv_bytes)
         try:
-            df_F, df_L = load_frames(fmt, str(path))
+            df_F, df_L = load_frames(fmt, str(path), sub)
         except Exception as e:                                       # py_ewr's own readers fail in obscure ways on the wrong format
             detail = str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__
             raise ValueError(f"Could not read this file as '{fmt}'. Check that you chose the right data format. ({type(e).__name__}: {detail})") from e
@@ -158,10 +165,10 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
     return rows, stats
 
 
-def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filename=""):
+def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filename="", sub=""):
     job = JOBS[job_id]
     try:
-        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename)
+        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub)
         job["status"] = "done"
     except Exception as e:                                    # reported to the page
         job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"
@@ -423,7 +430,7 @@ class Handler(SimpleHTTPRequestHandler):
         jid = uuid.uuid4().hex[:10]
         JOBS[jid] = {"status": "running", "t0": time.time()}
         threading.Thread(target=worker, args=(jid, body, gauges, re.sub(r"[^A-Za-z0-9_-]", "", self.headers.get("X-Scn-Id", "")) or None,
-                                           self.headers.get("X-Format", "Standard time-series"), self.headers.get("X-Filename", "")), daemon=True).start()
+                                           self.headers.get("X-Format", "Standard time-series"), self.headers.get("X-Filename", ""), self.headers.get("X-Subscenario", "")), daemon=True).start()
         self._json({"job": jid})
 
     def end_headers(self):

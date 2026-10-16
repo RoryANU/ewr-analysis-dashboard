@@ -71,6 +71,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label class="fld"><span>Data format</span><select id="scnFmt"></select></label>
   <div class="hint" id="scnFmtHint"></div>
   <label class="fld"><span>Scenario name (defaults to the file name)</span><input id="scnName" type="text" maxlength="40" placeholder="taken from the file name"></label>
+  <label class="fld" id="scnSubWrap" style="display:none"><span>Scenario in workbook (e.g. CP1A; blank = first)</span><input id="scnSub" type="text" maxlength="40" placeholder="first scenario in the sheet"></label>
   <label class="fld"><span>Time-series file (.csv)</span><input id="scnFile" type="file" accept=".csv,.txt,text/csv"></label>
   <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download an example CSV header (one column per gauge, named <gauge>_flow)">Download template header</button><span style="flex:1"></span><button id="scnClose">Close</button></div>
   <div id="scnStatus"></div><div id="scnList"></div></dialog>
@@ -549,8 +550,9 @@ const FORMATS={
   "res.csv - MDBA":{hint:"MDBA res.csv formatted output. Columns are matched to gauges by the EWR tool.",accept:".csv,.txt,text/csv"},
   "Source - NSW (res.csv)":{hint:"Source (NSW) res.csv output. Columns are matched to gauges through the EWR tool's NSW node list.",accept:".csv,.txt,text/csv"},
   "IQQM - netcdf":{hint:"IQQM netCDF (.nc) output. Stations are matched to gauges through the EWR tool's IQQM station list.",accept:".nc,application/x-netcdf"},
+  "Northern connectivity":{hint:"Excel workbook (.xlsx) from the northern connectivity expert panel; the 'River flows' sheet is read. It holds several scenarios side by side, so enter the scenario code to run (e.g. CP1A, CP4A, CP1B, CP1C, CP6A, CP6A2, CP6B); blank uses the first. Sites are matched to gauges by the EWR tool.",flows:true,sub:true,accept:".xlsx,.xlsm"},
   "ten thousand year":{hint:"Same layout as Standard time-series, for 10,000-year runs (the dates may be in any year, e.g. 105-07-01). Flow charts are not available for these runs.",tpl:true,accept:".csv,.txt,text/csv"}};
-function syncFormat(){ const f=FORMATS[$("scnFmt").value]; $("scnFmtHint").textContent=f.hint; $("scnFile").accept=f.accept; $("scnTpl").style.display=f.tpl?"":"none"; }
+function syncFormat(){ const f=FORMATS[$("scnFmt").value]; $("scnFmtHint").textContent=f.hint; $("scnFile").accept=f.accept; $("scnTpl").style.display=f.tpl?"":"none"; $("scnSubWrap").style.display=f.sub?"":"none"; }
 $("scnFmt").innerHTML=Object.keys(FORMATS).map(k=>`<option>${esc(k)}</option>`).join(""); $("scnFmt").onchange=syncFormat; syncFormat();
 const allGauges=[...new Set(ROWS.map(r=>META.gauges[r[2]]))];
 function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=cls||""; }
@@ -574,7 +576,7 @@ $("scnRun").onclick=async()=>{
   if(!(await serverUp())) return setStatus("The analysis server is not running. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
   $("scnRun").disabled=true; setStatus("Uploading "+file.name+" …");
   try{
-    const scnId="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv","X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Filename":file.name},body:file}), j=await r.json();
+    const scnId="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv","X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Subscenario":$("scnSub").value.trim(),"X-Filename":file.name},body:file}), j=await r.json();
     if(!j.job) throw new Error(j.message||"upload failed");
     for(;;){ await new Promise(res=>setTimeout(res,1000));
       const q=await (await fetch("/api/job?id="+j.job,{cache:"no-store"})).json();
