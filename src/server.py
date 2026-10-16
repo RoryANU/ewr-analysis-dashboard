@@ -12,7 +12,7 @@ Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/heatmap?base=<id>[&comp=<id>]&gauge=<g>&xlim=&dmax=&sm=&em=   threshold x duration achievement heat map data
     GET  /api/ewrs?gauge=<g>                                               EWRs at a gauge handled by flow_handle / lowflow_handle
     GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
-    GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
+    GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymin=][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
     GET  /api/forget?id=<id>           delete a stored scenario
 
 An uploaded scenario's daily flows are kept in .user_scenarios/<id>.csv (repository root) so the flow charts can be drawn later.
@@ -377,8 +377,14 @@ def curves(q):
         ymax = float(q["ymax"]) if q.get("ymax") else top
         if ymax <= 0:
             raise ValueError("no positive flows to plot")
-        ymax = nice_ceiling(ymax)
-        flows = np.linspace(0, ymax, 201)[1:]
+        if q.get("ymin") not in (None, ""):                          # zoomed in: the same 200 steps spread over the chosen range
+            ymin = max(0.0, float(q["ymin"]))
+            if ymax <= ymin:
+                raise ValueError("the flow range is empty")
+            flows = np.linspace(ymin, ymax, 200)
+        else:
+            ymax = nice_ceiling(ymax)
+            flows = np.linspace(0, ymax, 201)[1:]
         base = np.full((len(flows), 12), np.nan)
         comp = np.full((len(flows), 12), np.nan)
         for j, m in enumerate(order):

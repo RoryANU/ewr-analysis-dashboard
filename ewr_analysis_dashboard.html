@@ -524,7 +524,7 @@ async function fillEwrSelect(){
   }
 }
 // ---- monthly differential flow duration: its own panel under Flow analysis (differential mode, uploaded scenarios) ----------------
-S.mflow={open:false,xlim:""}; let MTOKEN=0;
+S.mflow={open:false,xlim:"",yr:null,xr:null}; let MTOKEN=0, MTIMER=0;
 function monthlyPanel(){
   const c=flowCtx(); if(!c||!c.ok||!isDiff()) return "";
   return `<details id="mflowDet" class="flowp"${S.mflow.open?" open":""}><summary>Monthly differential flow duration · ${esc(gaugeName(S.sel.i))}</summary>
@@ -534,7 +534,7 @@ function monthlyPanel(){
 function wireMonthly(){
   const d=$("mflowDet"); if(!d) return;
   d.addEventListener("toggle",()=>{ S.mflow.open=d.open; if(d.open) drawMonthly(); });
-  $("mXlim").onchange=e=>{ S.mflow.xlim=e.target.value.trim(); drawMonthly(); };
+  $("mXlim").onchange=e=>{ S.mflow.xlim=e.target.value.trim(); S.mflow.yr=null; S.mflow.xr=null; drawMonthly(); };
   if(S.mflow.open) drawMonthly();
 }
 async function drawMonthly(){
@@ -542,12 +542,22 @@ async function drawMonthly(){
   const msg=$("mflowMsg"), tok=++MTOKEN; if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
   msg.textContent="Loading …";
   try{
-    const d=await flowGet(`/api/curves?base=${encodeURIComponent(c.base)}&comp=${encodeURIComponent(c.comp)}&gauge=${encodeURIComponent(c.gauge)}&kind=mdfdc${S.mflow.xlim?"&ymax="+encodeURIComponent(S.mflow.xlim):""}`); if(tok!==MTOKEN) return;
-    let mx=0; d.diff.forEach(r=>r.forEach(v=>{ if(v!=null&&Math.abs(v)>mx) mx=Math.abs(v); })); const zm=Math.max(5,Math.ceil(mx/5)*5), ml=d.months.map(m=>MONTHS[m-1]);
+    const d=await flowGet(`/api/curves?base=${encodeURIComponent(c.base)}&comp=${encodeURIComponent(c.comp)}&gauge=${encodeURIComponent(c.gauge)}&kind=mdfdc${S.mflow.yr?`&ymin=${S.mflow.yr[0]}&ymax=${S.mflow.yr[1]}`:S.mflow.xlim?"&ymax="+encodeURIComponent(S.mflow.xlim):""}`); if(tok!==MTOKEN) return;
+    const ml=d.months.map(m=>MONTHS[m-1]);
+    // colour range follows the values in view (min to max, snapped outward to 5-point steps) with 0 kept at white
+    const fitZ=(xr,yr)=>{ let mn=Infinity, mx=-Infinity; d.flows.forEach((fl,j)=>{ if(yr&&(fl<yr[0]||fl>yr[1])) return; d.diff[j].forEach((v,i)=>{ if(v==null||(xr&&(i<Math.floor(xr[0]+.5)||i>Math.ceil(xr[1]-.5)))) return; if(v<mn) mn=v; if(v>mx) mx=v; }); });
+      if(!isFinite(mn)) return [-5,5]; mn=Math.min(mn,0); mx=Math.max(mx,0); let lo=Math.floor(mn/5)*5, hi=Math.ceil(mx/5)*5; if(hi===lo){ lo=-5; hi=5; } return [lo,hi]; };
+    const [zlo,zhi]=fitZ();
     const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
-    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:-zm,zmax:zm,colorscale:scale(RDBU),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
+    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,zmid:0,colorscale:scale(RDBU),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
         hovertemplate:"<b>%{z:+.3f} pts</b><br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
-      {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category"}),yaxis:ax("Flow (ML/day)"),showlegend:false},{responsive:true,displaylogo:false});
+      {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category",range:S.mflow.xr||undefined}),yaxis:ax("Flow (ML/day)",{range:S.mflow.yr||undefined}),showlegend:false},{responsive:true,displaylogo:false});
+    const mp=$("mflowPlot"); if(mp.removeAllListeners) mp.removeAllListeners("plotly_relayout");
+    mp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to the cells in view, and fetch finer flow steps for the zoomed flow range
+      const xa=mp.layout.xaxis, ya=mp.layout.yaxis, [a,b]=fitZ(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(mp,{zmin:[a],zmax:[b]},[0]);
+      const yr=ya.autorange?null:[Math.max(0,+ya.range[0]),+ya.range[1]], same=(u,v)=>(!u&&!v)||(u&&v&&Math.abs(u[0]-v[0])<1e-6&&Math.abs(u[1]-v[1])<1e-6);
+      if(!same(yr,S.mflow.yr)){ S.mflow.xr=xa.autorange?null:[...xa.range]; S.mflow.yr=yr; clearTimeout(MTIMER); MTIMER=setTimeout(drawMonthly,250); }
+      else S.mflow.xr=xa.autorange?null:[...xa.range]; });
     msg.style.whiteSpace="pre-wrap"; msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: for each month, the change in the % of that month's days at or above each flow (blue = more time at or above that flow).`;
   }catch(e){ if(tok===MTOKEN) msg.textContent="Could not draw: "+e.message; }
 }
@@ -571,7 +581,7 @@ async function drawFlow(){
       const kind=D?f.show:"base", diff=D&&kind==="diff"; let z=d[kind]||d.base;
       // colour range follows the cells in view, snapped to 5% steps (symmetric about 0 for differences)
       const fitScale=(xr,yr)=>{ let mn=Infinity, mx=-Infinity; d.durations.forEach((du,j)=>{ if(yr&&(du<yr[0]||du>yr[1])) return; d.thresholds.forEach((t,i)=>{ if(xr&&(t<xr[0]||t>xr[1])) return; const v=z[j][i]; if(v==null) return; if(v<mn) mn=v; if(v>mx) mx=v; }); });
-        if(!isFinite(mn)) return diff?[-5,5]:[0,100]; if(diff){ const m=Math.max(5,Math.ceil(Math.max(Math.abs(mn),Math.abs(mx))/5)*5); return [-m,m]; }
+        if(!isFinite(mn)) return diff?[-5,5]:[0,100]; if(diff){ let lo=Math.floor(Math.min(mn,0)/5)*5, hi=Math.ceil(Math.max(mx,0)/5)*5; if(hi===lo){ lo=-5; hi=5; } return [lo,hi]; }   // min to max in 5-point steps, 0 stays white (zmid)
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
       const title=diff?`% change from ${c.bn} to ${c.cn}`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
@@ -586,7 +596,7 @@ async function drawFlow(){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.3f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,...(diff?{zmid:0}:{}),colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.3f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
         lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}}));   // the EWR label can be dragged out of the way
