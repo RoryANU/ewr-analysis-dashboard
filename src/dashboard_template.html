@@ -20,6 +20,7 @@ button{cursor:pointer}button:hover{border-color:var(--acc);background:#f4f8fd}
 #panel h2{font-size:15px;margin:0 0 2px}
 .crumbs{font-size:12px;color:var(--mut);margin-bottom:8px}.crumbs a{color:var(--acc);cursor:pointer}
 .flowp{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 10px}.flowp summary{cursor:pointer;font-weight:600;font-size:12.5px}.flowp details.multi{position:relative;display:inline-block}.flowp details.multi summary{font-weight:400;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;cursor:pointer}.flowp .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:220px;overflow:auto;min-width:230px;box-shadow:0 4px 14px #0003}.flowp .pop label{display:block;white-space:nowrap;padding:1px 0;font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:#eef2f8;border:1px solid var(--line);border-radius:12px;padding:1px 4px 1px 9px;font-size:11.5px}.chip .ghost{padding:0 5px;border:0;background:none;cursor:pointer;font-size:14px;line-height:1}
 .ewrtbl{border-collapse:collapse;margin-top:6px;white-space:normal}.ewrtbl th,.ewrtbl td{border:1px solid var(--line);padding:3px 10px;text-align:right;font-weight:400}.ewrtbl th{background:#f1f3f6;font-weight:600}.ewrtbl th:first-child{text-align:left}
 .flowp .mxbar{margin:8px 0 4px}.flowp input[type=number]{width:96px;font:inherit;padding:2px 4px}.flowp select{padding:2px 6px}
 .cellp{border:1px solid var(--line);border-radius:8px;margin:8px 0}.cellh{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px}.cellh span{color:var(--mut);flex:1}.cellh button{border:0;background:none;font-size:16px;line-height:1;padding:0 4px;color:var(--mut)}.cellt{max-height:300px;overflow:auto}.cellt th{position:sticky;top:0;text-align:left}.cellt td{text-align:left;white-space:normal}
@@ -406,6 +407,9 @@ function cellDetail(){
 const RDBU=["rgb(103,0,31)","rgb(178,24,43)","rgb(214,96,77)","rgb(244,165,130)","rgb(253,219,199)","rgb(247,247,247)","rgb(209,229,240)","rgb(146,197,222)","rgb(67,147,195)","rgb(33,102,172)","rgb(5,48,97)"];
 const BLUES=["rgb(247,251,255)","rgb(222,235,247)","rgb(198,219,239)","rgb(158,202,225)","rgb(107,174,214)","rgb(66,146,198)","rgb(33,113,181)","rgb(8,81,156)","rgb(8,48,107)"];
 const scale=a=>a.map((c,i)=>[i/(a.length-1),c]);
+const CEWR=(()=>{ try{ return JSON.parse(localStorage.getItem("ewrCustomEwr")||"[]"); }catch(e){ return []; } })();   // user-defined constraints: {code (name), thr, dur, sm, em, consecutive, target}
+const saveCEWR=()=>{ try{ localStorage.setItem("ewrCustomEwr",JSON.stringify(CEWR)); }catch(e){} };
+const ewrsFor=g=>(EWRLIST.get(g)||[]).concat(CEWR);
 const EWRLIST=new Map();   // gauge -> EWRs handled by flow_handle / lowflow_handle
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], FLOWCACHE=new Map();
 let FLOWTOKEN=0;
@@ -448,10 +452,31 @@ function flowPanel(){
         <div class="seg"><span class="lbl">Max threshold (ML/d)</span><input type="number" min="10" step="10" data-fl="xlim" value="${esc(f.xlim)}" placeholder="${f.xlimAuto||"auto"}"></div>
         <div class="seg"><span class="lbl">Max duration (days)</span><input type="number" min="2" max="366" data-fl="dmax" value="${f.dmax}"></div>
         <div class="seg"><span class="lbl">Timing window</span>${mo(f.sm,"sm")} to ${mo(f.em,"em")}</div>`:(f.chart==="hydro"?`<label class="seg"><input type="checkbox" data-fl="ylog"${f.ylog?" checked":""}> <span class="lbl">log scale</span></label>`:(f.chart==="dfdc"?`<label class="seg"><input type="checkbox" data-fl="xlog"${f.xlog?" checked":""}> <span class="lbl">log scale</span></label>`:""))}
-    </div><div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div></details>`;
+    </div>${customForm(mo)}<div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div></details>`;
+}
+function customForm(mo){   // user-defined constraint: a name, a flow threshold, a duration and a timing window; it joins the EWR lists
+  const f=S.flow, list=CEWR.map((e,i)=>`<span class="chip">${esc(e.code)}: ≥${e.thr.toLocaleString()} ML/d × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.consecutive?"":" (any days)"}${e.target!=null?` · target ${e.target}%`:""} <button data-cdel="${i}" title="Remove" class="ghost">×</button></span>`).join(" ");
+  return `<div class="mxbar" style="margin:2px 0"><button class="ghost" id="cewrToggle">${f.cform?"▾":"▸"} Custom constraints</button>${list}</div>`+(f.cform?`<div class="mxbar cform" style="margin:2px 0 6px">
+    <label class="seg"><span class="lbl">Name</span><input id="cName" type="text" size="9" maxlength="16" placeholder="e.g. Test1"></label>
+    <label class="seg"><span class="lbl">Threshold (ML/d)</span><input id="cThr" type="number" min="0" step="10" style="width:84px"></label>
+    <label class="seg"><span class="lbl">Duration (days)</span><input id="cDur" type="number" min="1" max="366" step="1" style="width:64px"></label>
+    <div class="seg"><span class="lbl">Timing window</span><select id="cSm">${MONTHS.map((m,i)=>`<option value="${i+1}"${i===6?" selected":""}>${m}</option>`).join("")}</select> to <select id="cEm">${MONTHS.map((m,i)=>`<option value="${i+1}"${i===5?" selected":""}>${m}</option>`).join("")}</select></div>
+    <label class="seg"><span class="lbl">Days</span><select id="cCons"><option value="0">Any days</option><option value="1">Consecutive</option></select></label>
+    <label class="seg"><span class="lbl">Target % of years (optional)</span><input id="cTgt" type="number" min="0" max="100" style="width:64px"></label>
+    <button id="cewrAdd">Add</button><span id="cewrErr" class="note" style="color:#b3261e"></span></div>`:"");
+}
+function wireCustom(d){
+  const tg=d.querySelector("#cewrToggle"); if(tg) tg.onclick=()=>{ S.flow.cform=!S.flow.cform; render(); };
+  d.querySelectorAll("[data-cdel]").forEach(b=>b.onclick=()=>{ const e=CEWR.splice(+b.dataset.cdel,1)[0]; if(e&&S.flow.ewr===thrKey(e)) S.flow.ewr=""; if(e) S.flow.thr=S.flow.thr.filter(k=>!k.startsWith("g:"+stemOf(e.code)+"|")); saveCEWR(); render(); });
+  const add=d.querySelector("#cewrAdd"); if(add) add.onclick=()=>{ const g=id=>d.querySelector(id), err=m=>{ g("#cewrErr").textContent=m; };
+    const name=g("#cName").value.trim()||("Custom"+(CEWR.length+1)), thr=+g("#cThr").value, dur=Math.round(+g("#cDur").value), tgt=g("#cTgt").value===""?null:+g("#cTgt").value;
+    if(!(thr>=0)||g("#cThr").value==="") return err("Enter a threshold in ML/d."); if(!(dur>=1&&dur<=366)) return err("Duration must be 1–366 days.");
+    if(CEWR.some(e=>e.code===name)) return err("A custom constraint with that name exists."); if(tgt!=null&&!(tgt>=0&&tgt<=100)) return err("Target must be 0–100.");
+    const e={code:name,pu:"custom",custom:true,handler:+g("#cCons").value?"flow_handle":"lowflow_handle",consecutive:g("#cCons").value==="1",thr,dur,sm:+g("#cSm").value,em:+g("#cEm").value,target:tgt,maxint:0,pus:["custom"]};
+    CEWR.push(e); saveCEWR(); S.flow.cform=false; S.flow.ewr=thrKey(e); Object.assign(S.flow,{xlim:String(niceUp(e.thr*1.6)),dmax:Math.min(366,Math.max(30,Math.ceil(e.dur*1.25))),sm:e.sm,em:e.em,days:e.consecutive?"consec":"any"}); render(); };
 }
 function wireFlow(){
-  const d=$("flowDet"); if(!d) return;
+  const d=$("flowDet"); if(!d) return; wireCustom(d);
   d.addEventListener("toggle",()=>{ if(ev_target_is(d)){ S.flow.open=d.open; if(d.open) drawFlow(); } });
   d.querySelectorAll("[data-fl]").forEach(el=>{ const k=el.dataset.fl;
     if(el.tagName==="BUTTON") el.onclick=()=>{ S.flow[k]=el.dataset.v; render(); };
@@ -475,7 +500,7 @@ const niceUp=x=>{ const k=Math.pow(10,Math.max(Math.floor(Math.log10(x))-1,0)); 
 async function fillEwrSelect(){
   const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
   if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } }
-  const list=EWRLIST.get(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+  const list=ewrsFor(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${e.custom?" (custom)":cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
   if($("flowEwr")){
     $("flowEwr").innerHTML=`<option value="">none</option>`+[...list].sort((a,b)=>/^VF/i.test(b.code)-/^VF/i.test(a.code)).map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
     $("flowEwr").onchange=ev=>{ const e=list.find(x=>key(x)===ev.target.value); S.flow.ewr=e?key(e):"";
@@ -490,8 +515,8 @@ async function fillEwrSelect(){
     pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); lock(); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
   }
 }
-const curEwr=()=>{ const l=EWRLIST.get(META.gauges[S.sel.i])||[]; return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
-const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(EWRLIST.get(gg)||[],gg); return S.flow.thr.map(k=>g.find(e=>e.key===k)).filter(Boolean); };
+const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
+const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg); return S.flow.thr.map(k=>g.find(e=>e.key===k)).filter(Boolean); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
 async function drawFlow(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
