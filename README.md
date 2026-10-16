@@ -64,6 +64,42 @@ Then open <http://localhost:8792/ewr_analysis_dashboard.html> (the page must be 
 - The server listens on localhost only. Uploaded flows are kept in `.user_scenarios/` (not committed) so the flow charts can be drawn.
 - The EWR calculations are done by [py_ewr](https://pypi.org/project/py-ewr/) (version 2.4.11 or later).
 
+## Running on Azure ML compute (flow charts enabled)
+
+If you have an Azure ML compute instance, you can run the server there to get the full dashboard including flow charts (heat map, hydrograph, flow duration curves). Choose **Terminal** from the compute's application list.
+
+1. **Clone the repo and install dependencies:**
+
+   ```bash
+   git clone https://github.com/RoryANU/ewr-analysis-dashboard.git
+   cd ewr-analysis-dashboard
+   pip install -r requirements.txt
+   ```
+
+2. **Copy your data files** onto the compute. The model output files live on Databricks mounts (`/dbfs/mnt/...`), which are not reachable from Azure ML. Either copy them from the underlying Azure Storage account using `azcopy` / Azure CLI, or download them from Databricks and upload to the compute.
+
+3. **Change the bind address** so Azure ML's port proxy can reach the server (it defaults to `127.0.0.1`, which blocks external access):
+
+   ```bash
+   sed -i "s/('127.0.0.1'/('0.0.0.0'/" src/server.py
+   ```
+
+4. **Start the server:**
+
+   ```bash
+   python3 src/server.py
+   ```
+
+5. **Open the dashboard** in your browser at:
+
+   ```
+   https://<compute-name>-8792.<region>.instances.azureml.ms/ewr_analysis_dashboard.html
+   ```
+
+   Find `<compute-name>` under **Compute → Compute instances** in Azure ML Studio. Find `<region>` in your workspace's **Overview → Location** (e.g. `australiaeast`). If you already have JupyterLab or VS Code open from that compute, the browser URL bar contains both values.
+
+6. To revert the bind address change afterwards: `git checkout src/server.py`.
+
 ## Working from Databricks (no command line, no server)
 
 If you can only run code in Databricks notebooks, use the notebook `notebooks/run_your_scenarios.ipynb`. It runs the EWR tool on your model output inside Databricks and writes a copy of the dashboard with your results built in. You then download that one HTML file and open it in your browser: no localhost and no terminal.
@@ -80,6 +116,32 @@ Limits of this route: the flow charts (heat map, hydrograph, flow duration curve
 To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install pandas numpy shapely`, then `!python src/build_dashboard.py` from the repository folder, and commit the new `ewr_analysis_dashboard.html`.
 
 If you can run a terminal somewhere (for example a laptop or a Databricks web terminal), the "Your data" section above (`python3 src/server.py`) lets you add scenarios inside the page and use the flow charts.
+
+## TODO
+
+- [ ] Heatmap contours should be dynamically resized based on the range of values; no more than 3–4 levels, 0 should not be a level, and levels should use 5/10/20% increments only
+- [ ] EWR codes on the heatmap need to be more readable
+- [ ] The EWR description in the dropdown should not say "max gap"
+- [ ] The EWR overlay explanation on the heatmap (e.g. "▢ OB1 (flow_handle, consecutive): ≥20000 ML/d for 4 days …") should not restate the EWR definition; replace it with a simple table showing achievement % for scenario A, scenario B, the difference, and the target
+- [ ] The differential flow duration curve should not default to log scale; log scale should be optional
+- [ ] UpSet plots should not display values of 1; bars should just be circles (matching the drilled-in style)
+- [ ] Differential flow duration curves should be filtered by the EWR's timing window; only EWR thresholds that share a common timing window should be selectable together
+- [ ] Hydrograph with interevent exceedance display should include a "years in 10" summary statistic that dynamically updates as the visible time range is filtered
+- [ ] Add quick-filter buttons for key drought periods: Millennium, Tinderbox, Federation, WWII
+- [ ] Y-axis range should auto-resize to the new max when the hydrograph time range is filtered
+- [ ] Add manual start/end date entry fields for the hydrograph in addition to the Plotly drag-to-zoom selection
+- [ ] Frequency ratio colour scale should use red → white → blue (matching the standard Excel version): 0 = red, 0.9 = white, 1 = blue
+- [ ] Interevent colour scale should use the standard Excel green → yellow/orange → red regime: 0 = green, 10 = red
+- [ ] Heatmap colour scale min/max should rescale dynamically based on the data in the current field of view, snapping in 5% increments only
+- [ ] *(Backburner)* Replace the binary consecutive/any-days toggle with a sliding scale: consecutive (no gaps) → increasing max allowed gaps within an event → any days
+- [ ] Prevent selecting the same scenario as both base and comparison in differential mode
+- [ ] When loading new data, allow adding it to an existing scenario (not just creating a new one)
+- [ ] Allow manually adding custom constraints / flow regimes to the heatmap (user-defined thresholds and timing windows)
+- [ ] *(Backburner)* Expand the map to show key constraint sites, storages, towns, etc.
+- [ ] The right-hand info panel should be resizable (draggable divider) to adjust how much of the window it occupies; flow analysis plots should resize accordingly
+- [ ] *(Backburner)* Document / understand the inner workings of the HTML+JS that produce the heatmap and flow plots (how data flows from the embedded JSON through to Plotly rendering)
+- [ ] Heatmap occasionally throws "Could not draw: Maximum call stack size exceeded"; if this occurs, automatically reduce the date density (coarser x-axis) until the plot renders within stack limits
+- [ ] *(Backburner)* Monthly differential FDC heatmap
 
 ## Notes
 
