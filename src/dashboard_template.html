@@ -137,7 +137,11 @@ const ETP_MAX=0.5, DIV={fr:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25};   // differen
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,(LOWER[m]?-v:v)/DIV[m])), g=[236,236,236];   // green = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(g,[42,157,74],x):mixc(g,[209,73,91],-x)})`; }
-  return m==="fr"||m==="ach"||m==="mz"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
+  if(m==="fr"){ const x=Math.max(0,Math.min(1.0,v)), w=[255,255,255];   // frequency ratio: 0 red, 0.9 white, 1 blue (as in the Excel version)
+    return `rgb(${x<=0.9?mixc([215,48,39],w,x/0.9):mixc(w,[33,102,172],(x-0.9)/0.1)})`; }
+  if(m==="et"){ const x=Math.max(0,Math.min(1,v*ETY/10));   // years in 10 exceeding the MRIP: 0 green, 5 yellow, 10 red (Excel green-yellow-red)
+    return `rgb(${x<.5?mixc([99,190,123],[255,235,132],x/.5):mixc([255,235,132],[248,105,107],(x-.5)/.5)})`; }
+  return m==="ach"||m==="mz"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
 
 // ---- map (same look as the original SDL map) ---------------------------------------------------------------------
 const colours={NSW:"#4e79a7",VIC:"#59a14f",QLD:"#e15759",SA:"#f28e2b",ACT:"#b07aa1"};
@@ -493,7 +497,11 @@ async function drawFlow(){
       const ew=curEwr(), q=`/api/heatmap?${base}&xlim=${encodeURIComponent(f.xlim)}&dmax=${f.dmax}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d=await flowGet(q); if(tok!==FLOWTOKEN) return;
       f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
       const kind=D?f.show:"base", z=d[kind]||d.base, diff=D&&kind==="diff";
-      let zmax=100, zmin=0; if(diff){ zmax=Math.max(10,Math.ceil(Math.max(...z.flat().map(Math.abs))/10)*10); zmin=-zmax; }
+      // colour range follows the cells in view, snapped to 5% steps (symmetric about 0 for differences)
+      const fitScale=(xr,yr)=>{ let mn=Infinity, mx=-Infinity; d.durations.forEach((du,j)=>{ if(yr&&(du<yr[0]||du>yr[1])) return; d.thresholds.forEach((t,i)=>{ if(xr&&(t<xr[0]||t>xr[1])) return; const v=z[j][i]; if(v==null) return; if(v<mn) mn=v; if(v>mx) mx=v; }); });
+        if(!isFinite(mn)) return diff?[-5,5]:[0,100]; if(diff){ const m=Math.max(5,Math.ceil(Math.max(Math.abs(mn),Math.abs(mx))/5)*5); return [-m,m]; }
+        const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
+      let [zmin,zmax]=fitScale();
       const title=diff?`% change from ${c.bn} to ${c.cn}`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
       let hvt=""; if(ew&&d.mark){ const m=d.mark, df=Math.round((m[1]-m[0])*10)/10;
         hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
@@ -501,11 +509,14 @@ async function drawFlow(){
       const cx=ew?Math.round(ew.thr/d.spacing)*d.spacing:0, cellShapes=ew&&ew.dur>=1&&ew.dur<=d.durations.length?[
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"black",width:1.5},fillcolor:"rgba(0,0,0,0)"}]:[];
-      Plotly.newPlot("flowPlot",[
+      await Plotly.newPlot("flowPlot",[
         {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.0f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
         lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:cellShapes,annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:34,ay:-26,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),cfg);
+      const hp=$("flowPlot"); if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
+      hp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to what is in view
+        const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b]},[0]); });
       let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}.`;
       let tbl=""; if(ew&&d.mark){ const m=d.mark, df=Math.round((m[1]-m[0])*10)/10;
         tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
@@ -527,7 +538,7 @@ async function drawFlow(){
         const hp=$("flowPlot"), gaps=ie?ie.exceed:[], dayMs=864e5, parse=v=>Date.parse(String(v).replace(" ","T").slice(0,19)+"Z"), t0=parse(d.dates[0]), t1=parse(d.dates[d.dates.length-1])+dayMs;
         const hasStat=ew&&ew.maxint>0;
         document.querySelectorAll("#hydroTools").forEach(x=>x.remove());
-        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div>${hasStat?`<div class="seg"><span class="lbl">Years in 10 with an inter-event gap beyond ${ew.maxint} yr</span><b id="hydroStat"></b></div>`:""}</div>`);
+        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div><div class="seg"><span class="lbl">From</span><input type="date" id="hydFrom" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[0]}"> <span class="lbl">to</span><input type="date" id="hydTo" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[d.dates.length-1]}"></div>${hasStat?`<div class="seg"><span class="lbl">Years in 10 with an inter-event gap beyond ${ew.maxint} yr</span><b id="hydroStat"></b></div>`:""}</div>`);
         const stat=(a,b)=>{ if(!hasStat) return; a=Math.max(a,t0); b=Math.min(b,t1); const ex=gaps.reduce((n,g)=>n+Math.max(0,Math.min(parse(g.end)+dayMs,b)-Math.max(parse(g.start),a)),0); $("hydroStat").textContent=(b>a?(ex/(b-a)*10).toFixed(1):"–")+" (visible range "+new Date(a).toISOString().slice(0,10)+" to "+new Date(b-dayMs).toISOString().slice(0,10)+")"; };
         const fitY=(a,b)=>{ const i0=d.dates.findIndex(x=>x>=new Date(a).toISOString().slice(0,10)), i1=d.dates.length-1-[...d.dates].reverse().findIndex(x=>x<=new Date(b).toISOString().slice(0,10)); let mx=-Infinity, mn=Infinity;
           for(let i=Math.max(i0,0);i<=i1&&i<d.flow.length;i++){ const v=d.flow[i]; if(v>mx) mx=v; if(v>0&&v<mn) mn=v; }
@@ -537,10 +548,13 @@ async function drawFlow(){
           lay({xaxis:ax("Date"),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear"}),showlegend:false,shapes:shade.concat(thrLine(ew))}),cfg);
         stat(t0,t1);
         if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
-        hp.on("plotly_relayout",ev=>{   // the visible time range drives the y-axis range and the years-in-10 statistic
-          if(ev["xaxis.autorange"]){ stat(t0,t1); Plotly.relayout(hp,{"yaxis.autorange":true}); return; }
+        const setDates=(a,b)=>{ $("hydFrom").value=new Date(a).toISOString().slice(0,10); $("hydTo").value=new Date(b-dayMs).toISOString().slice(0,10); };
+        hp.on("plotly_relayout",ev=>{   // the visible time range drives the y-axis range, the years-in-10 statistic and the date fields
+          if(ev["xaxis.autorange"]){ stat(t0,t1); setDates(t0,t1); Plotly.relayout(hp,{"yaxis.autorange":true}); return; }
           const r=ev["xaxis.range"]||(ev["xaxis.range[0]"]!==undefined?[ev["xaxis.range[0]"],ev["xaxis.range[1]"]]:null); if(!r) return;
-          stat(parse(r[0]),parse(r[1])); fitY(parse(r[0]),parse(r[1])); });
+          stat(parse(r[0]),parse(r[1])); setDates(Math.max(parse(r[0]),t0),Math.min(parse(r[1]),t1)); fitY(parse(r[0]),parse(r[1])); });
+        const typed=()=>{ const a=$("hydFrom").value, b=$("hydTo").value; if(a&&b&&a<=b) Plotly.relayout(hp,{"xaxis.range":[a,new Date(parse(b)+dayMs).toISOString().slice(0,10)]}); };   // typed dates: whole days, end date included
+        $("hydFrom").onchange=typed; $("hydTo").onchange=typed;
         $("hydroTools").onclick=e=>{ const b=e.target.closest("button[data-dr]"); if(!b) return; if(b.dataset.dr==="all") Plotly.relayout(hp,{"xaxis.autorange":true}); else Plotly.relayout(hp,{"xaxis.range":[b.dataset.a,b.dataset.b]}); };
         msg.textContent=`${c.bn}: daily flow at ${c.gauge}.`+note;
       } else {   // dfdc: change in the % of time flow is at or above each flow (comparison - base)
@@ -561,7 +575,13 @@ async function drawFlow(){
 }
 
 function select(sel){ S.cell=null;  S.sel=singlePU(sel); refresh(); }
-function refresh(){ if(typeof syncSrc==="function") syncSrc(); if(typeof updateClimDisable==="function") updateClimDisable(); S.sel=singlePU(S.sel); paintMap(); render(); if(typeof pushHash==="function") pushHash(); }
+function guardSame(){   // differential mode: base and comparison cannot be the same scenario (same policy and climate)
+  if(S.mode!=="diff"||!$("pol")) return;
+  if(S.pol===S.bpol&&S.cli===S.bcli){ const alt=policyChoices().find(i=>i!==S.bpol); if(alt!=null){ S.pol=alt; $("pol").value=alt; } else { const c=META.climates.findIndex((_,k)=>k!==S.bcli); if(c>=0&&!isCustom(S.pol)){ S.cli=c; $("cli").value=c; } } }
+  const dis=(sel,val,on)=>[...$(sel).options].forEach(o=>{ o.disabled=on&&+o.value===val; });
+  dis("pol",S.bpol,S.cli===S.bcli); dis("bpol",S.pol,S.cli===S.bcli); dis("cli",S.bcli,S.pol===S.bpol); dis("bcli",S.cli,S.pol===S.bpol);
+}
+function refresh(){ guardSame(); if(typeof syncSrc==="function") syncSrc(); if(typeof updateClimDisable==="function") updateClimDisable(); S.sel=singlePU(S.sel); paintMap(); render(); if(typeof pushHash==="function") pushHash(); }
 
 // ---- user scenarios: py_ewr is run by server.py on an uploaded Standard time-series file; the results join the picker as extra policies --
 const isCustom=p=>p>=4;   // the four built-in policies come first

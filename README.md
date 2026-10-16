@@ -129,12 +129,12 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [x] Hydrograph with interevent exceedance display should include a "years in 10" summary statistic that dynamically updates as the visible time range is filtered
 - [x] Add quick-filter buttons for key drought periods: Millennium, Tinderbox, Federation, WWII
 - [x] Y-axis range should auto-resize to the new max when the hydrograph time range is filtered
-- [ ] Add manual start/end date entry fields for the hydrograph in addition to the Plotly drag-to-zoom selection
-- [ ] Frequency ratio colour scale should use red → white → blue (matching the standard Excel version): 0 = red, 0.9 = white, 1 = blue
-- [ ] Interevent colour scale should use the standard Excel green → yellow/orange → red regime: 0 = green, 10 = red
-- [ ] Heatmap colour scale min/max should rescale dynamically based on the data in the current field of view, snapping in 5% increments only
+- [x] Add manual start/end date entry fields for the hydrograph in addition to the Plotly drag-to-zoom selection
+- [x] Frequency ratio colour scale should use red → white → blue (matching the standard Excel version): 0 = red, 0.9 = white, 1 = blue
+- [x] Interevent colour scale should use the standard Excel green → yellow/orange → red regime: 0 = green, 10 = red
+- [x] Heatmap colour scale min/max should rescale dynamically based on the data in the current field of view, snapping in 5% increments only
 - [ ] *(Backburner)* Replace the binary consecutive/any-days toggle with a sliding scale: consecutive (no gaps) → increasing max allowed gaps within an event → any days
-- [ ] Prevent selecting the same scenario as both base and comparison in differential mode
+- [x] Prevent selecting the same scenario as both base and comparison in differential mode
 - [ ] When loading new data, allow adding it to an existing scenario (not just creating a new one)
 - [ ] Allow manually adding custom constraints / flow regimes to the heatmap (user-defined thresholds and timing windows)
 - [ ] *(Backburner)* Expand the map to show key constraint sites, storages, towns, etc.
