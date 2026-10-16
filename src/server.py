@@ -332,14 +332,14 @@ def heatmap(q):
     thresholds = np.arange(0, xlim + 1, spacing)
     durations = np.arange(1, dmax + 1)
     af, n_years = achievement_frequencies(df.to_numpy(dtype=float), df.index, thresholds, durations, sm, em, consec)
-    z = lambda a: np.round(a.T, 1).tolist()          # (durations x thresholds), as plotted
+    z = lambda a: np.round(a.T, 3).tolist()          # (durations x thresholds), as plotted
     out = {"thresholds": thresholds.tolist(), "durations": durations.tolist(), "xlim": xlim, "spacing": spacing, "years": n_years,
            "dates": [df.index[0].strftime("%Y-%m-%d"), df.index[-1].strftime("%Y-%m-%d")], "base": z(af[0])}
     if len(ids) == 2:
         out["comp"], out["diff"] = z(af[1]), z(af[1] - af[0])
     if q.get("mthr") and q.get("mdur"):               # exact % of years at one (threshold, duration), e.g. an EWR's own requirement
         one, _ = achievement_frequencies(df.to_numpy(dtype=float), df.index, np.array([float(q["mthr"])]), np.array([int(float(q["mdur"]))]), sm, em, consec)
-        out["mark"] = [round(float(v), 1) for v in one[:, 0, 0]]
+        out["mark"] = [round(float(v), 3) for v in one[:, 0, 0]]
     out["consecutive"] = consec
     return out
 
@@ -373,7 +373,7 @@ def curves(q):
     if any(len(v) == 0 for v in vals.values()):
         raise ValueError("no flow data inside that timing window")
     thrs = [float(t) for t in (q.get("thr") or "").split(",") if t.strip()]
-    marks = [{"thr": t, **{k: round(float(exceed_pct(v, t)), 2) for k, v in vals.items()}} for t in thrs]
+    marks = [{"thr": t, **{k: round(float(exceed_pct(v, t)), 3) for k, v in vals.items()}} for t in thrs]
     if kind == "fdc":
         p = np.linspace(0, 100, 401)
         out = {"kind": "fdc", "p": np.round(p, 2).tolist(), "marks": marks}
@@ -392,8 +392,8 @@ def curves(q):
         lo = max(float(pos.min()), 0.01)
         xs = np.geomspace(lo, float(allv.max()), 500)
         pb, pc = exceed_pct(vals["base"], xs), exceed_pct(vals["comp"], xs)
-        return {"kind": "dfdc", "x": np.round(xs, 3).tolist(), "base": np.round(pb, 2).tolist(), "comp": np.round(pc, 2).tolist(),
-                "diff": np.round(pc - pb, 2).tolist(), "marks": marks}
+        return {"kind": "dfdc", "x": np.round(xs, 3).tolist(), "base": np.round(pb, 3).tolist(), "comp": np.round(pc, 3).tolist(),
+                "diff": np.round(pc - pb, 3).tolist(), "marks": marks}
     raise ValueError(f"unknown curve kind {kind!r}")
 
 
