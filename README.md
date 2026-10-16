@@ -29,6 +29,7 @@ data/
     sdl_resource_units.geojson   SDL unit boundaries
     rivers.geojson               rivers drawn on the map
     bom_gauge_stations.csv       gauge names and locations (Bureau of Meteorology Water Data Online)
+    constraint_sites.csv         constraint sites drawn on the map (MDBA constraint focus areas; hand-maintained, approximate locations)
   reference/
     objective_reference.csv      ecological objective codes, descriptions and themes
   example_scenarios/             small made-up daily flow files for trying "Your data" (Broken and Goulburn gauges)

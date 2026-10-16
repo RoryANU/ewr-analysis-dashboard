@@ -41,6 +41,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .legend .ramp{height:10px;width:160px;border:1px solid #0004;margin:3px 0}
 .legend .ends{display:flex;justify-content:space-between}
 .mxw{overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px;margin:6px 0}.mxw text{font:10px system-ui,sans-serif;fill:#222}.mxw .hd{font-size:10px;fill:#555}
+.con{width:11px;height:11px;background:#d1495b;border:1.5px solid #fff;box-shadow:0 0 0 1px #7a1f2b;transform:rotate(45deg);margin:1.5px}
 .legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:1px solid #0006}
 .mxbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin:14px 0 4px}.mxbar>b{font-size:13px}
 .seg{display:flex;align-items:center;gap:6px}.seg .lbl{font-size:11px;color:var(--mut)}
@@ -85,7 +86,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script>
-const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__;
+const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__, CONSTRAINTS=__CONSTRAINTS__;
 const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et],...]}]
 // ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28]]
 ROWS.forEach(r=>{ const t=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=t.length?t:[META.themes.indexOf("Unclassified")]; });
@@ -171,6 +172,11 @@ units.eachLayer(l=>{ const p=l.feature.properties; if(!/barwon.?darling/i.test(p
     x.bindTooltip(esc(p.name),{sticky:true}); x.on("click",e=>{ L.DomEvent.stopPropagation(e); if(activeSdl(p.sdl)) select({type:"sdl",i:p.sdl}); }); }); });
 map.createPane("rivers").style.zIndex=401; map.getPane("rivers").style.pointerEvents="none";
 map.createPane("gauges").style.zIndex=420;
+map.createPane("constraints").style.zIndex=425;
+const conLayer=L.layerGroup(CONSTRAINTS.map(c=>{ const m=L.marker([c.lat,c.lon],{pane:"constraints",icon:L.divIcon({className:"",html:'<div class="con"></div>',iconSize:[14,14],iconAnchor:[7,7]})});
+  m.bindTooltip(`<b>${esc(c.name)}</b><br>${esc(c.river)}<br>${esc(c.note)}`,{sticky:true});
+  m.bindPopup(`<b>${esc(c.name)}</b> (${esc(c.river)})<br>${esc(c.note)}<br><small>Source: ${esc(c.source)}<br>Location is approximate (an anchor point in the reach).<br><a href="${esc(c.url)}" target="_blank" rel="noopener">MDBA page</a></small>`);
+  return m; })).addTo(map);
 const riverW=o=>({3:0.7,4:1.1,5:1.6,6:2.2}[o]??3);
 L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:L.canvas({pane:"rivers"}),style:f=>({color:"#1f78b4",weight:riverW(f.properties.o),opacity:0.85})}).addTo(map);
 const GM={}, gaugeRows={}; ROWS.forEach(r=>(gaugeRows[r[2]]??=[]).push(r));
@@ -205,7 +211,8 @@ lg.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); L.DomEvent.disableClick
   const btn=L.DomUtil.create("button","",d); btn.type="button"; btn.textContent="Legend ▸"; btn.style.cssText="border:0;background:none;font:600 12px system-ui;cursor:pointer;padding:0";
   const body=L.DomUtil.create("div","",d); body.style.display="none";
   body.innerHTML="<b>Surface water SDL units</b><br>"+Object.entries(colours).map(([k,c])=>`<i style="background:${c}"></i>${k}<br>`).join("")+
-    `<i style="background:#ffd92f;border-radius:50%"></i>Gauge with EWR results<br><i style="background:#1f78b4;height:3px;vertical-align:3px"></i>River (thicker = larger)<br><small>Solid = in 2026 review EWR results<br>Faded/dashed = not in results</small>`;
+    `<i style="background:#ffd92f;border-radius:50%"></i>Gauge with EWR results<br><i style="background:#1f78b4;height:3px;vertical-align:3px"></i>River (thicker = larger)<br><small>Solid = in 2026 review EWR results<br>Faded/dashed = not in results</small><br><label style="cursor:pointer"><input type="checkbox" id="conToggle" checked> <i style="background:#d1495b;transform:rotate(45deg);width:9px;height:9px"></i>Constraint sites (MDBA focus areas)</label>`;
+  setTimeout(()=>{ const t=document.getElementById("conToggle"); if(t) t.onchange=()=>t.checked?conLayer.addTo(map):map.removeLayer(conLayer); },0);
   btn.onclick=()=>{ const open=body.style.display==="none"; body.style.display=open?"block":"none"; btn.textContent=open?"Legend ▾":"Legend ▸"; body.style.marginTop=open?"4px":"0"; };
   return d; };
 lg.addTo(map);

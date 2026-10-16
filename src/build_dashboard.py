@@ -90,6 +90,9 @@ bom = pd.read_csv(ROOT / "data/map/bom_gauge_stations.csv", dtype=str)
 for c in ("station_latitude", "station_longitude"):
     bom[c] = pd.to_numeric(bom[c], errors="coerce")
 bom = bom.dropna(subset=["station_latitude"]).drop_duplicates("station_no").set_index("station_no")
+# constraint sites (data/map/constraint_sites.csv): points drawn on the map; the file is hand-maintained
+CONSTRAINTS = [{"name": r.name, "river": r.river, "lat": float(r.lat), "lon": float(r.lon), "note": r.flow_note, "source": r.source, "url": r.source_url}
+               for r in pd.read_csv(ROOT / "data/map/constraint_sites.csv").itertuples()]
 GAUGES, unplotted = [], []
 for gid in gids:
     if gid in bom.index:
@@ -125,7 +128,7 @@ META = {"policies": POLICIES, "climates": CLIMATES, "pus": pus, "sdls": sdls, "g
 def build(template_text, out_name):
     html = template_text
     for tag, val in {"__DATA__": gj, "__GAUGES__": GAUGES, "__ROWS__": ROWS,
-                     "__RIVERS__": json.load(open(ROOT / "data/map/rivers.geojson")), "__META__": META, "__SCENARIOS__": []}.items():
+                     "__RIVERS__": json.load(open(ROOT / "data/map/rivers.geojson")), "__CONSTRAINTS__": CONSTRAINTS, "__META__": META, "__SCENARIOS__": []}.items():
         html = html.replace(tag, json.dumps(val, separators=(",", ":")))
     open(ROOT / out_name, "w").write(html)
     print(len(html) // 1024, "KB written to", out_name)
