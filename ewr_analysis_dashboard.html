@@ -464,7 +464,7 @@ const niceUp=x=>{ const k=Math.pow(10,Math.max(Math.floor(Math.log10(x))-1,0)); 
 async function fillEwrSelect(){
   const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
   if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } }
-  const list=EWRLIST.get(g), cur=S.flow.ewr, puN=new Set(list.map(e=>e.pu)).size>1, key=thrKey, lab=e=>`${esc(e.code)}${puN?" ("+esc(e.pu.slice(0,24))+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+  const list=EWRLIST.get(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
   if($("flowEwr")){
     $("flowEwr").innerHTML=`<option value="">none</option>`+list.map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
     $("flowEwr").onchange=ev=>{ const e=list.find(x=>key(x)===ev.target.value); S.flow.ewr=e?key(e):"";

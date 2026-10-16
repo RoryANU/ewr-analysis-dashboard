@@ -265,7 +265,15 @@ def ewr_list(gauge):
         out.append({"code": r.Code, "pu": r.PlanningUnitName, "handler": h, "consecutive": h == "flow_handle", "thr": float(thr), "dur": int(dur),
                     "sm": int(sm), "em": int(em), "target": None if pd.isna(tgt) else float(tgt),
                     "maxint": 0.0 if pd.isna(mi.get((r.Code, r.PlanningUnitName))) else float(mi.get((r.Code, r.PlanningUnitName)))})
-    return sorted(out, key=lambda e: (e["code"], e["pu"]))
+    # the same EWR is often defined in several planning units with identical settings: list it once
+    uniq = {}
+    for e in sorted(out, key=lambda e: (e["code"], e["pu"])):
+        k = (e["code"], e["thr"], e["dur"], e["sm"], e["em"], e["target"], e["maxint"], e["handler"])
+        if k in uniq:
+            uniq[k]["pus"].append(e["pu"])
+        else:
+            uniq[k] = {**e, "pus": [e["pu"]]}
+    return list(uniq.values())
 
 
 def interevents(q):
