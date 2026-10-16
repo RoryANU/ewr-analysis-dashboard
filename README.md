@@ -142,7 +142,7 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [x] The right-hand info panel should be resizable (draggable divider) to adjust how much of the window it occupies; flow analysis plots should resize accordingly
 - [ ] *(Backburner)* Document / understand the inner workings of the HTML+JS that produce the heatmap and flow plots (how data flows from the embedded JSON through to Plotly rendering)
 - [x] Heatmap occasionally throws "Could not draw: Maximum call stack size exceeded"; if this occurs, automatically reduce the date density (coarser x-axis) until the plot renders within stack limits
-- [ ] *(Backburner)* Monthly differential FDC heatmap
+- [x] *(Backburner)* Monthly differential FDC heatmap
 
 ## Notes
 

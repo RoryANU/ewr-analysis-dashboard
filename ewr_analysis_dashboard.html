@@ -258,9 +258,9 @@ function render(){
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
       ${s.type==="gauge"?`<div class="seg"><span class="lbl">Columns · flow regimes</span><span class="tabs sm"><button data-act="expand-x" class="${COLL_REG.size===0?"on":""}" title="Expand every flow regime into its EWRs">Expand</button><button data-act="collapse-x" class="${META.regimes.every(x=>COLL_REG.has(x))?"on":""}" title="Collapse every flow regime into one column">Collapse</button></span></div>`:""}
     </div>
-    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
+    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}${monthlyPanel()}`;
 
-  $("panel").innerHTML=h; wireFlow();
+  $("panel").innerHTML=h; wireFlow(); wireMonthly();
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -523,6 +523,34 @@ async function fillEwrSelect(){
     pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); lock(); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
   }
 }
+// ---- monthly differential flow duration: its own panel under Flow analysis (differential mode, uploaded scenarios) ----------------
+S.mflow={open:false,xlim:""}; let MTOKEN=0;
+function monthlyPanel(){
+  const c=flowCtx(); if(!c||!c.ok||!isDiff()) return "";
+  return `<details id="mflowDet" class="flowp"${S.mflow.open?" open":""}><summary>Monthly differential flow duration · ${esc(gaugeName(S.sel.i))}</summary>
+    <div class="mxbar"><div class="seg"><span class="lbl">Max flow (ML/d)</span><input id="mXlim" type="number" min="10" step="10" value="${esc(S.mflow.xlim)}" placeholder="auto"></div></div>
+    <div id="mflowMsg" class="note"></div><div id="mflowPlot"></div></details>`;
+}
+function wireMonthly(){
+  const d=$("mflowDet"); if(!d) return;
+  d.addEventListener("toggle",()=>{ S.mflow.open=d.open; if(d.open) drawMonthly(); });
+  $("mXlim").onchange=e=>{ S.mflow.xlim=e.target.value.trim(); drawMonthly(); };
+  if(S.mflow.open) drawMonthly();
+}
+async function drawMonthly(){
+  const c=flowCtx(); if(!c||!c.ok||!S.mflow.open||!$("mflowPlot")) return;
+  const msg=$("mflowMsg"), tok=++MTOKEN; if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
+  msg.textContent="Loading …";
+  try{
+    const d=await flowGet(`/api/curves?base=${encodeURIComponent(c.base)}&comp=${encodeURIComponent(c.comp)}&gauge=${encodeURIComponent(c.gauge)}&kind=mdfdc${S.mflow.xlim?"&ymax="+encodeURIComponent(S.mflow.xlim):""}`); if(tok!==MTOKEN) return;
+    let mx=0; d.diff.forEach(r=>r.forEach(v=>{ if(v!=null&&Math.abs(v)>mx) mx=Math.abs(v); })); const zm=Math.max(5,Math.ceil(mx/5)*5), ml=d.months.map(m=>MONTHS[m-1]);
+    const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
+    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:-zm,zmax:zm,colorscale:scale(RDBU),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
+        hovertemplate:"<b>%{z:+.3f} pts</b><br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
+      {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category"}),yaxis:ax("Flow (ML/day)"),showlegend:false},{responsive:true,displaylogo:false});
+    msg.style.whiteSpace="pre-wrap"; msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: for each month, the change in the % of that month's days at or above each flow (blue = more time at or above that flow).`;
+  }catch(e){ if(tok===MTOKEN) msg.textContent="Could not draw: "+e.message; }
+}
 const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
 const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg); return S.flow.thr.map(k=>g.find(e=>e.key===k)).filter(Boolean); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
@@ -718,7 +746,7 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 
 // ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
 (function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
-  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); const fp=$("flowPlot"); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); };
+  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","mflowPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
   try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) pn.style.width=w+"px"; }catch(e){}
   if(window.ResizeObserver) new ResizeObserver(()=>map.invalidateSize()).observe($("map")); else addEventListener("resize",()=>map.invalidateSize());   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
   map.invalidateSize(); addEventListener("load",()=>map.invalidateSize()); setTimeout(()=>map.invalidateSize(),300);   // after fonts / layout settle

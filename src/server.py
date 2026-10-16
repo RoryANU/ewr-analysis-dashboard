@@ -12,7 +12,7 @@ Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/heatmap?base=<id>[&comp=<id>]&gauge=<g>&xlim=&dmax=&sm=&em=   threshold x duration achievement heat map data
     GET  /api/ewrs?gauge=<g>                                               EWRs at a gauge handled by flow_handle / lowflow_handle
     GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
-    GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc[&thr=400,2000]   hydrograph, flow duration curve, differential flow duration curve
+    GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
     GET  /api/forget?id=<id>           delete a stored scenario
 
 An uploaded scenario's daily flows are kept in .user_scenarios/<id>.csv (repository root) so the flow charts can be drawn later.
@@ -361,6 +361,34 @@ def curves(q):
     if kind == "hydro":
         s = gauge_series(q["base"], gauge).dropna()
         return {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in s.index], "flow": np.round(s.to_numpy(), 2).tolist()}
+    if kind == "mdfdc":
+        # monthly differential flow duration: for each calendar month, the change (comparison - base) in the % of that month's days at or above each flow
+        if not q.get("comp"):
+            raise ValueError("the monthly differential flow duration needs two scenarios")
+        ser = {k: gauge_series(q[k], gauge).dropna() for k in ("base", "comp")}
+        order = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]
+        by = {k: {m: np.sort(v[v.index.month == m].to_numpy(dtype=float)) for m in order} for k, v in ser.items()}
+        top = 0.0
+        for k in by:
+            for m in order:
+                a = by[k][m]
+                if len(a):
+                    top = max(top, float(np.percentile(a, 99)))          # flow still reached on 1% of that month's days
+        ymax = float(q["ymax"]) if q.get("ymax") else top
+        if ymax <= 0:
+            raise ValueError("no positive flows to plot")
+        ymax = nice_ceiling(ymax)
+        flows = np.linspace(0, ymax, 201)[1:]
+        base = np.full((len(flows), 12), np.nan)
+        comp = np.full((len(flows), 12), np.nan)
+        for j, m in enumerate(order):
+            if len(by["base"][m]):
+                base[:, j] = exceed_pct(by["base"][m], flows)
+            if len(by["comp"][m]):
+                comp[:, j] = exceed_pct(by["comp"][m], flows)
+        diff = comp - base
+        z = lambda a: [[None if np.isnan(v) else round(float(v), 3) for v in row] for row in a]
+        return {"kind": "mdfdc", "months": order, "flows": np.round(flows, 2).tolist(), "diff": z(diff), "base": z(base), "comp": z(comp), "ymax": ymax}
     sm, em = int(q.get("sm") or 0), int(q.get("em") or 0)       # optional timing window (months, may wrap the year end): only days in it are used
 
     def windowed(series):
