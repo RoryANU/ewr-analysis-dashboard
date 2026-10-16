@@ -15,7 +15,8 @@ select,button{font:500 12.5px system-ui,sans-serif;color:var(--fg);background:#f
 button{cursor:pointer}button:hover{border-color:var(--acc);background:#f4f8fd}
 #main{flex:1;display:flex;min-height:0}
 #map{flex:1;min-width:0}
-#panel{width:600px;max-width:55%;overflow:auto;border-left:1px solid var(--line);padding:12px 14px;background:#fff}
+#divider{flex:none;width:6px;margin:0 -3px;cursor:col-resize;z-index:500;background:transparent;position:relative}#divider:hover,#divider.drag{background:#1f4e8c55}
+#panel{width:600px;max-width:80%;min-width:260px;overflow:auto;border-left:1px solid var(--line);padding:12px 14px;background:#fff}
 #panel h2{font-size:15px;margin:0 0 2px}
 .crumbs{font-size:12px;color:var(--mut);margin-bottom:8px}.crumbs a{color:var(--acc);cursor:pointer}
 .flowp{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 10px}.flowp summary{cursor:pointer;font-weight:600;font-size:12.5px}.flowp details.multi{position:relative;display:inline-block}.flowp details.multi summary{font-weight:400;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;cursor:pointer}.flowp .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:220px;overflow:auto;min-width:230px;box-shadow:0 4px 14px #0003}.flowp .pop label{display:block;white-space:nowrap;padding:1px 0;font-size:12px}
@@ -52,7 +53,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 #scnList{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}#scnList div{display:flex;align-items:center;gap:8px;padding:2px 0}#scnList span{flex:1}
 .tabs{display:inline-flex}.tabs button{border-radius:0}.tabs button:first-child{border-radius:6px 0 0 6px}.tabs button:last-child{border-radius:0 6px 6px 0}
 .tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-@media(max-width:800px){#main{flex-direction:column}#panel{width:100%;max-width:none;height:55%;border-left:0;border-top:1px solid var(--line)}}
+@media(max-width:800px){#divider{display:none}#main{flex-direction:column}#panel{width:100%;max-width:none;height:55%;border-left:0;border-top:1px solid var(--line)}}
 </style></head><body><div id="app">
 <div id="bar">
   <h1>EWR analysis tool</h1>
@@ -77,7 +78,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label class="fld"><span>Time-series file (.csv)</span><input id="scnFile" type="file" accept=".csv,.txt,text/csv"></label>
   <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download an example CSV header (one column per gauge, named <gauge>_flow)">Download template header</button><span style="flex:1"></span><button id="scnClose">Close</button></div>
   <div id="scnStatus"></div><div id="scnList"></div></dialog>
-<div id="main"><div id="map"></div><div id="panel"></div></div></div>
+<div id="main"><div id="map"></div><div id="divider" title="Drag to resize the panel (double-click to reset)"></div><div id="panel"></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script>
@@ -503,9 +504,9 @@ async function drawFlow(){
     if(!EWRLIST.has(c.gauge)) await fillEwrSelect();
     if(f.chart==="heat"){
       if(f.ewr&&!EWRLIST.has(c.gauge)) await fillEwrSelect();
-      const ew=curEwr(), q=`/api/heatmap?${base}&xlim=${encodeURIComponent(f.xlim)}&dmax=${f.dmax}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d=await flowGet(q); if(tok!==FLOWTOKEN) return;
-      f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
-      const kind=D?f.show:"base", z=d[kind]||d.base, diff=D&&kind==="diff";
+      const ew=curEwr(), q=`/api/heatmap?${base}&xlim=${encodeURIComponent(f.xlim)}&dmax=${f.dmax}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
+      let d=d0; f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
+      const kind=D?f.show:"base", diff=D&&kind==="diff"; let z=d[kind]||d.base;
       // colour range follows the cells in view, snapped to 5% steps (symmetric about 0 for differences)
       const fitScale=(xr,yr)=>{ let mn=Infinity, mx=-Infinity; d.durations.forEach((du,j)=>{ if(yr&&(du<yr[0]||du>yr[1])) return; d.thresholds.forEach((t,i)=>{ if(xr&&(t<xr[0]||t>xr[1])) return; const v=z[j][i]; if(v==null) return; if(v<mn) mn=v; if(v>mx) mx=v; }); });
         if(!isFinite(mn)) return diff?[-5,5]:[0,100]; if(diff){ const m=Math.max(5,Math.ceil(Math.max(Math.abs(mn),Math.abs(mx))/5)*5); return [-m,m]; }
@@ -515,14 +516,19 @@ async function drawFlow(){
       let hvt=""; if(ew&&d.mark){ const m=d.mark, df=Math.round((m[1]-m[0])*10)/10;
         hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
       // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
-      const cx=ew?Math.round(ew.thr/d.spacing)*d.spacing:0, cellShapes=ew&&ew.dur>=1&&ew.dur<=d.durations.length?[
+      const shapesFor=()=>{ const cx=ew?Math.round(ew.thr/d.spacing)*d.spacing:0; return ew&&ew.dur>=1&&ew.dur<=d0.durations.length?[
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
-        {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"black",width:1.5},fillcolor:"rgba(0,0,0,0)"}]:[];
+        {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"black",width:1.5},fillcolor:"rgba(0,0,0,0)"}]:[]; };
+      // "Maximum call stack size exceeded": draw again on a coarser grid (every 2nd, 4th, ... threshold and duration) until it fits
+      const coarsen=(o,k)=>{ const th=(a)=>a.filter((_,i)=>i%k===0), pick=m=>m&&th(m).map(r=>th(r)); const ro=th(o.thresholds), dr=th(o.durations); return Object.assign({},o,{thresholds:ro,durations:dr,spacing:o.spacing*k,base:o.base.filter((_,j)=>j%k===0).map(th),comp:o.comp&&o.comp.filter((_,j)=>j%k===0).map(th),diff:o.diff&&o.diff.filter((_,j)=>j%k===0).map(th)}); };
+      let ck=1, coarseNote="";
+      for(;;){ try{
       await Plotly.newPlot("flowPlot",[
         {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.0f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
-        lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:cellShapes,annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}}));   // the EWR label can be dragged out of the way
+        lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}}));   // the EWR label can be dragged out of the way
+        break; }catch(er){ if(!/call stack/i.test(String(er&&er.message))||ck>=16) throw er; ck*=2; d=coarsen(d0,ck); z=d[kind]||d.base; [zmin,zmax]=fitScale(); coarseNote=` Drawn at 1/${ck} of the resolution (the full grid was too large for the browser).`; } }
       const hp=$("flowPlot"); if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
       hp.on("plotly_relayout",ev=>{ if("annotations[0].ax" in ev||"annotations[0].ay" in ev){ const an=hp.layout.annotations[0]; f.lblOff=[an.ax,an.ay]; return; }   // remember where the label was put
         if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to what is in view
@@ -531,7 +537,7 @@ async function drawFlow(){
       let tbl=""; if(ew&&d.mark){ const m=d.mark, df=Math.round((m[1]-m[0])*10)/10;
         tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
           (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${df>=0?"+":""}${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
-      msg.style.whiteSpace="pre-wrap"; msg.textContent=info; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
+      msg.style.whiteSpace="pre-wrap"; msg.textContent=info+coarseNote; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
     } else {
       const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(",")+"&sm="+thr[0].sm+"&em="+thr[0].em:"";   // the curve covers the shared timing window of the selected EWRs
       const d=await flowGet(`/api/curves?${base}&kind=${f.chart}${tq}`); if(tok!==FLOWTOKEN) return;
@@ -665,6 +671,17 @@ function setSrc(src){ S.src=src; S.cell=null;
   else { const u=CUSTOM.filter(c=>!c.removed).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } S.cli=0; S.bcli=0; }
   S.sel={type:"none"}; fillPolicyOptions(); syncSrc(); refresh(); }
 $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
+
+// ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
+(function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
+  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); const fp=$("flowPlot"); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); };
+  try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) pn.style.width=w+"px"; }catch(e){}
+  dv.onpointerdown=e=>{ dv.setPointerCapture(e.pointerId); dv.classList.add("drag");
+    const mv=ev=>{ const r=main.getBoundingClientRect(); apply(Math.round(Math.max(260,Math.min(r.right-ev.clientX,r.width*.8)))); };
+    const up=()=>{ dv.classList.remove("drag"); dv.removeEventListener("pointermove",mv); dv.removeEventListener("pointerup",up); try{ localStorage.setItem("ewrPanelW",parseInt(pn.style.width)); }catch(e){} };
+    dv.addEventListener("pointermove",mv); dv.addEventListener("pointerup",up); };
+  dv.ondblclick=()=>{ apply(600); try{ localStorage.removeItem("ewrPanelW"); }catch(e){} };
+})();
 
 // ---- events ------------------------------------------------------------------------------------------------------
 const policyChoices=()=>S.src==="user"?CUSTOM.filter(c=>!c.removed).map(c=>c.P):[0,1,2,3];   // demo: the four built-in policies; your data: your scenarios

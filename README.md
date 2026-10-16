@@ -138,9 +138,9 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [ ] When loading new data, allow adding it to an existing scenario (not just creating a new one)
 - [ ] Allow manually adding custom constraints / flow regimes to the heatmap (user-defined thresholds and timing windows)
 - [ ] *(Backburner)* Expand the map to show key constraint sites, storages, towns, etc.
-- [ ] The right-hand info panel should be resizable (draggable divider) to adjust how much of the window it occupies; flow analysis plots should resize accordingly
+- [x] The right-hand info panel should be resizable (draggable divider) to adjust how much of the window it occupies; flow analysis plots should resize accordingly
 - [ ] *(Backburner)* Document / understand the inner workings of the HTML+JS that produce the heatmap and flow plots (how data flows from the embedded JSON through to Plotly rendering)
-- [ ] Heatmap occasionally throws "Could not draw: Maximum call stack size exceeded"; if this occurs, automatically reduce the date density (coarser x-axis) until the plot renders within stack limits
+- [x] Heatmap occasionally throws "Could not draw: Maximum call stack size exceeded"; if this occurs, automatically reduce the date density (coarser x-axis) until the plot renders within stack limits
 - [ ] *(Backburner)* Monthly differential FDC heatmap
 
 ## Notes
