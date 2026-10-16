@@ -515,6 +515,14 @@ async function fillEwrSelect(){
   const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
   if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } }
   const list=ewrsFor(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${e.custom?" (custom)":cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+  if(S.flow.gaugeFor!==g){   // the gauge changed: keep the same EWR if this gauge has it (and take its settings), otherwise reset the heat map settings
+    const first=S.flow.gaugeFor===undefined; S.flow.gaugeFor=g;
+    if(!first){ const code=(cur||"").split("|")[0], e=list.find(x=>key(x)===cur)||(code&&list.find(x=>x.code===code)); let changed=false;
+      if(e){ S.flow.ewr=key(e); Object.assign(S.flow,{xlim:String(niceUp(e.thr*1.6)),dmax:Math.min(366,Math.max(30,Math.ceil(e.dur*1.25))),sm:e.sm,em:e.em,days:e.consecutive?"consec":"any"}); changed=true; }
+      else if(cur||S.flow.xlim!==""||S.flow.dmax!==120||S.flow.sm!==7||S.flow.em!==6||S.flow.days!=="any"){ Object.assign(S.flow,{ewr:"",xlim:"",dmax:120,sm:7,em:6,days:"any"}); changed=true; }
+      const have=new Set(thrGroups(list,g).map(x=>x.key)), kept=S.flow.thr.filter(k=>have.has(k)); if(kept.length!==S.flow.thr.length){ S.flow.thr=kept; changed=true; }
+      if(changed){ render(); return; } }
+  }
   if($("flowEwr")){
     $("flowEwr").innerHTML=`<option value="">none</option>`+[...list].sort((a,b)=>/^VF/i.test(b.code)-/^VF/i.test(a.code)).map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
     $("flowEwr").onchange=ev=>{ const e=list.find(x=>key(x)===ev.target.value); S.flow.ewr=e?key(e):"";
@@ -523,6 +531,7 @@ async function fillEwrSelect(){
   }
   if($("flowThr")){   // several thresholds can be drawn at once on the flow duration charts
     const grp=thrGroups(list,g), pop=$("flowThr"), glab=e=>`${esc(e.code)}${e.codes.length>1?" ("+esc(e.codes.join(", "))+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+    S.flow.thr=sameWin(grp,S.flow.thr).map(e=>e.key); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none";   // drop selections that no longer exist at this gauge or clash on timing window
     pop.innerHTML=grp.map(e=>`<label><input type="checkbox" value="${esc(e.key)}"${S.flow.thr.includes(e.key)?" checked":""}> ${glab(e)} · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.reg?" · "+esc(e.reg):""}</label>`).join("")||"<i>No flow-threshold EWRs at this gauge</i>";
     const lock=()=>{ const on=S.flow.thr.map(k=>grp.find(e=>e.key===k)).filter(Boolean), w=on[0];   // EWRs are selectable together only when they share one timing window
       pop.querySelectorAll("input").forEach(i=>{ const e=grp.find(x=>x.key===i.value); i.disabled=!!w&&!i.checked&&(e.sm!==w.sm||e.em!==w.em); i.parentElement.style.opacity=i.disabled?.45:1; i.parentElement.title=i.disabled?`Different timing window (${MONTHS[w.sm-1]}–${MONTHS[w.em-1]} is selected)`:""; }); }; lock();
@@ -568,7 +577,8 @@ async function drawMonthly(){
   }catch(e){ if(tok===MTOKEN) msg.textContent="Could not draw: "+e.message; }
 }
 const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
-const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg); return S.flow.thr.map(k=>g.find(e=>e.key===k)).filter(Boolean); };
+const sameWin=(grp,keys)=>{ const on=keys.map(k=>grp.find(e=>e.key===k)).filter(Boolean), w=on[0]; return w?on.filter(e=>e.sm===w.sm&&e.em===w.em):[]; };   // only EWRs sharing the first one's timing window stay selected
+const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), on=sameWin(g,S.flow.thr); S.flow.thr=on.map(e=>e.key); return on; };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
 async function drawFlow(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
@@ -626,14 +636,14 @@ async function drawFlow(){
         if(ew&&ew.maxint>0){
           ie=await flowGet(`/api/interevents?scn=${encodeURIComponent(c.base)}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(ew.code)}&pu=${encodeURIComponent(ew.pu)}`); if(tok!==FLOWTOKEN) return;
           const nextDay=s=>{ const t=new Date(s+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+1); return t.toISOString().slice(0,10); };
-          shade=ie.exceed.map(g=>({type:"rect",xref:"x",x0:g.start,x1:nextDay(g.end),yref:"paper",y0:0,y1:1,fillcolor:"rgba(192,57,43,.20)",line:{width:0},layer:"below"}));
-          note=`\n▢ ${ew.code}: max recommended inter-event period ${ew.maxint} yr (${ie.mrip_days} days). ${ie.exceed.length} of ${ie.n_gaps} gaps between successful events exceed it (shaded)`+(ie.exceed.length?`, longest ${Math.max(...ie.exceed.map(g=>g.days))} days.`:".");
+          shade=ie.exceed.map(g=>({type:"rect",xref:"x",x0:new Date(Date.parse(nextDay(g.end)+"T00:00:00Z")-Math.max(0,g.days-ie.mrip_days)*864e5).toISOString().slice(0,10),x1:nextDay(g.end),yref:"paper",y0:0,y1:1,fillcolor:"rgba(192,57,43,.20)",line:{width:0},layer:"below"}));
+          note=`\n▢ ${ew.code}: max recommended inter-event period ${ew.maxint} yr (${ie.mrip_days} days). ${ie.exceed.length} of ${ie.n_gaps} gaps between successful events exceed it; the time beyond the maximum is shaded`+(ie.exceed.length?`, longest ${Math.max(...ie.exceed.map(g=>g.days))} days.`:".");
         } else if(ew) note=`\n▢ ${ew.code} has no maximum inter-event period, so there is nothing to shade.`;
-        const hp=$("flowPlot"), gaps=ie?ie.exceed:[], dayMs=864e5, parse=v=>Date.parse(String(v).replace(" ","T").slice(0,19)+"Z"), t0=parse(d.dates[0]), t1=parse(d.dates[d.dates.length-1])+dayMs;
+        const hp=$("flowPlot"), dayMs=864e5, parse=v=>Date.parse(String(v).replace(" ","T").slice(0,19)+"Z"), gaps=ie?ie.exceed.map(g=>{ const b=parse(g.end)+dayMs; return {a:b-Math.max(0,g.days-ie.mrip_days)*dayMs,b}; }):[], t0=parse(d.dates[0]), t1=parse(d.dates[d.dates.length-1])+dayMs;
         const hasStat=ew&&ew.maxint>0;
         document.querySelectorAll("#hydroTools").forEach(x=>x.remove());
-        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div><div class="seg"><span class="lbl">From</span><input type="date" id="hydFrom" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[0]}"> <span class="lbl">to</span><input type="date" id="hydTo" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[d.dates.length-1]}"></div>${hasStat?`<div class="seg"><span class="lbl">Years in 10 with an inter-event gap beyond ${ew.maxint} yr</span><b id="hydroStat"></b></div>`:""}</div>`);
-        const stat=(a,b)=>{ if(!hasStat) return; a=Math.max(a,t0); b=Math.min(b,t1); const ex=gaps.reduce((n,g)=>n+Math.max(0,Math.min(parse(g.end)+dayMs,b)-Math.max(parse(g.start),a)),0); $("hydroStat").textContent=(b>a?(ex/(b-a)*10).toFixed(1):"–")+" (visible range "+new Date(a).toISOString().slice(0,10)+" to "+new Date(b-dayMs).toISOString().slice(0,10)+")"; };
+        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div><div class="seg"><span class="lbl">From</span><input type="date" id="hydFrom" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[0]}"> <span class="lbl">to</span><input type="date" id="hydTo" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[d.dates.length-1]}"></div>${hasStat?`<div class="seg"><span class="lbl">Years in 10 exceeding the ${ew.maxint} yr inter-event maximum</span><b id="hydroStat"></b></div>`:""}</div>`);
+        const stat=(a,b)=>{ if(!hasStat) return; a=Math.max(a,t0); b=Math.min(b,t1); const ex=gaps.reduce((n,g)=>n+Math.max(0,Math.min(g.b,b)-Math.max(g.a,a)),0); $("hydroStat").textContent=(b>a?(ex/(b-a)*10).toFixed(1):"–")+" (visible range "+new Date(a).toISOString().slice(0,10)+" to "+new Date(b-dayMs).toISOString().slice(0,10)+")"; };
         const fitY=(a,b)=>{ const i0=d.dates.findIndex(x=>x>=new Date(a).toISOString().slice(0,10)), i1=d.dates.length-1-[...d.dates].reverse().findIndex(x=>x<=new Date(b).toISOString().slice(0,10)); let mx=-Infinity, mn=Infinity;
           for(let i=Math.max(i0,0);i<=i1&&i<d.flow.length;i++){ const v=d.flow[i]; if(v>mx) mx=v; if(v>0&&v<mn) mn=v; }
           if(!isFinite(mx)) return;           Plotly.relayout(hp,{"yaxis.range":f.ylog?[Math.log10(mn||1),Math.log10(mx*1.1)]:[0,mx*1.05]}); };
