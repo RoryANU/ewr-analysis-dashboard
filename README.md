@@ -119,11 +119,11 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 
 ## TODO
 
-- [ ] Heatmap contours should be dynamically resized based on the range of values; no more than 3–4 levels, 0 should not be a level, and levels should use 5/10/20% increments only
-- [ ] EWR codes on the heatmap need to be more readable
-- [ ] The EWR description in the dropdown should not say "max gap"
-- [ ] The EWR overlay explanation on the heatmap (e.g. "▢ OB1 (flow_handle, consecutive): ≥20000 ML/d for 4 days …") should not restate the EWR definition; replace it with a simple table showing achievement % for scenario A, scenario B, the difference, and the target
-- [ ] The differential flow duration curve should not default to log scale; log scale should be optional
+- [x] Heatmap contours should be dynamically resized based on the range of values; no more than 3–4 levels, 0 should not be a level, and levels should use 5/10/20% increments only
+- [x] EWR codes on the heatmap need to be more readable
+- [x] The EWR description in the dropdown should not say "max gap"
+- [x] The EWR overlay explanation on the heatmap (e.g. "▢ OB1 (flow_handle, consecutive): ≥20000 ML/d for 4 days …") should not restate the EWR definition; replace it with a simple table showing achievement % for scenario A, scenario B, the difference, and the target
+- [x] The differential flow duration curve should not default to log scale; log scale should be optional
 - [ ] UpSet plots should not display values of 1; bars should just be circles (matching the drilled-in style)
 - [ ] Differential flow duration curves should be filtered by the EWR's timing window; only EWR thresholds that share a common timing window should be selectable together
 - [ ] Hydrograph with interevent exceedance display should include a "years in 10" summary statistic that dynamically updates as the visible time range is filtered

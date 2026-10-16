@@ -19,6 +19,7 @@ button{cursor:pointer}button:hover{border-color:var(--acc);background:#f4f8fd}
 #panel h2{font-size:15px;margin:0 0 2px}
 .crumbs{font-size:12px;color:var(--mut);margin-bottom:8px}.crumbs a{color:var(--acc);cursor:pointer}
 .flowp{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 10px}.flowp summary{cursor:pointer;font-weight:600;font-size:12.5px}.flowp details.multi{position:relative;display:inline-block}.flowp details.multi summary{font-weight:400;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;cursor:pointer}.flowp .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:220px;overflow:auto;min-width:230px;box-shadow:0 4px 14px #0003}.flowp .pop label{display:block;white-space:nowrap;padding:1px 0;font-size:12px}
+.ewrtbl{border-collapse:collapse;margin-top:6px;white-space:normal}.ewrtbl th,.ewrtbl td{border:1px solid var(--line);padding:3px 10px;text-align:right;font-weight:400}.ewrtbl th{background:#f1f3f6;font-weight:600}.ewrtbl th:first-child{text-align:left}
 .flowp .mxbar{margin:8px 0 4px}.flowp input[type=number]{width:96px;font:inherit;padding:2px 4px}.flowp select{padding:2px 6px}
 .cellp{border:1px solid var(--line);border-radius:8px;margin:8px 0}.cellh{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px}.cellh span{color:var(--mut);flex:1}.cellh button{border:0;background:none;font-size:16px;line-height:1;padding:0 4px;color:var(--mut)}.cellt{max-height:300px;overflow:auto}.cellt th{position:sticky;top:0;text-align:left}.cellt td{text-align:left;white-space:normal}
 .tiles{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}.tiles .tile{min-width:110px}
@@ -90,7 +91,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const $=id=>document.getElementById(id);
 
 const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
-const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:0.9,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:0.9,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 
 // ---- values and averages -----------------------------------------------------------------------------------------
@@ -427,7 +428,7 @@ function flowPanel(){
       ${f.chart==="heat"?`<div class="seg"><span class="lbl">Days</span>${tabs([["any","Any days"],["consec","Consecutive"]],f.days,"days")}</div>
         <div class="seg"><span class="lbl">Max threshold (ML/d)</span><input type="number" min="10" step="10" data-fl="xlim" value="${esc(f.xlim)}" placeholder="${f.xlimAuto||"auto"}"></div>
         <div class="seg"><span class="lbl">Max duration (days)</span><input type="number" min="2" max="366" data-fl="dmax" value="${f.dmax}"></div>
-        <div class="seg"><span class="lbl">Timing window</span>${mo(f.sm,"sm")} to ${mo(f.em,"em")}</div>`:(f.chart==="hydro"?`<label class="seg"><input type="checkbox" data-fl="ylog"${f.ylog?" checked":""}> <span class="lbl">log scale</span></label>`:"")}
+        <div class="seg"><span class="lbl">Timing window</span>${mo(f.sm,"sm")} to ${mo(f.em,"em")}</div>`:(f.chart==="hydro"?`<label class="seg"><input type="checkbox" data-fl="ylog"${f.ylog?" checked":""}> <span class="lbl">log scale</span></label>`:(f.chart==="dfdc"?`<label class="seg"><input type="checkbox" data-fl="xlog"${f.xlog?" checked":""}> <span class="lbl">log scale</span></label>`:""))}
     </div><div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div></details>`;
 }
 function wireFlow(){
@@ -443,13 +444,21 @@ function wireFlow(){
   if(S.flow.open) drawFlow();
 }
 const ev_target_is=d=>true;
+// contour levels follow the data: at most 4, never 0, only 5 / 10 / 20 % steps (smallest step that keeps to 4 levels)
+function contourLevels(z){
+  let lo=Infinity, hi=-Infinity; for(const row of z) for(const v of row) if(v!=null){ if(v<lo) lo=v; if(v>hi) hi=v; }
+  if(!(hi>lo)) return [];
+  const at=st=>{ const o=[]; for(let v=Math.ceil(lo/st)*st; v<=hi; v+=st) if(v!==0&&v>lo&&v<hi) o.push(v); return o; };
+  for(const st of [5,10,20]){ const l=at(st); if(l.length<=4) return l; }
+  const l=at(20), n=4; return Array.from({length:n},(_,i)=>l[Math.round(i*(l.length-1)/(n-1))]);
+}
 const niceUp=x=>{ const k=Math.pow(10,Math.max(Math.floor(Math.log10(x))-1,0)); return Math.ceil(x/k)*k; };
 async function fillEwrSelect(){
   const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
   if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } }
   const list=EWRLIST.get(g), cur=S.flow.ewr, puN=new Set(list.map(e=>e.pu)).size>1, key=thrKey, lab=e=>`${esc(e.code)}${puN?" ("+esc(e.pu.slice(0,24))+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
   if($("flowEwr")){
-    $("flowEwr").innerHTML=`<option value="">none</option>`+list.map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.maxint>0?` · max gap ${e.maxint} yr`:""}</option>`).join("");
+    $("flowEwr").innerHTML=`<option value="">none</option>`+list.map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
     $("flowEwr").onchange=ev=>{ const e=list.find(x=>key(x)===ev.target.value); S.flow.ewr=e?key(e):"";
       if(e){ Object.assign(S.flow,{xlim:String(niceUp(e.thr*1.6)),dmax:Math.min(366,Math.max(30,Math.ceil(e.dur*1.25))),sm:e.sm,em:e.em,days:e.consecutive?"consec":"any"}); }   // the parameters follow the EWR; they stay editable
       render(); };
@@ -488,14 +497,14 @@ async function drawFlow(){
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"black",width:1.5},fillcolor:"rgba(0,0,0,0)"}]:[];
       Plotly.newPlot("flowPlot",[
         {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:scale(diff?RDBU:BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.0f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
-        {type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:diff?zmin:5,end:zmax,size:5,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}].concat(ew?[{type:"scatter",mode:"markers+text",x:[ew.thr],y:[ew.dur],text:[ew.code],textposition:"top right",textfont:{size:11,color:"black"},
+        ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
-        lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:cellShapes}),cfg);
+        lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:cellShapes,annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:34,ay:-26,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),cfg);
       let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}.`;
-      if(ew&&d.mark){ const m=d.mark, pc=v=>v+"% of years";
-        info+=`\n▢ ${ew.code} (${ew.handler==="flow_handle"?"flow_handle, consecutive":"lowflow_handle, non-consecutive"}): ≥${ew.thr} ML/d for ${ew.dur} days, ${MONTHS[ew.sm-1]}–${MONTHS[ew.em-1]}. `+
-          (D?`${c.bn} ${pc(m[0])} → ${c.cn} ${pc(m[1])} (${m[1]-m[0]>=0?"+":""}${Math.round((m[1]-m[0])*10)/10} points)`:`Achieved in ${pc(m[0])}`)+(ew.target!=null?`; EWR target ${ew.target}% of years.`:"."); }
-      msg.style.whiteSpace="pre-wrap"; msg.textContent=info;
+      let tbl=""; if(ew&&d.mark){ const m=d.mark, df=Math.round((m[1]-m[0])*10)/10;
+        tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
+          (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${df>=0?"+":""}${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
+      msg.style.whiteSpace="pre-wrap"; msg.textContent=info; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
     } else {
       const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(","):"";
       const d=await flowGet(`/api/curves?${base}&kind=${f.chart}${tq}`); if(tok!==FLOWTOKEN) return;
@@ -517,7 +526,7 @@ async function drawFlow(){
         const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=Math.round((m.comp-m.base)*100)/100; return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
           marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
         Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"<b>%{y:+.1f} pts</b> of time<br>flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
-          lay({xaxis:ax("Flow (ML/day)",{type:"log"}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000"}),showlegend:false,shapes:vl}),cfg);
+          lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear"}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000"}),showlegend:false,shapes:vl}),cfg);
         msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow).`+markNote();
       }
     }
