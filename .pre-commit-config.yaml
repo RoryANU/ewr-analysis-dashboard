@@ -1,7 +1,45 @@
+# Install once with `pip install -r requirements-dev.txt && pre-commit install`; run everything with `pre-commit run --all-files`.
+# The slow tests (py_ewr over many years of data, a full dashboard rebuild) are marked `slow` and run with plain `pytest`, not here.
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
     hooks:
-      - id: ruff          # lint
-        args: [--fix]
-      - id: ruff-format   # formatter
+      - id: check-ast # Python files parse
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        files: \.(json|geojson)$
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: debug-statements
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        files: \.(py|md|toml|ya?ml|txt)$
+      - id: end-of-file-fixer
+        files: \.(py|md|toml|ya?ml|txt)$
+      - id: trailing-whitespace
+        files: \.(py|toml|ya?ml|txt)$
+      - id: check-added-large-files
+        args: [--maxkb=102400] # data/results/*.csv are ~50 MB each; anything bigger is probably a mistake
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1 # keep equal to ruff== in requirements-dev.txt
+    hooks:
+      - id: ruff-check # lint
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format # formatter
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system # uses the project environment so py_ewr / pandas are importable
+        types: [python]
+        pass_filenames: false # the file list comes from [tool.mypy] in pyproject.toml
+      - id: pytest-fast
+        name: pytest (fast, not slow)
+        entry: pytest -m "not slow" -q -x -p no:cacheprovider
+        language: system
+        pass_filenames: false
+        files: ^(src/|tests/|data/|requirements|pyproject\.toml|ewr_analysis_dashboard\.html)
