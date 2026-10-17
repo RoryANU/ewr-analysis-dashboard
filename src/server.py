@@ -1,6 +1,7 @@
 """Local server for the EWR analysis dashboard: serves the page and runs py_ewr on an uploaded scenario.
 
-    python3 src/server.py [port]        (default 8792, localhost only; then open http://localhost:8792/)
+    python3 src/server.py [port] [--no-browser] [--host=0.0.0.0]   (default 8792, localhost only; if that port is busy the next free one is used,
+                                                   and the dashboard opens in your default browser). Easiest start: python3 run.py
 
 Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/ping                     -> {"ok": true}
@@ -28,16 +29,21 @@ For each EWR in the uploaded scenario the job returns the two metrics the tool u
           and MRIP days = MaxInterEventYears x 365       (py_ewr successful inter-events)
 """
 
+import hmac
 import ipaddress
 import json
 import math
 import re
+import secrets
+import socket
 import sys
 import threading
 import time
 import traceback
 import uuid
 import warnings
+import webbrowser
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
@@ -51,6 +57,8 @@ JOBS: dict[str, dict[str, Any]] = {}
 STORE = ROOT / ".user_scenarios"
 FLOWS: dict[str, Any] = {}  # scenario id -> flow DataFrame (date index, one column per gauge)
 MAX_BYTES = 400 * 1024 * 1024
+DEFAULT_PORT = 8792
+PAGE = "/ewr_analysis_dashboard.html"
 
 
 def _authority(hostport: str | None, default_port: int | None = None) -> tuple[str, int | None] | None:
@@ -193,7 +201,7 @@ def run_scenario(
 
     if fmt not in FORMATS:
         raise ValueError(f"unknown data format {fmt!r}")
-    table = data_inputs.get_EWR_table(None)
+    table = parameter_sheet()
     sel = table[table.Gauge.isin(sdl_gauges)]
     partners = set()
     for col in ("Multigauge", "WeirpoolGauge"):
@@ -439,16 +447,27 @@ def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: 
 _EWR_CACHE: dict[str, Any] = {}
 
 
+def parameter_sheet():
+    """The EWR tool's parameter sheet as read from py_ewr, in a private copy. py_ewr's own get_EWR_table() returns one cached
+    table that its ScenarioHandler later edits in place (get_all_successful_interEvents writes 0 into blank TargetFrequency
+    cells), so reading EWR definitions from it would depend on what ran before."""
+    from py_ewr import data_inputs
+
+    if "table" not in _EWR_CACHE:
+        read = getattr(data_inputs.get_EWR_table, "__wrapped__", data_inputs.get_EWR_table)  # bypass py_ewr's cache
+        _EWR_CACHE["table"] = read(None).copy(deep=True)
+    return _EWR_CACHE["table"]
+
+
 def ewr_list(gauge: str) -> list[dict[str, Any]]:
     """EWRs at a gauge that the EWR tool evaluates with flow_handle (consecutive days) or lowflow_handle (non-consecutive days)."""
     import pandas as pd
     from py_ewr import data_inputs
 
-    if not _EWR_CACHE:
+    if "handler" not in _EWR_CACHE:
         cfg = data_inputs.get_ewr_calc_config(None)
         _EWR_CACHE["handler"] = {k: h for h in ("flow_handle", "lowflow_handle") for k in cfg.get(h, [])}
-        _EWR_CACHE["table"] = data_inputs.get_EWR_table(None)
-    t = _EWR_CACHE["table"]
+    t = parameter_sheet()
     t = t[t.Gauge.astype(str) == gauge]
     out = []
     mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"), strict=True)}
@@ -505,11 +524,11 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
     key = (scn_id, gauge, code, pu)
     if key in _EVAL_CACHE:
         return _EVAL_CACHE[key]
-    table = data_inputs.get_EWR_table(None)
+    table = parameter_sheet()
     sel = table[(table.Gauge.astype(str) == gauge) & (table.Code == code) & ((table.PlanningUnitName == pu) if pu else True)]
     if sel.empty:
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
-    sel = sel.iloc[:1]
+    sel = sel.iloc[:1].copy()  # py_ewr gets its own copy to change
     pu = sel.PlanningUnitName.iloc[0]
     num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]  # noqa: E731
     df_F = daily_series(scn_id, gauge).to_frame(gauge)
@@ -985,6 +1004,21 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a: Any, **k: Any) -> None:
         super().__init__(*a, directory=str(ROOT), **k)
 
+    def _authorized(self):
+        """On a localhost-only server anyone on this computer may connect (no token). When bound to other addresses the server has
+        a random token that every request must present: header X-Token, cookie ewr_token, or ?token= (which sets the cookie)."""
+        token = getattr(self.server, "token", None)
+        if not token:
+            return True
+        cookies = {k: v.value for k, v in SimpleCookie(self.headers.get("Cookie", "")).items()}
+        given = [self.headers.get("X-Token"), cookies.get("ewr_token"), parse_qs(urlparse(self.path).query).get("token", [None])[0]]
+        ok = [g is not None and hmac.compare_digest(g.encode(), token.encode()) for g in given]
+        self._set_cookie = ok[2]  # opened from the printed address: remember the token for the page's API calls
+        return any(ok)
+
+    def _deny(self):
+        self._json({"message": "access token required: use the address printed when the server started"}, 401)
+
     def _json(self, obj: Any, code: int = 200, headers: dict[str, str] | None = None) -> None:
         data = json.dumps(_json_safe(obj), allow_nan=False).encode()
         self.send_response(code)
@@ -998,6 +1032,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         u = urlparse(self.path)
+        if not self._authorized():
+            return self._deny()
         if u.path == "/api/forget":
             return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
         if u.path == "/api/ping":
@@ -1027,10 +1063,18 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 return self._json({"error": f"{type(e).__name__}: {e}"}, 400)
-        return super().do_GET()
+        if u.path in ("/", PAGE):  # the only file served: no directory listings, no repository files, no stored uploads
+            self.path = PAGE
+            return super().do_GET()
+        return self._json({"message": "not found"}, 404)
+
+    def do_HEAD(self):
+        self.send_error(405)
 
     def do_POST(self) -> None:
         u = urlparse(self.path)
+        if not self._authorized():
+            return self._deny()
         if u.path == "/api/forget":
             if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address)):
                 return self._json({"message": "origin or host not allowed"}, 403)
@@ -1070,6 +1114,8 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-cache")
+            if getattr(self, "_set_cookie", False):
+                self.send_header("Set-Cookie", f"ewr_token={getattr(self.server, 'token', '')}; Path=/; HttpOnly; SameSite=Strict")
         super().end_headers()
 
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -1077,8 +1123,54 @@ class Handler(SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+def find_free_port(preferred=DEFAULT_PORT, tries=50, host="127.0.0.1"):
+    """The first port from `preferred` up that nothing is listening on; falls back to an OS-chosen port. A port of 0 asks the OS."""
+    if preferred:
+        for port in range(preferred, min(preferred + tries, 65536)):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind((host, port))
+                except OSError:
+                    continue
+                return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
+
+
+def make_server(preferred=DEFAULT_PORT, host="127.0.0.1"):
+    """A ThreadingHTTPServer (localhost only unless `host` says otherwise) at the first free port from `preferred`
+    (retries if another program grabs it first)."""
+    for _ in range(5):
+        try:
+            return ThreadingHTTPServer((host, find_free_port(preferred, host=host)), Handler)
+        except OSError:
+            continue
+    return ThreadingHTTPServer((host, 0), Handler)
+
+
+def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    open_browser = "--no-browser" not in args
+    nums = [a for a in args if a.isdigit()]
+    host = next((a.split("=", 1)[1] for a in args if a.startswith("--host=")), "127.0.0.1")
+    srv = make_server(int(nums[0]) if nums else DEFAULT_PORT, host)
+    port = srv.server_address[1]
+    url = f"http://localhost:{port}{PAGE}"
+    if not _loopback_host(host):  # reachable from other computers: require a random access token
+        srv.token = secrets.token_urlsafe(16)
+        url += f"?token={srv.token}"
+        print(f"Listening on {host}: anyone with this address can use the tool and see uploaded data. Do not share the link.")
+    if nums and int(nums[0]) != port:
+        print(f"Port {nums[0]} is busy, using {port} instead.")
+    print(f"EWR analysis tool running at {url}\nLeave this window open while you use it; close it (or press Ctrl+C) to stop.")
+    if open_browser:
+        threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8792
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"EWR analysis tool on http://localhost:{port}/ewr_analysis_dashboard.html")
-    srv.serve_forever()
+    main()

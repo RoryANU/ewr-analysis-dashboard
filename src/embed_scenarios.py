@@ -19,6 +19,7 @@ sys.path.insert(0, str(HERE))
 from server import FORMATS, run_scenario  # noqa: E402  (the same EWR run as the local server (server.py), imported without starting it)
 
 PLACEHOLDER = "const PRELOADED=[];"
+REKEY = {"A4260527": "A4260524"}  # same re-keying as build_dashboard.py (not imported: importing it runs the build)
 
 
 def resolve_path(path):
@@ -35,9 +36,15 @@ def resolve_path(path):
 
 
 def review_gauges():
+    """Every gauge in the review results, FR and ETP (some gauges have ETP results only): a scenario file is scanned for all
+    of them. Both the ids as given in the results and as the page keys them (REKEY) are included."""
     import pandas as pd
 
-    return sorted(pd.read_csv(ROOT / "data/results/frequency_ratio.csv", dtype={"Gauge": str}, usecols=["Gauge"]).Gauge.dropna().unique())
+    gauges = set()
+    for name in ("frequency_ratio.csv", "etp.csv"):
+        d = pd.read_csv(ROOT / "data/results" / name, dtype=str, usecols=lambda c: c.strip() == "Gauge")
+        gauges |= set(d.iloc[:, 0].dropna().str.strip())
+    return sorted(gauges | {REKEY.get(g, g) for g in gauges})
 
 
 def run_file(path, fmt="Standard time-series", gauges=None):

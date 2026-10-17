@@ -138,20 +138,15 @@ class TestRunFile:
 
     def test_review_gauges_are_the_distinct_sorted_gauges_of_the_results(self):
         g = em.review_gauges()
-        assert g == sorted(set(g)) and len(g) == 144
+        assert g == sorted(set(g)) and len(g) == 156
         assert "A4261002" in g and "409025" in g
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="known discrepancy (see PR): review_gauges() returns the model outputs' A4260527, which has no EWRs in py_ewr's table, and not "
-        "A4260524 where the lake-level EWRs live (build_dashboard.REKEY), so the notebook path never evaluates those EWRs.",
-    )
     def test_every_review_gauge_has_ewrs_in_the_parameter_table(self):
         from py_ewr import data_inputs
 
         t = data_inputs.get_EWR_table(None)
         known = set(t.Gauge.astype(str)) | set(t.Multigauge.dropna().astype(str)) | set(t.WeirpoolGauge.dropna().astype(str))
-        assert [g for g in em.review_gauges() if g not in known] == []
+        assert [g for g in em.review_gauges() if em.REKEY.get(g, g) not in known] == []
 
 
 def test_committed_page_has_exactly_one_embedded_scenarios_slot():
