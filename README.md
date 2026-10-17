@@ -264,6 +264,9 @@ opening/interaction and memoised for the current selection.
 
 Run `node --test tests/test_performance.js` for calculations, link compatibility,
 async failures/cancellation/stale responses, CSV limits and largest-gauge timings.
+`node --test tests/test_dashboard_core.js` covers the page's per-EWR values, differential
+signs, hierarchical averages and selections. Both run in the pre-commit hook; `node` comes
+from `nodejs-wheel` in requirements-dev.txt.
 `pytest tests/test_performance_backend.py` uses controlled parameter/annual fixtures
 and real HTTP handlers for schema, coverage, caching and safe JSON embedding tests.
 Rebuild with `python src/build_dashboard.py`.

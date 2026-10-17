@@ -43,3 +43,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/|tests/|data/|requirements|pyproject\.toml|ewr_analysis_dashboard\.html)
+      - id: node-tests
+        name: node --test (dashboard JavaScript)
+        entry: node --test tests/test_performance.js tests/test_dashboard_core.js
+        language: system # node comes from nodejs-wheel in requirements-dev.txt (or any Node >= 22 on PATH)
+        pass_filenames: false
+        files: ^(src/(dashboard_template\.html|performance\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
