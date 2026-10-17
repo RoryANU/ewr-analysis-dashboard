@@ -114,6 +114,55 @@ def goulburn_run():
     return server.run_scenario(GOULBURN_A.read_bytes(), GOULBURN_GAUGES, None, "Standard time-series", GOULBURN_A.name)
 
 
+@pytest.mark.parametrize(
+    ("days", "maxint", "successful", "severity", "etp"),
+    [
+        (730, 1, False, (2.0, 2.0, 1), 0.5),
+        (365, 1, False, (1.0, 1.0, 0), 0.0),
+        (100, 1, False, (0.27, 0.27, 0), 0.0),
+        (730, 0, False, (None, None, None), None),
+        (730, -1, False, (None, None, None), None),
+        (730, None, False, (None, None, None), None),
+        (730, "invalid", False, (None, None, None), None),
+        (730, 0.001, False, (None, None, None), None),  # MRIP rounds to zero days
+        (0, 1, False, (None, None, None), None),
+        (-1, 1, False, (None, None, None), None),
+        (None, 1, False, (None, None, None), None),
+        ("invalid", 1, False, (None, None, None), None),
+        (730, 1, True, (None, None, None), 0.1849),  # use the 500-day inter-event gap for ETP
+    ],
+)
+def test_date_free_run_severity(monkeypatch, days, maxint, successful, severity, etp):
+    """A date-free record without successful events is one boundary gap, provided its length and MRIP are known."""
+    table = pd.DataFrame({"Gauge": ["405201"], "Multigauge": [""], "WeirpoolGauge": [""]})
+    flow = pd.DataFrame({"405201": [0.0, 0.0]})  # a non-date index, as in ten-thousand-year runs
+    result = pd.DataFrame(
+        {
+            "Gauge": ["405201"],
+            "PlanningUnit": ["PU"],
+            "Code": ["F1"],
+            "Frequency": [0],
+            "TargetFrequency": [50],
+            "MaxInterEventYears": [maxint],
+            "TotalDays": [days],
+            "EventYears": [0],
+        }
+    )
+    inter = pd.DataFrame({"Gauge": ["405201"], "PlanningUnit": ["PU"], "Code": ["F1"], "interEventLength": [500]})
+    monkeypatch.setattr(server, "parameter_sheet", lambda: table)
+    monkeypatch.setattr(server, "load_frames", lambda *args: (flow, pd.DataFrame()))
+    monkeypatch.setattr(evaluate_EWRs, "calc_sorter", lambda *args: ({}, {"PU": {"F1": {2000: [[1]]}}}))
+    monkeypatch.setattr(ScenarioHandler, "get_ewr_results", lambda self: result)
+    monkeypatch.setattr(ScenarioHandler, "get_all_successful_interEvents", lambda self: inter)
+    monkeypatch.setattr(ScenarioHandler, "get_all_successful_events", lambda self: inter if successful else pd.DataFrame())
+
+    rows, _ = server.run_scenario(b"synthetic", ["405201"], fmt="ten thousand year")
+
+    assert len(rows) == 1
+    assert tuple(rows[0][key] for key in ("sev", "sev_b", "eps")) == severity
+    assert rows[0]["et"] == etp
+
+
 @pytest.mark.slow
 class TestRunScenario:
     def test_row_structure_and_value_ranges(self, goulburn_run):
