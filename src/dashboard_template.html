@@ -869,8 +869,8 @@ async function drawFlow(keepZoom){
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
       const title=(diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`)+"<br><i>colour range: visible data</i>";   // the range is refitted on every zoom
-      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(1);
-        hvt=D?`${esc(c.bn)} <b>${r1(m[0])}%</b> → ${esc(c.cn)} <b>${r1(m[1])}%</b> (${+df>=0?"+":""}${df} pts)`:`<b>${r1(m[0])}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
+      let hvt=""; if(ew&&d.mark){ const m=d.mark, dd=m[1]-m[0], df=signed(Math.abs(dd).toFixed(1),dd);
+        hvt=D?`${esc(c.bn)} <b>${r1(m[0])}%</b> → ${esc(c.cn)} <b>${r1(m[1])}%</b> (${df} pts)`:`<b>${r1(m[0])}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
       // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
       const shapesFor=()=>{ const x0=d.xmin||0, cx=ew?x0+Math.round((ew.thr-x0)/d.spacing)*d.spacing:0; return ew&&ew.dur>=d0.durations[0]&&ew.dur<=d0.durations[d0.durations.length-1]?[
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
@@ -896,9 +896,9 @@ async function drawFlow(keepZoom){
           if(JSON.stringify(nz)!==JSON.stringify(f.zoom||null)){ if(nz||f.zoom){ f.zoom=nz; clearTimeout(f.zt); f.zt=setTimeout(()=>drawFlow(true),120); return; } } }
         const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b],colorscale:[diff?divScale(a,b):scale(BLUES)]},[0]); });
       let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}. The colour range fits the cells in view, so it changes when you zoom.`;
-      let tbl=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(2);
+      let tbl=""; if(ew&&d.mark){ const m=d.mark, dd=m[1]-m[0], df=signed(Math.abs(dd).toFixed(2),dd);
         tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
-          (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${+df>=0?"+":""}${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
+          (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
       msg.style.whiteSpace="pre-wrap"; msg.textContent=info+coarseNote; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
     } else {
       const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(",")+"&sm="+thr[0].sm+"&em="+thr[0].em:"";   // the curve covers the shared timing window of the selected EWRs
@@ -951,8 +951,8 @@ async function drawFlow(keepZoom){
         let lo=0, hi=0; for(let i=0;i<d.x.length;i++) if(d.x[i]<=xm){ lo=Math.min(lo,d.diff[i]); hi=Math.max(hi,d.diff[i]); }
         const pad=Math.max((hi-lo)*0.12,1), xr=f.xlog?[Math.log10(d.x[0]),Math.log10(xm)]:[0,xm], yr=[lo-pad,hi+pad];
         const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
-        const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=(m.comp-m.base).toFixed(2); return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${+dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
-          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${r1(m.base)}% → ${esc(c.cn)} ${r1(m.comp)}%<br><b>${+dv>=0?"+":""}${(+dv).toFixed(1)} pts</b> of time<extra></extra>`}; });
+        const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dd=m.comp-m.base, dv=dd.toFixed(2); return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${signed(Math.abs(dd).toFixed(2),dd)}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
+          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${r1(m.base)}% → ${esc(c.cn)} ${r1(m.comp)}%<br><b>${signed(Math.abs(dd).toFixed(1),dd)} pts</b> of time<extra></extra>`}; });
         Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"Change: <b>%{y:+.1f} pts</b> of time<br>Flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
           lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear",range:xr}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000",range:yr}),showlegend:false,shapes:vl}),cfg);
         msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow). `+(thr.length?`Only days in the EWR timing window (${MONTHS[thr[0].sm-1]}–${MONTHS[thr[0].em-1]}) are used.`:"All days of the year are used; select EWRs to restrict the curve to their timing window.")+markNote();
@@ -1065,8 +1065,9 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
   { let rt=0; if(window.ResizeObserver) new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(plots,80); }).observe(pn); }   // window resizes, the mobile layout and the divider all reach the charts
   { let rt; const regrid=()=>{ clearTimeout(rt); rt=setTimeout(()=>{ const f=S.flow; if(f&&f.open&&f.chart==="heat"&&$("flowPlot")&&$("flowPlot").data&&f.cols!==heatCols()) drawFlow(true); },300); };   // resizing the panel or window re-fetches the heat map on a grid that matches its new width
     if(window.ResizeObserver) new ResizeObserver(regrid).observe(pn); addEventListener("resize",regrid); }
-  if(window.ResizeObserver) new ResizeObserver(()=>map.invalidateSize()).observe($("map")); else addEventListener("resize",()=>map.invalidateSize());   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
-  map.invalidateSize(); addEventListener("load",()=>map.invalidateSize()); setTimeout(()=>map.invalidateSize(),300);   // after fonts / layout settle
+  const fitMap=()=>{ map.invalidateSize(); const l=document.querySelector(".legend"); if(l) l.style.maxHeight=Math.max(60,$("map").clientHeight-20)+"px"; };   // the legend scrolls within the map, which is short on small screens
+  if(window.ResizeObserver) new ResizeObserver(fitMap).observe($("map")); else addEventListener("resize",fitMap);   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
+  fitMap(); addEventListener("load",fitMap); setTimeout(fitMap,300);   // after fonts / layout settle
   dv.onpointerdown=e=>{ dv.setPointerCapture(e.pointerId); dv.classList.add("drag");
     const mv=ev=>{ const r=main.getBoundingClientRect(); apply(Math.round(Math.max(260,Math.min(r.right-ev.clientX,r.width*.8)))); };
     const up=()=>{ dv.classList.remove("drag"); dv.removeEventListener("pointermove",mv); dv.removeEventListener("pointerup",up); try{ localStorage.setItem("ewrPanelW",parseInt(pn.style.getPropertyValue("--panel-w"))); }catch(e){} };

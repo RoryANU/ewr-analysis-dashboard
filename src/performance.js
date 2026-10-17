@@ -382,7 +382,7 @@ async function plotSequences(series, active) {
   /** Shorten a series name to rule and scenario, falling back to the full name. */
   const short = s => s.name.split(' · ').slice(1,2).concat(s.name.split(' · ').slice(3,4)).join(' · ') || s.name;
   await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map((s,i) => `${i+1}. ${short(s)}`),z,zmin:0,zmax:1,
-    colorscale:[[0,ANNUAL_FAILED],[.5,ANNUAL_FAILED],[.5,ANNUAL_ACHIEVED],[1,ANNUAL_ACHIEVED]],showscale:false,hoverongaps:false,xgap:1,ygap:2,
+    colorscale:[[0,ANNUAL_FAILED],[.5,ANNUAL_FAILED],[.5,ANNUAL_ACHIEVED],[1,ANNUAL_ACHIEVED]],showscale:false,hoverongaps:true,xgap:1,ygap:2,
     text:z.map(r => r.map(v => v === 0 ? '×' : '')),texttemplate:'%{text}',textfont:{color:'#fff',size:11},
     customdata:z.map((r,j) => r.map(v => [series[j].name, v == null ? 'missing (incomplete or unavailable)' : v ? 'achieved' : 'failed'])),
     hovertemplate:'%{customdata[0]}<br>%{x}: <b>%{customdata[1]}</b><extra></extra>'}],
