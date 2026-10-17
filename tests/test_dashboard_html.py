@@ -104,7 +104,8 @@ class TestRowsAndMeta:
     def test_meta_lookup_lists(self, page):
         m = page["META"]
         assert m["policies"] == bd.POLICIES and m["climates"] == bd.CLIMATES
-        assert set(m) == {"policies", "climates", "pus", "sdls", "gauges", "themes", "regimes", "objs", "objTheme", "objDesc", "ewrThr"}
+        assert set(m) == {"policies", "climates", "pus", "sdls", "gauges", "themes", "regimes", "objs", "objTheme", "objDesc", "ewrThr", "droughts"}
+        assert [(d["k"], d["w0"], d["w1"]) for d in m["droughts"]] == [("fed", 1895, 1902), ("ww2", 1937, 1945), ("mil", 1996, 2009), ("tin", 2017, 2019)]
         for key in ("pus", "sdls", "gauges", "objs", "regimes", "themes"):
             assert m[key] == sorted(m[key]) or key == "themes" or key == "objs"  # sorted lookups (themes: fixed order; objs: by prefix)
             assert len(set(m[key])) == len(m[key]), f"duplicates in {key}"
@@ -127,13 +128,28 @@ class TestRowsAndMeta:
     def test_row_shape_and_index_bounds(self, page):
         m = page["META"]
         for r in page["ROWS"]:
-            assert len(r) == 8
-            pu, sdl, gauge, ewr, objs, regimes, fr, et = r
+            assert len(r) == 13 and r[10] is None and r[12] is None  # gap severity and drought windows: uploads only
+            assert len(r[11]) == NS and all(v is None or 0 <= v <= 2 for v in r[11])  # duration ratio (approximation), capped at 2
+            pu, sdl, gauge, ewr, objs, regimes, fr, et = r[:8]
             assert 0 <= pu < len(m["pus"]) and 0 <= sdl < len(m["sdls"]) and 0 <= gauge < len(m["gauges"])
             assert isinstance(ewr, str) and ewr
             assert objs == sorted(set(objs)) and all(0 <= i < len(m["objs"]) for i in objs)
             assert regimes and regimes == sorted(set(regimes)) and all(0 <= i < len(m["regimes"]) for i in regimes)
             assert len(fr) == len(et) == NS
+
+    def test_meta_and_achieved_years_for_every_ewr(self, page):
+        """r[8] = {T, ny, dur, mrip}; r[9] = EventYears per scenario, present wherever the FR is (the FR file carries both)."""
+        for r in page["ROWS"]:
+            meta, ey, fr = r[8], r[9], r[6]
+            assert set(meta) == {"T", "ny", "dur", "mrip"}
+            assert meta["T"] is None or 0 <= meta["T"] <= 100
+            assert meta["dur"] is None or meta["dur"] >= 0
+            assert meta["mrip"] is None or meta["mrip"] >= 0
+            assert len(ey) == NS and [v is None for v in ey] == [v is None for v in fr]
+            if any(v is not None for v in fr):
+                assert meta["ny"] == pytest.approx(129, abs=0.01)  # 47,117 days of record
+                assert all(0 <= v <= meta["ny"] + 1 for v in ey if v is not None)
+        assert sum(r[8]["T"] is not None for r in page["ROWS"]) > 0.9 * len(page["ROWS"])  # joined to the parameter sheet
 
     def test_rows_are_sorted_and_unique(self, decoded):
         keys = [r["key"] for r in decoded]

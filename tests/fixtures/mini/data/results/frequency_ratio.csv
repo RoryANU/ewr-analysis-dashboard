@@ -1,8 +1,8 @@
-Gauge,PlanningUnitName,State,SWSDLName,EWR,EcoObj,Target,FlowRegime,Policy,ClimateModel,FR
-409025,PU A,VIC,SDL A,LF1,V-NF1,Native Fish,Large fresh,Pre Basin Plan,Historical Climate,0.4
-409025,PU A,VIC,SDL A,LF1,V-NF2,Native Fish,Large fresh,Pre Basin Plan,Historical Climate,0.6
-409025,PU A,VIC,SDL A,LF1,V-NF1,Native Fish,Large fresh,Basin plan 2024,Historical Climate,0.75
-409025,PU A,VIC,SDL A,LF1,V-NF1,Native Fish,Large fresh,Without Development,Hotter and Much Drier 2.0 C,1.0
-A4260527,PU B,SA,SDL B,CLLMM1c,SA-W1,,lower lakes,Pre Basin Plan,Warmer and Wetter 1.5 C,2.0
-888888,PU C,NSW,SDL A,OB1,N-OT1,Other species,Overbank,Pre Basin Plan,Historical Climate,0.3333333333
-999999,PU D,QLD,SDL B,ZZ9,V-NF1,Native Fish,,Pre Basin Plan,Historical Climate,0.9
+Gauge,PlanningUnitName,State,SWSDLName,EWR,EcoObj,Target,FlowRegime,Policy,ClimateModel,FR,EventYears,TotalDays,AverageEventLength
+409025,PU A,VIC,SDL A,LF1,V-NF1,Native Fish,Large fresh,Pre Basin Plan,Historical Climate,0.4,20,36525,6
+409025,PU A,VIC,SDL A,LF1,V-NF2,Native Fish,Large fresh,Pre Basin Plan,Historical Climate,0.6,31,36525,10
+409025,PU A,VIC,SDL A,LF1,V-NF1,Native Fish,Large fresh,Basin plan 2024,Historical Climate,0.75,38,36525,12.5
+409025,PU A,VIC,SDL A,LF1,V-NF1,Native Fish,Large fresh,Without Development,Hotter and Much Drier 2.0 C,1.0,50,36525,
+A4260527,PU B,SA,SDL B,CLLMM1c,SA-W1,,lower lakes,Pre Basin Plan,Warmer and Wetter 1.5 C,2.0,99,36524,40
+888888,PU C,NSW,SDL A,OB1,N-OT1,Other species,Overbank,Pre Basin Plan,Historical Climate,0.3333333333,10,36525,3
+999999,PU D,QLD,SDL B,ZZ9,V-NF1,Native Fish,,Pre Basin Plan,Historical Climate,0.9,45,,

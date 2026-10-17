@@ -201,7 +201,14 @@ class TestAggregate:
 
     def test_every_row_has_one_slot_per_scenario(self, mini_rows):
         for r in mini_rows.values():
-            assert len(r["fr"]) == len(r["et"]) == NS
+            assert len(r["fr"]) == len(r["et"]) == len(r["ey"]) == NS
+
+    def test_achieved_years_and_record_length(self, mini_rows):
+        r = mini_rows[("PU A", "SDL A", "409025", "LF1")]
+        assert r["ey"] == with_values(i6=50.0, i7=25.5, i14=38.0)  # mean(20, 31) for Pre Basin Plan / Historical
+        assert r["ny"] == 100.0  # 36,525 days / 365.25
+        assert mini_rows[("PU B", "SDL B", "A4260524", "CLLMM1c")]["ny"] == 100.0  # 36,524 days: 99.997 rounds to 100.0
+        assert mini_rows[("PU D", "SDL B", "999999", "ZZ9")]["ny"] is None  # no TotalDays
 
     def test_empty_results_give_no_rows(self):
         cols = bd.KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR", "ETP", "State", "scn"]
@@ -264,7 +271,8 @@ class TestRowTable:
             "Unclassified",
         ]
         assert lk["objTheme"] == [5, 6, 2, 3, 3, 3]
-        assert table == [
+        # columns 0-7 are fixed (the page and performance.js index them)
+        assert [r[:8] for r in table] == [
             [0, 0, 0, "BF1", [5], [0], blank(), with_values(i7=0.1)],
             [0, 0, 0, "LF1", [3, 4], [1], with_values(i6=1.0, i7=0.5, i14=0.75), with_values(i7=0.3, i14=0.0)],
             [1, 1, 3, "CLLMM1c", [1], [5], with_values(i8=2.0), blank()],
@@ -272,6 +280,42 @@ class TestRowTable:
             [3, 1, 2, "ZZ9", [3], [4], with_values(i7=0.9), blank()],
             [4, 1, 4, "IC2", [2], [3], blank(), with_values(i7=0.5)],
         ]
+        # 8: {T, ny, dur, mrip} (no parameters passed: unknown); 9: achieved years per scenario (EventYears, mean over objective repeats)
+        none = {"T": None, "dur": None, "mrip": None}
+        assert [r[8] for r in table] == [{**none, "ny": ny} for ny in (None, 100.0, 100.0, 100.0, None, None)]
+        assert all(len(r) == 13 and r[10] is None and r[12] is None for r in table)  # 10, 12: gap severity and drought windows, uploads only
+        assert all(r[11] == blank() for r in table)  # 11: duration ratio; no parameters passed, so no required duration
+        assert [r[9] for r in table] == [
+            blank(),
+            with_values(i6=50.0, i7=25.5, i14=38.0),
+            with_values(i8=99.0),
+            with_values(i7=10.0),
+            with_values(i7=45.0),
+            blank(),
+        ]
+
+    def test_parameters_are_joined_on_gauge_code_and_planning_unit(self, mini_rows):
+        sheet = pd.DataFrame(
+            {
+                "Gauge": ["409025", "409025", "409025"],
+                "Code": ["LF1", "LF1", "LF1"],
+                "PlanningUnitName": ["PU A", "PU A", "PU Z"],
+                "TargetFrequency": ["70", "10", "5"],
+                "Duration": [5, 9, 9],
+                "MaxInter-event": [3.0, 1.0, 1.0],
+                "FlowLevelVolume": ["F", "F", "F"],
+            }
+        )
+        params = bd.ewr_params(sheet)
+        assert params[("409025", "LF1", "PU A")] == {"T": 70.0, "dur": 5, "mrip": 3.0, "kind": "F"}  # the first row of a repeated key
+        assert bd.dr_approx([4.0, None], {"dur": 2, "kind": "V"}) == [None, None]  # volume and level EWRs: no duration ratio
+        table, _ = bd.build_row_table(mini_rows, {o: "Native Fish" for o in bd.objectives_of(mini_rows)}, params)
+        lf1 = next(r for r in table if r[3] == "LF1")
+        assert lf1[8] == {"T": 70.0, "dur": 5, "mrip": 3.0, "ny": 100.0}
+        # 11: mean event length / required duration, capped at 2: PBP Historical mean(6, 10) / 5 = 1.6; BP2024 12.5 / 5 -> 2; WOD missing
+        assert lf1[11] == with_values(i7=1.6, i14=2.0)
+        assert all(r[8]["T"] is None for r in table if r[3] != "LF1")
+        assert bd.ewr_params(None) == {}
 
     def test_new_theme_names_are_appended_after_the_fixed_ones_in_order(self, mini_rows):
         themes = {o: "Zebra Theme" if o == "V-NF1" else "Aardvark Theme" for o in bd.objectives_of(mini_rows)}

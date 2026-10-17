@@ -49,6 +49,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
 
+from drought_windows import DROUGHTS, window_dates
+
 HERE = Path(__file__).parent
 ROOT = HERE.parent  # repository root: the page is served from here; py_ewr comes from pip (pip install -r requirements.txt)
 warnings.filterwarnings("ignore")
@@ -141,6 +143,10 @@ FORMATS = [
     "ten thousand year",
     "Northern connectivity",
 ]
+
+
+# a run_scenario row as the page stores it (an uploaded or embedded scenario's `vals`): these keys, in this order (VALK in the page)
+VAL_KEYS = ("pu", "gauge", "ewr", "fr", "et", "ey", "ny", "sev", "dr", "nm", "win")
 
 
 def load_frames(fmt: str, path: str, sub: str = "") -> tuple[Any, Any]:
@@ -248,33 +254,61 @@ def run_scenario(
     # py_ewr's inter-event summary fails (KeyError 'Gauge') when no EWR in the file has any event at all, e.g. a completely dry
     # scenario (or none has a successful event): with no successful events there are no gaps, so use an empty table (as ewr_eval does).
     has_events = any(lst for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
-    inter = pd.DataFrame()
-    if has_events:
+    empty = pd.DataFrame(columns=["startDate", "endDate", "interEventLength"])
+
+    def summary(get: Any) -> Any:
         try:
-            inter = sh.get_all_successful_interEvents()
+            return get() if has_events else empty
         except KeyError as e:  # events exist but none succeeded (all shorter than MinSpell): py_ewr's summary is empty and fails the same way
             if e.args != ("Gauge",):
                 raise
+            return empty
+
+    inter, succ = summary(sh.get_all_successful_interEvents), summary(sh.get_all_successful_events)
     res = res.copy()
     freq = pd.to_numeric(res["Frequency"], errors="coerce")
     target = pd.to_numeric(res["TargetFrequency"], errors="coerce")
     res["FR"] = np.where(target > 0, freq / target, np.nan)
-    mrip = pd.to_numeric(res["MaxInterEventYears"], errors="coerce") * 365
-    days = pd.to_numeric(res["TotalDays"], errors="coerce")
-    gaps = {}
-    if len(inter):
-        inter = inter.copy()
-        inter["interEventLength"] = pd.to_numeric(inter["interEventLength"], errors="coerce")
-        for k, g in inter.groupby(["Gauge", "PlanningUnit", "Code"]):
-            gaps[k] = g.interEventLength.dropna().to_numpy()
-    etp: list[float | None] = []
-    for k, m, d in zip(zip(res.Gauge, res.PlanningUnit, res.Code, strict=True), mrip, days, strict=False):
-        if not (m > 0 and d > 0):
-            etp.append(None)
+    # ETP and gap severity from the same gap list as the flow charts (ewr_gaps): an EWR with no successful event is one gap over the record
+    by_key = lambda d: {(str(k[0]), k[1], k[2]): g for k, g in d.groupby(["Gauge", "PlanningUnit", "Code"])} if len(d) and "Gauge" in d else {}  # noqa: E731
+    inter_by, succ_by = by_key(inter), by_key(succ)
+    series = {str(g): df_F[g] for g in df_F.columns} | {str(g): df_L[g] for g in df_L.columns if str(g) not in {str(c) for c in df_F.columns}}
+    daily: dict[str, Any] = {}
+    gap_stats: dict[tuple[str, str, str], dict[str, Any]] = {}
+    res_by, ev_by = {str(g): v for g, v in results.items()}, {str(g): v for g, v in events.items()}  # py_ewr's yearly results and events by gauge
+    prm_by = {(str(p.Gauge), p.PlanningUnitName, p.Code): p for p in table.drop_duplicates(["Gauge", "Code", "PlanningUnitName"]).itertuples()}
+    handlers = diagnostic_handlers()
+    for r in res.itertuples():
+        k = (str(r.Gauge), r.PlanningUnit, r.Code)
+        mi = pd.to_numeric(r.MaxInterEventYears, errors="coerce")
+        if k[0] not in daily:
+            daily[k[0]] = record_days(series.get(k[0]))
+        flow, mrip, days = daily[k[0]], int(round(float(mi) * 365)) if mi > 0 else 0, pd.to_numeric(r.TotalDays, errors="coerce")
+        if flow is None or flow.empty:  # no dates (ten-thousand-year runs): py_ewr's gap lengths, the record as one gap when nothing succeeded
+            lens = [days] if k not in succ_by else pd.to_numeric(inter_by[k].interEventLength, errors="coerce").dropna().tolist() if k in inter_by else []
+            gap_stats[k] = {"et": round(min(1.0, sum(max(0.0, x - mrip) for x in lens) / days), 4) if mrip and days > 0 else None}
             continue
-        gap_days = gaps.get(k)
-        etp.append(0.0 if gap_days is None else min(1.0, float(np.clip(gap_days - m, 0, None).sum() / d)))  # a time proportion: at most 1
-    res["ETP"] = etp
+        ev = {"flow": flow, "mrip_days": mrip, "inter": inter_by.get(k, empty), "succ": succ_by.get(k, empty)}
+        gaps, etp = ewr_gaps(ev)
+        gap_stats[k] = {"et": etp, **gap_severity(gaps, ev["mrip_days"])}
+        prm, yr = prm_by.get(k), res_by.get(k[0], {}).get(k[1])
+        if prm is None or yr is None or f"{k[2]}_eventYears" not in yr:
+            continue
+        # by assessment year: achieved, complete, duration (or volume) ratio; then their summaries and the drought windows
+        sm, em = int(prm.StartMonth), int(prm.EndMonth)
+        ys, wy, kind = assessment_start(sm, em), [int(w) for w in yr.index], str(prm.FlowLevelVolume)
+        multi = isinstance(prm.Multigauge, str) and bool(prm.Multigauge.strip())
+        low = handlers.get(f"{k[2]}-{'multigauge' if multi else 'single'}-{kind}") == "lowflow_handle"
+        if kind == "F":
+            dr = dr_years(yr, k[2], prm.Duration, low, prm.EventsPerYear, ev_by.get(k[0], {}).get(k[1], {}).get(k[2]))
+        else:
+            dr = vr_years(flow, wy, ys, sm, em, prm.AccumulationPeriod, prm.VolumeThreshold) if kind == "V" else [None] * len(wy)
+        years = {"wy": wy, "achieved": pd.to_numeric(yr[f"{k[2]}_eventYears"], errors="coerce").fillna(0).astype(int).tolist(), "ystart": ys, "dr": dr}
+        years["complete"] = complete_years(flow, wy, ys, sm, em)
+        span = (flow.index[0], flow.index[-1])
+        gap_stats[k] |= year_summary(dr, years["complete"])
+        gap_stats[k]["win"] = {w: window_metrics(years, gaps, mrip, r.TargetFrequency, *window_dates(w, ys), record=span) for w in DROUGHTS}
+    res["ETP"] = [gap_stats.get((str(g), pu, c), {}).get("et") for g, pu, c in zip(res.Gauge, res.PlanningUnit, res.Code, strict=True)]
     rows = [
         {
             "pu": r.PlanningUnit,
@@ -282,6 +316,10 @@ def run_scenario(
             "ewr": r.Code,
             "fr": None if pd.isna(r.FR) else round(float(r.FR), 4),
             "et": None if r.ETP is None or pd.isna(r.ETP) else round(float(r.ETP), 4),
+            "ey": None if pd.isna(pd.to_numeric(r.EventYears, errors="coerce")) else int(r.EventYears),  # achieved years
+            "ny": round(float(r.TotalDays) / 365.25, 2) if pd.to_numeric(r.TotalDays, errors="coerce") > 0 else None,  # record length in years
+            # gap severity (gap_severity), median duration ratio and near misses (year_summary), drought windows (window_metrics)
+            **{s: gap_stats.get((str(r.Gauge), r.PlanningUnit, r.Code), {}).get(s) for s in ("sev", "sev_b", "eps", "dr", "nm", "win")},
         }
         for r in res.itertuples()
     ]
@@ -658,9 +696,11 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
             "thr_max": opt("FlowThresholdMax", float),
         }
     )
-    # py_ewr's assessment year: 1 July - 30 June, except when the timing window runs from the first half of the year into the second
-    # (StartMonth <= 6 and EndMonth >= 7, e.g. Jun-Nov): then it starts on the 1st of StartMonth (evaluate_EWRs.wateryear_daily)
-    out["ystart"] = out["sm"] if out["sm"] <= 6 and out["em"] >= 7 else 7
+    # py_ewr's assessment year (assessment_start)
+    out["ystart"] = assessment_start(out["sm"], out["em"])
+    multi = isinstance(sel.Multigauge.iloc[0], str) and bool(sel.Multigauge.iloc[0].strip()) if "Multigauge" in sel else False
+    out["kind"] = str(sel.FlowLevelVolume.iloc[0]) if "FlowLevelVolume" in sel else "F"
+    out["low"] = diagnostic_handlers().get(f"{code}-{'multigauge' if multi else 'single'}-{out['kind']}") == "lowflow_handle"
     _EVAL_CACHE[key] = out
     return out
 
@@ -704,6 +744,136 @@ def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
     return gaps, etp
 
 
+def gap_severity(gaps: list[dict[str, Any]], mrip: int) -> dict[str, Any]:
+    """How far the gaps between successful events overshoot the maximum inter-event period, from the uncensored gaps:
+    sev = longest interior gap / MRIP (all gaps when none is interior), sev_b = longest gap including those from the start or to the end of
+    the record / MRIP, eps = gaps longer than MRIP (episodes). All None without a maximum or an uncensored gap."""
+    known = [g for g in gaps if not g["censored"]]
+    if not mrip or not known:
+        return {"sev": None, "sev_b": None, "eps": None}
+    inner = [g["days"] for g in known if not g["boundary"]] or [g["days"] for g in known]
+    return {"sev": round(max(inner) / mrip, 2), "sev_b": round(max(g["days"] for g in known) / mrip, 2), "eps": sum(1 for g in known if g["excess"])}
+
+
+def record_days(s: Any) -> Any:
+    """A gauge's series from its first to its last observed day on every calendar day (missing days NaN), as ewr_eval sees it; None when the
+    index is not dates (ten-thousand-year runs)."""
+    import pandas as pd
+
+    if s is None or not isinstance(s.index, pd.DatetimeIndex):
+        return None
+    s = s.loc[s.first_valid_index() : s.last_valid_index()] if s.notna().any() else s.iloc[:0]
+    return s if s.empty else s.reindex(pd.date_range(s.index[0], s.index[-1]))
+
+
+def assessment_start(sm: int, em: int) -> int:
+    """py_ewr's assessment year starts on 1 July, except when the timing window runs from the first half of the year into the second
+    (StartMonth <= 6 and EndMonth >= 7, e.g. Jun-Nov): then on the 1st of StartMonth (evaluate_EWRs.wateryear_daily)."""
+    return sm if sm <= 6 and em >= 7 else 7
+
+
+def complete_years(flow: Any, wys: list[int], ys: int, sm: int, em: int) -> list[int]:
+    """1 for each assessment year (label w, starting on the 1st of month ys) in which every day of the timing window sm-em has a value;
+    the window's days come from the calendar, so a window cut off by the record's ends is incomplete."""
+    import pandas as pd
+
+    if not wys:
+        return []
+    full = pd.date_range(pd.Timestamp(min(wys), ys, 1), pd.Timestamp(max(wys) + 1, ys, 1) - pd.Timedelta(days=1))
+    m = full.month
+    win = (m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)
+    ok = pd.Series(flow.reindex(full).notna().to_numpy()[win], index=(full.year - (m < ys))[win])
+    done = ok.groupby(level=0).all()
+    return [int(bool(done.get(w, False))) for w in wys]
+
+
+def dr_years(yr: Any, code: str, dur: Any, low: bool, per_year: Any, events: dict[Any, list[Any]] | None = None) -> list[float | None]:
+    """Duration ratio of each assessment year (py_ewr's yearly results `yr`, columns [<code>_]maxEventDays / totalEventDays): the longest
+    event in the year ÷ the required duration, capped at 2. Low-flow (any-days) EWRs use the days at or above the threshold in the year;
+    an EWR needing k > 1 events a year uses its k-th longest event (from `events`, py_ewr's events by year; 0 when fewer than k)."""
+    import pandas as pd
+
+    dur = pd.to_numeric(dur, errors="coerce")
+    if pd.isna(dur) or dur <= 0:
+        return [None] * len(yr)
+    k = int(per_year) if not pd.isna(pd.to_numeric(per_year, errors="coerce")) and int(per_year) > 1 else 1
+    col = (f"{code}_" if code else "") + ("totalEventDays" if low else "maxEventDays")  # ewr_eval's years drop the code prefix
+    out: list[float | None] = []
+    for w in yr.index:
+        days: Any
+        if k > 1 and not low and events is not None:
+            lens = sorted((len(e) for e in events.get(w, []) if e), reverse=True)
+            days = lens[k - 1] if len(lens) >= k else 0
+        else:
+            days = pd.to_numeric(yr.at[w, col], errors="coerce") if col in yr else float("nan")
+        out.append(None if pd.isna(days) else round(min(float(days) / float(dur), 2.0), 3))
+    return out
+
+
+def vr_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, acc: Any, vol: Any) -> list[float | None]:
+    """Volume ratio of each assessment year for a volume EWR: the largest sum of daily flow over AccumulationPeriod consecutive days within
+    the timing window ÷ VolumeThreshold, capped at 2."""
+    import pandas as pd
+
+    acc, vol = pd.to_numeric(acc, errors="coerce"), pd.to_numeric(vol, errors="coerce")
+    if pd.isna(acc) or pd.isna(vol) or acc < 1 or vol <= 0:
+        return [None] * len(wys)
+    m = flow.index.month
+    win = flow.where((m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em))
+    total = win.rolling(int(acc), min_periods=int(acc)).sum()
+    best = total.groupby(flow.index.year - (m < ys)).max()
+    return [None if pd.isna(best.get(w)) else round(min(float(best[w]) / float(vol), 2.0), 3) for w in wys]
+
+
+def year_summary(dr: list[float | None], complete: list[int]) -> dict[str, Any]:
+    """Median duration ratio over the complete years, and the near misses: years with 0.5 <= DR < 1 and the years with DR < 1."""
+    import numpy as np
+
+    v = [x for x, c in zip(dr, complete, strict=True) if c and x is not None]
+    fail = [x for x in v if x < 1]
+    return {"dr": round(float(np.median(v)), 3) if v else None, "nm": [sum(1 for x in fail if x >= 0.5), len(fail)] if v else None}
+
+
+def window_metrics(
+    years: dict[str, Any], gaps: list[dict[str, Any]], mrip: int, target: Any, w0: Any, w1: Any, record: tuple[Any, Any] | None = None
+) -> dict[str, Any]:
+    """An EWR's metrics inside one drought window, the days w0..w1 (dates, inclusive; drought_windows.window_dates), from its yearly results
+    (`years`: wy labels, achieved, complete, dr, ystart) and its gaps (ewr_gaps):
+      n   complete assessment years inside the window;  fr = (achieved / n) / (target / 100)
+      et  days of the window beyond MRIP in an uncensored gap (a gap is beyond MRIP from its start + MRIP days, so a gap that began before
+          the window counts: antecedent dryness) ÷ the window's days within the record, less days inside censored gaps
+      sev longest uncensored gap overlapping the window, from its true start to its end, ÷ MRIP
+      dr  median duration ratio over the window's complete years.
+    `record`: the first and last day of the record (default: the span of the gaps)."""
+    import numpy as np
+    import pandas as pd
+
+    w0, w1, ys = pd.Timestamp(w0), pd.Timestamp(w1), years.get("ystart", 7)
+    inside = [i for i, w in enumerate(years["wy"]) if pd.Timestamp(w, ys, 1) >= w0 and pd.Timestamp(w + 1, ys, 1) - pd.Timedelta(days=1) <= w1]
+    done = [i for i in inside if years["complete"][i]]
+    n, ach, tgt = len(done), sum(years["achieved"][i] for i in done), pd.to_numeric(target, errors="coerce")
+    drs = [years["dr"][i] for i in done if years.get("dr") and years["dr"][i] is not None]
+    out: dict[str, Any] = {
+        "n": n,
+        "fr": round(ach / n / (tgt / 100), 4) if n and tgt > 0 else None,
+        "et": None,
+        "sev": None,
+        "dr": round(float(np.median(drs)), 3) if drs else None,
+    }
+    span = [(pd.Timestamp(g["start"]), pd.Timestamp(g["end"]), g) for g in gaps]
+    if mrip and span:
+        first, last = (pd.Timestamp(record[0]), pd.Timestamp(record[1])) if record else (min(a for a, _, _ in span), max(b for _, b, _ in span))
+        lo, hi = max(w0, first), min(w1, last)  # the window within the record
+        overlap = lambda a, b: max(0, (min(b, hi) - max(a, lo)).days + 1)  # noqa: E731  (days of a..b inside lo..hi)
+        days = overlap(lo, hi) - sum(overlap(a, b) for a, b, g in span if g["censored"])
+        if days > 0:
+            beyond = sum(overlap(a + pd.Timedelta(days=mrip), b) for a, b, g in span if not g["censored"] and g["days"] > mrip)
+            out["et"] = round(beyond / days, 4)
+        hit = [g["days"] for a, b, g in span if not g["censored"] and a <= w1 and b >= w0]
+        out["sev"] = round(max(hit) / mrip, 2) if hit else None
+    return out
+
+
 def interevents(q: dict[str, str]) -> dict[str, Any]:
     """Gaps between successful events of one EWR (py_ewr successful inter-events) that exceed its maximum inter-event period."""
     ev = ewr_eval(q["scn"], q["gauge"], q["ewr"], q.get("pu", ""))
@@ -740,13 +910,7 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
         wy = [int(v) for v in y.index]
         # a year counts when every day of the EWR's timing window in that assessment year has a flow (a missing day elsewhere in the
         # year does not matter); the window's days are taken from the calendar, so a window cut off by the record's ends is incomplete
-        ys, sm, em = ev["ystart"], ev["sm"], ev["em"]
-        in_win = lambda m: (m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)  # noqa: B023, E731
-        complete = []
-        for w in wy:
-            days = pd.date_range(pd.Timestamp(w, ys, 1), pd.Timestamp(w + 1, ys, 1) - pd.Timedelta(days=1))
-            days = days[in_win(days.month)]
-            complete.append(int(len(days) > 0 and flow.reindex(days).notna().all()))
+        complete = complete_years(flow, wy, ev["ystart"], ev["sm"], ev["em"])
         years = {
             "wy": wy,
             "achieved": col("eventYears"),
@@ -756,6 +920,7 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "max_event": col("maxEventDays"),
             "missing": col("missingDays"),
             "complete": complete,
+            "dr": dr_years(y, "", ev["dur"], ev.get("low", False), ev["per_year"], ev["events"]) if ev.get("kind", "F") == "F" else [None] * len(wy),
         }
         ok = set(pd.to_datetime(ev["succ"].startDate).dt.strftime("%Y-%m-%d")) if len(ev["succ"]) else set()
         events = []
@@ -784,6 +949,7 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "events": events,
             "gaps": gaps,
             "etp": etp,
+            **gap_severity(gaps, ev["mrip_days"]),
             "coverage": record_coverage(flow, complete),
         }
         out.update({kk: ev[kk] for kk in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})
@@ -805,7 +971,17 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "pct_base": round(100 * sum(pb) / n, 3) if n else None,
             "pct_comp": round(100 * sum(pc) / n, 3) if n else None,
         }
+        out["paired"]["p_mcnemar"] = mcnemar_p(out["paired"]["gained"], out["paired"]["lost"])
     return out
+
+
+def mcnemar_p(gained: int, lost: int) -> float | None:
+    """Exact two-sided McNemar p-value for paired yes/no years: under no change the discordant years (achieved in one scenario only) split
+    50:50, so p = min(1, 2 * P(X <= min(gained, lost))) with X ~ Binomial(gained + lost, 1/2). None when no year differs."""
+    n = gained + lost
+    if n == 0:
+        return None
+    return round(min(1.0, 2 * sum(math.comb(n, k) for k in range(min(gained, lost) + 1)) / 2**n), 4)
 
 
 def _feb29(w: int) -> bool:
