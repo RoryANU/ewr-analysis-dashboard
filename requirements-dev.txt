@@ -4,3 +4,4 @@ pytest>=9.0
 ruff==0.17.1          # keep in step with the rev in .pre-commit-config.yaml (the formatter's output changes between versions)
 mypy>=2.4,<3
 pre-commit>=4.0
+nodejs-wheel>=22,<25  # puts `node` in the environment for the dashboard JavaScript tests (node --test); no npm packages are used
