@@ -263,7 +263,7 @@ function render(){
     ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
 
   const pv=preparePerformance(rows);
-  $("panel").innerHTML=h; wireFlow(); mountPerformance(pv);
+  $("panel").innerHTML=h; mountPerformance(pv); wireFlow();
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -442,11 +442,11 @@ function flowCtx(){
 }
 const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
 // every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
-const CHARTS={heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
+const CHARTS={joint:"Joint frequency & inter-event performance",heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
   "ev-year":"EWR achievement by year","ev-events":"EWR events","ev-timing":"EWR event timing","ev-gaps":"Gaps between events vs MRIP",regimes:"Flow regime components",spells:"Low-flow spells"};
-const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"]],["EWR performance",["ev-year","ev-events","ev-timing","ev-gaps"]],["Flow regime",["regimes","spells"]]];
+const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"]],["EWR performance",["joint","ev-year","ev-events","ev-timing","ev-gaps"]],["Flow regime",["regimes","spells"]]];
 const chartsFor=D=>CHART_GROUPS(D).flatMap(g=>g[1]);
-const famOf=k=>k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
+const famOf=k=>k==="joint"?"joint":k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
 const thrKey=e=>e.code+"|"+e.pu;
 // differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
 const stemOf=c=>c.replace(/_[^_]+$/,"");
@@ -457,15 +457,16 @@ function thrGroups(list,g){ const rk=new Map(), rn=new Map(); ROWS.forEach(r=>{ 
     .sort((a,b)=>a.rank-b.rank||a.thr-b.thr||a.code.localeCompare(b.code)); }
 const TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
 function flowPanel(){
-  const c=flowCtx(); if(!c) return "";
+  const c=flowCtx();
   const f=S.flow, D=isDiff();
-  if(!c.ok) return `<div class="note">${esc(c.msg)}</div>`;
-  if(!f.chart||!chartsFor(D).includes(f.chart)) f.chart="heat";
+  const groups=c?.ok?CHART_GROUPS(D):[["EWR performance",["joint"]]];
+  if(!f.chart||!groups.flatMap(g=>g[1]).includes(f.chart)) f.chart=c?.ok?"heat":"joint";
   const tabs=(items,cur,act)=>`<span class="tabs sm">${items.map(([v,l])=>`<button data-fl="${act}" data-v="${v}" class="${cur===v?"on":""}">${l}</button>`).join("")}</span>`;
   const mo=(cur,k)=>`<select data-fl="${k}">${MONTHS.map((m,i)=>`<option value="${i+1}"${cur===i+1?" selected":""}>${m}</option>`).join("")}</select>`;
   const multi=f.chart==="dfdc", fam=famOf(f.chart);
-  const sel=`<div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${CHART_GROUPS(D).map(([g,ks])=>`<optgroup label="${g}">${ks.map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</optgroup>`).join("")}</select></div>`;
-  const head=`<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${esc(gaugeName(S.sel.i))}</summary>`;
+  const sel=`<div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${groups.map(([g,ks])=>`<optgroup label="${g}">${ks.map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</optgroup>`).join("")}</select></div>`;
+  const head=`<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${S.sel.type==="gauge"?esc(gaugeName(S.sel.i)):"selected area"}</summary>`;
+  if(f.chart==="joint") return head+`<div class="mxbar">${sel}</div><div id="jointSlot"></div></details>`;
   if(fam==="ev") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">EWR</span><select id="evEwr"><option>loading …</option></select></div></div>
     <div id="evMsg" class="note"></div><div id="evPlot"></div><div id="evTbl"></div></details>`;
   if(fam==="sp") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">Spell = consecutive days with flow below (ML/d)</span><input id="spThr" type="number" min="0" step="any" value="${esc(S.sp.thr)}" placeholder="1"></div><div class="seg" id="spQuick"></div></div>
@@ -788,6 +789,12 @@ let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): 
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 async function drawFlow(){
+  if(S.flow.chart==="joint"){
+    const view=performanceView;
+    if(view?.gauge) await ewrsAt(view.gauge);
+    if(view && currentPerformance(view) && S.flow.chart==="joint" && $("jointPlot")) drawJointPlot(view);
+    return;
+  }
   const fam=famOf(S.flow.chart); if(fam==="ev") return drawEwr(); if(fam==="sp") return drawSpells(); if(fam==="m") return drawMonthly(); if(fam==="rg") return drawRegimes();
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
   if(typeof Plotly==="undefined"){ $("flowMsg").textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
@@ -1171,7 +1178,7 @@ function performanceKey() {
 function disposePerformance() {
   if (!performanceView) return;
   performanceView.sequence?.abort(); performanceView.conditions?.abort();
-  if (typeof Plotly !== 'undefined') performanceView.node?.querySelectorAll('.js-plotly-plot').forEach(el => Plotly.purge(el));
+  if (typeof Plotly !== 'undefined') [performanceView.node, performanceView.jointNode].forEach(node => node?.querySelectorAll('.js-plotly-plot').forEach(el => Plotly.purge(el)));
   performanceView = null;
 }
 function preparePerformance(rows) {
@@ -1197,38 +1204,26 @@ function detailText(view, index) {
   return view.details.get(index);
 }
 function performancePanels(view) {
-  const q = summaryFor(view, view.i), vals = view.rows.map(r => ruleFR(r, view.i)).filter(v => Number.isFinite(v) && v >= 0).sort((a,b) => a-b);
-  const mean = vals.length ? vals.reduce((a,b) => a+b, 0) / vals.length : null;
-  const fmt = v => v == null ? 'Unavailable' : v.toFixed(3), raw = vals.length ? vals.filter(meetsTarget).length / vals.length : null;
-  const tolerance = vals.filter(v => v >= .9 && !meetsTarget(v)).length;
-  return `<section id="performancePanel" class="performance">
-    <h2>Joint frequency & inter-event performance · target FR 1.0</h2>
-    <p class="note">Joint counts and plots always use FR ≥ 1.0, independent of the header frequency threshold. Within Tolerance: 0.9 ≤ FR &lt; 1.0 (${tolerance} EWRs); tolerance does not establish ecological sufficiency. MRIP compliance: exceedance time proportion ≤ ${S.ethr.toFixed(3)}.</p>
-    <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]} · FR target 1.0</span></div>`).join('')}</div>
-    <p>${q.n}/${view.rows.length} valid paired EWRs · ${view.rows.length-q.n} missing or invalid pairs (FR and ETP must be nonnegative; ETP above 1 is treated as 1).</p>
-    <label><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> Lock joint axes (FR 0–2; ETP 0–1)</label><div id="jointPlot"></div>
-    <p class="note">MRIP exceedance is a time proportion; ×10 is equivalent years per ten years, not a calendar-year count. Daily-record event-gap diagnostics retain longest gaps.</p>
-    <p><b>Unweighted EWR statistics:</b> mean FR ${fmt(mean)} · interpolated 10th percentile FR ${fmt(percentile(vals,.1))} · minimum FR ${fmt(vals[0] ?? null)} · raw meeting target 1.0 ${raw == null ? 'Unavailable' : (100*raw).toFixed(1)+'%'} (${vals.length} observed).</p>
-    <p class="note">Existing hierarchy summaries weight gauges and planning units equally; their percentages are not raw percentages of EWRs.</p>
-    <details id="jointDetails"><summary>Exact rule values${view.base == null ? '' : ' and baseline comparisons'}</summary><pre style="white-space:pre-wrap"></pre></details>
+  const q = summaryFor(view, view.i);
+  return `<section id="performancePanel">
+    <div id="jointContent">
+    <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
+    <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]}</span></div>`).join('')}</div>
+    <div class="mxbar"><label class="seg"><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> <span class="lbl">Lock frequency axis to 0–2</span></label></div>
+    <div id="jointPlot"></div><p id="jointNote" class="note"></p>
+    <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
+    </div>
+    <details id="otherDetails" class="flowp"><summary>Other</summary>
+    <details id="jointDetails"><summary>Exact rule values and baseline comparisons</summary><pre style="white-space:pre-wrap"></pre></details>
     <details id="robustnessDetails"><summary>Policy × climate robustness · target FR 1.0</summary>
       <p class="note">Joint score uses FR target 1.0 and the MRIP threshold above. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
       <div id="robustnessTable"></div><pre id="robustnessValues" style="white-space:pre-wrap"></pre></details>
-    <h2>Hydrological opportunities for recruitment</h2>
-    <p class="note">Annual achievement, time since success and ${ROLLING_YEARS}-year rolling frequency are hydrological opportunities, not modelled recruitment outcomes.</p>
-    <button id="loadSequence" ${view.ctx?.ok ? '' : 'disabled'}>Load annual raster</button> <button id="cancelSequence" hidden>Cancel annual loading</button>
-    <div id="sequenceNote">${view.ctx?.ok ? 'Load supported rules on demand.' : 'Select an uploaded flow scenario and a gauge. Bundled summaries do not contain annual records.'}</div>
-    <div id="sequenceRaster"></div><div id="sequenceSince"></div><div id="sequenceRolling"></div>
-    <details id="inventoryDetails"><summary>Detailed diagnostic rule inventory</summary><button id="retryInventory">Load / retry inventory</button><div id="diagnosticInventory">Open to load supported and unsupported rules for the selected gauge.</div></details>
-    <details><summary>Stage rates, temperature & water-quality observations</summary>
-      <p class="note">CSV up to 2 MiB / 20,000 rows. Headers: date (YYYY-MM-DD), stage_m, temperature_c, dissolved_oxygen_mg_l. Quoted fields are supported; measurements must be plain decimals, or empty for missing. Stage rates use adjacent observed days only. No ecological safety thresholds are inferred.</p>
-      <input id="conditionFile" type="file" accept=".csv"><div id="conditionNote"></div><div id="conditionPlot"></div></details>
-    <footer id="performanceCoverage" class="note">Provenance: paired FR and ETP summary inputs, or selected uploaded results. Summary inputs have no record dates, missing-day counts or complete-year ratios. Annual diagnostic metadata appears here when loaded.</footer></section>`;
+    </details></section>`;
 }
 function mountPerformance(view) {
-  if (view.node) { $('panel').appendChild(view.node); return; }
+  if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
-  drawJointPlot(view);
+  view.jointNode = $('jointContent'); placeJoint(view);
   $('lockJointScale').onchange = e => { lockJointScale = e.target.checked; drawJointPlot(view); };
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
@@ -1241,12 +1236,13 @@ function mountPerformance(view) {
       cell.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); cell.click(); } };
     });
   };
-  $('inventoryDetails').ontoggle = e => { if (e.target.open) loadInventoryView(view); };
-  $('retryInventory').onclick = () => loadInventoryView(view);
-  $('loadSequence').onclick = () => loadSequences(view);
-  $('cancelSequence').onclick = () => view.sequence?.abort();
-  $('conditionFile').onchange = e => loadConditions(e.target.files[0], view);
 }
+function placeJoint(view) {
+  const slot = $('jointSlot');
+  (slot || view.node).appendChild(view.jointNode);
+  view.jointNode.hidden = !slot;
+}
+
 function robustnessTable(view) {
   const cell = index => {
     const q = summaryFor(view, index), base = view.base == null ? null : summaryFor(view, view.base);
@@ -1278,20 +1274,74 @@ function jointGeometry(rows, index, base, locked) {
     if (base != null) {
       const bf = ruleFR(row,base), be = ruleETP(row,base), bv = inside(bf,be);
       if (!bv && Number.isFinite(bf) && Number.isFinite(be)) omittedBase++;
-      if (valid && bv) arrows.push({fr,et,bf,be});
+      if (valid && bv) arrows.push({row,fr,et,bf,be});
     }
   }
   return {xmax,points,arrows,omittedCurrent,omittedBase};
 }
+// Keep each rule as one point, including rules assigned to multiple regimes.
+const jointRegime = row => [...new Set(row[5].map(i => META.regimes[i]).filter(Boolean))].sort().join(' / ') || 'Unmapped';
+const jointRegimeColour = (index, count) => {
+  // Ordered multi-hue ramp: gold → green → teal → blue → purple.
+  const stops = [[196,154,0],[77,156,56],[0,150,143],[48,104,190],[112,48,150]];
+  const at = (count < 2 ? .5 : index / (count - 1)) * (stops.length - 1);
+  const lo = Math.min(Math.floor(at), stops.length - 2), t = at - lo;
+  return `rgb(${stops[lo].map((v,i) => Math.round(v+(stops[lo+1][i]-v)*t)).join(',')})`;
+};
+function jointRegimeOrder(rows) {
+  const thresholds = new Map();
+  for (const row of rows) {
+    const rules = typeof EWRLIST === 'undefined' ? [] : EWRLIST.get(ruleGauge(row)) || [];
+    for (const rule of rules) {
+      if (rule.code !== ruleCode(row) || !(rule.pus || [rule.pu]).includes(rulePU(row)) || !Number.isFinite(rule.thr)) continue;
+      const name = jointRegime(row);
+      thresholds.set(name, Math.min(thresholds.get(name) ?? Infinity, rule.thr));
+    }
+  }
+  const rank = name => typeof REG_ORDER === 'undefined' || !REG_ORDER.includes(name) ? Infinity : REG_ORDER.indexOf(name);
+  return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
+}
 function drawJointPlot(view) {
-  const g = jointGeometry(view.rows,view.i,view.base,lockJointScale), x = v => 55+v/g.xmax*540, y = v => 270-v*240;
-  let svg = `<svg role="img" aria-label="Joint target FR 1.0 versus MRIP exceedance; exact values available in disclosure" viewBox="0 0 650 320" style="width:100%;max-height:420px"><defs><clipPath id="jointClip"><rect x="55" y="30" width="540" height="240"/></clipPath><marker id="jointArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker></defs><path d="M55 30V270H595" fill="none" stroke="#777"/><text x="270" y="310">Frequency ratio (target 1.0)</text><text transform="translate(15 245) rotate(-90)">MRIP exceedance time proportion</text>`;
-  for (const v of [0,.25,.5,.75,1]) svg += `<text x="22" y="${y(v)+4}" font-size="10">${v}</text>`;
-  for (const v of [0,1,g.xmax]) svg += `<text x="${x(v)}" y="290" font-size="10">${v.toFixed(2)}</text>`;
-  svg += `<g clip-path="url(#jointClip)"><path d="M${x(1)} 30V270 M55 ${y(S.ethr)}H595" stroke="#888" stroke-dasharray="4 4"/>`;
-  for (const a of g.arrows) svg += `<path d="M${x(a.bf)} ${y(a.be)}L${x(a.fr)} ${y(a.et)}" stroke="#64748b" opacity=".5" marker-end="url(#jointArrow)"/><circle cx="${x(a.bf)}" cy="${y(a.be)}" r="3" fill="white" stroke="#64748b"/>`;
-  for (const {row,fr,et} of g.points) svg += `<circle cx="${x(fr)}" cy="${y(et)}" r="4" fill="${jointColours[jointClass(fr,et)]}" opacity=".8"><title>${esc(ruleLabel(row))}\n${jointNames[jointClass(fr,et)]} · target FR 1.0 · FR ${fr} · ETP ${et}${view.base == null ? '' : '\nBase FR '+(ruleFR(row,view.base) ?? 'missing')+' · ETP '+(ruleETP(row,view.base) ?? 'missing')}</title></circle>`;
-  $('jointPlot').innerHTML = svg+'</g></svg>'+`<p class="note">Outside plot bounds: ${g.omittedCurrent} current endpoints${view.base == null ? '' : ', '+g.omittedBase+' baseline endpoints'}. Arrows require both endpoints inside. Missing metrics are not plotted. Unlock to expand FR; ETP remains 0–1. Exact values are available above. ${view.base == null ? '' : 'Hollow points = base; arrows point to comparison.'}</p>`;
+  const g = jointGeometry(view.rows,view.i,view.base,lockJointScale);
+  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
+  const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
+  const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
+  const traces = regimes.map(name => {
+    const points = g.points.filter(p => jointRegime(p.row) === name);
+    return {type:'scatter',mode:'markers',name,x:points.map(p=>p.fr),y:points.map(p=>p.et),
+      legendgroup:name,marker:{size:9,color:colours.get(name),line:{color:'white',width:1}},
+      customdata:points.map(({row,fr,et})=>[esc(ruleCode(row)),esc(ruleGauge(row)),esc(rulePU(row)),(fr*100).toFixed(0),(et*100).toFixed(1),
+        view.base == null ? '' : `<br>Baseline: FR ${ruleFR(row,view.base) ?? 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et)]]),
+      hovertemplate:`<b>%{customdata[0]}</b> · %{customdata[6]}<br>Flow regime: ${esc(name)}<br>Gauge %{customdata[1]} · %{customdata[2]}<br>Frequency: %{x:.2f} × target (%{customdata[3]}%)<br>Maximum gap exceeded: %{customdata[4]}% of time%{customdata[5]}<extra></extra>`};
+  });
+  if(view.base != null) for (const name of regimes) {
+    const arrows = g.arrows.filter(a => jointRegime(a.row) === name);
+    traces.push({type:'scatter',mode:'markers',name:'Baseline · '+name,legendgroup:name,showlegend:false,
+      x:arrows.map(a=>a.bf),y:arrows.map(a=>a.be),marker:{size:7,color:colours.get(name),symbol:'circle-open'},
+      hovertemplate:`Baseline · ${esc(name)}<br>Frequency: %{x:.2f} × target<br>Maximum gap exceeded: %{y:.1%} of time<extra></extra>`});
+  }
+  const plot = $('jointPlot');
+  Plotly.newPlot(plot,traces,{
+    height:420,margin:{t:20,r:20,b:90,l:75},plot_bgcolor:'white',paper_bgcolor:'white',font:{size:11},hovermode:'closest',
+    hoverlabel:{bgcolor:'white',bordercolor:'#9aa3b0',font:{size:12,color:'#1f2937'},align:'left'},
+    legend:{orientation:'h',y:-.24,groupclick:'togglegroup'},
+    xaxis:{title:{text:'Frequency ratio (1 = target met)'},range:[0,g.xmax],showline:true,mirror:true,ticks:'outside'},
+    yaxis:{title:{text:'Time exceeding maximum gap'},range:[0,1],tickformat:'.0%',showline:true,mirror:true,ticks:'outside'},
+    shapes:[{type:'line',x0:1,x1:1,y0:0,y1:1,line:{color:'#888',dash:'dash'}},{type:'line',x0:0,x1:g.xmax,y0:S.ethr,y1:S.ethr,line:{color:'#888',dash:'dash'}}],
+    annotations:g.arrows.map(a=>({x:a.fr,y:a.et,ax:a.bf,ay:a.be,xref:'x',yref:'y',axref:'x',ayref:'y',showarrow:true,text:'',arrowhead:2,arrowwidth:1,arrowcolor:colours.get(jointRegime(a.row))}))
+  },PCFG).then(() => {
+    if (!plot.on) return;
+    plot.removeAllListeners('plotly_restyle');
+    plot.on('plotly_restyle', () => {
+      const updates = {};
+      g.arrows.forEach((a,i) => {
+        const trace = plot.data.find(t => t.legendgroup === jointRegime(a.row) && t.showlegend !== false);
+        updates[`annotations[${i}].visible`] = trace?.visible !== 'legendonly' && trace?.visible !== false;
+      });
+      if (g.arrows.length) Plotly.relayout(plot, updates);
+    });
+  });
+  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Unlock the axis to show higher frequency ratios. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
 }
 
 async function performanceJSON(url, signal) {

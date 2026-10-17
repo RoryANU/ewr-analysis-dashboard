@@ -30,7 +30,10 @@ const http=require('node:http'),fs=require('node:fs'),assert=require('node:asser
       const rules=rows.slice(0,6).map(r=>({code:r[3],pu:META.pus[r[0]],pus:[META.pus[r[0]]]}));
       return {ewrs:rules,inventory:rules.map(r=>({...r,kind:'F',handler:'flow_handle',detailed:true}))};
     });
-    assert.equal(await page.locator('#jointPlot svg').count(),1);
+    await page.locator('#flowDet > summary').click();
+    await page.waitForSelector('#jointPlot .plot-container');
+    assert.equal(await page.locator('#loadSequence').count(),0);
+    await page.locator('#otherDetails > summary').click();
     assert.equal(await page.locator('#robustnessTable td').count(),0);
     await page.locator('#robustnessDetails summary').click();
     assert.ok(await page.locator('#robustnessTable td[data-scenario]').count()>=28);
@@ -38,22 +41,10 @@ const http=require('node:http'),fs=require('node:fs'),assert=require('node:asser
     assert.match(await page.locator('#robustnessValues').textContent(),/FR/);
     await page.evaluate(()=>{window.originalPerformanceNode=performanceView.node;S.sort='high';render();});
     assert.equal(await page.evaluate(()=>performanceView.node===window.originalPerformanceNode),true);
-    await page.locator('#inventoryDetails summary').click();
-    await page.waitForFunction(()=>document.querySelector('#diagnosticInventory table'));
-    await page.evaluate(()=>{render();});
-    assert.equal(inventoryRequests,1);
-    // Controlled uploaded context exercises the actual buttons, request scheduler and Plotly DOM.
-    await page.evaluate(()=>{performanceView.ctx={ok:true,base:'fixture',gauge:performanceView.gauge,bn:'Fixture'};document.getElementById('loadSequence').disabled=false;});
-    await page.locator('#loadSequence').click();
     await page.locator('#lockJointScale').uncheck();
-    await page.waitForFunction(()=>document.getElementById('sequenceNote').textContent.includes('rule/scenario rows'));
-    assert.equal(await page.locator('#loadSequence').isEnabled(),true);
-    assert.equal(annualRequests,6);assert.equal(maxActive,4);
-    assert.equal(inventoryRequests,1);
-    assert.equal(await page.locator('#sequenceRaster .plot-container').count(),1);
-    await page.locator('#conditionFile').setInputFiles({name:'observations.csv',mimeType:'text/csv',buffer:Buffer.from('date,stage_m,temperature_c\n2000-01-01,1,20\n2000-01-02,0.5,21')});
-    await page.waitForFunction(()=>document.getElementById('conditionNote').textContent.includes('observations.csv'));
-    assert.equal(await page.locator('#conditionPlot .plot-container').count(),1);
+    assert.equal(await page.locator('#jointSlot #jointContent').count(),1);
+    assert.equal(await page.locator('#otherDetails #jointDetails').count(),1);
+    assert.equal(await page.locator('#otherDetails #robustnessDetails').count(),1);
     await page.locator('#jointPlot').scrollIntoViewIfNeeded();
     await page.screenshot({path:process.env.EWR_REVIEW_SCREENSHOT||'/tmp/ewr-review.png'});
     assert.deepEqual(pageErrors,[]);

@@ -50,8 +50,10 @@ test('plot bounds check BOTH endpoints, ETP above 1 capped, negatives and unlock
   const unlocked=plain(h.run('jointGeometry(boundRows,0,1,false)'));
   assert.equal(unlocked.xmax,3);assert.equal(unlocked.arrows.length,4); assert.equal(unlocked.omittedCurrent,1);
   h.ctx.v=h.view(h.ctx.boundRows);h.run('v.base=1; drawJointPlot(v)');
-  assert.match(h.run("$('jointPlot').innerHTML"),/clip-path="url\(#jointClip\)"/);
-  assert.doesNotMatch(h.run("$('jointPlot').innerHTML"),/<circle tabindex/);
+  assert.equal(h.run('plotCalls.length'),1);
+  assert.match(h.run('plotCalls[0][1][0].hovertemplate'),/Maximum gap exceeded/);
+  assert.equal(h.run("plotCalls[0][2].yaxis.tickformat"),'.0%');
+  assert.equal(h.run('plotCalls[0][2].annotations.length'),2);
 });
 test('known climate outcomes require complete nonempty climate sets',()=>{
   const h=harness();h.ctx.climateRows=[row('resilient',[1,1],[0,0]),row('crossing',[1,.5],[0,0]),row('incomplete',[1,null],[0,0]),row('fails',[.5,.5],[0,0])];
@@ -148,7 +150,7 @@ test('CSV read survives scale toggles and routine renders; newer file wins',asyn
   const old=h.run('loadConditions(file,v)');h.run('lockJointScale=false;drawJointPlot(v);preparePerformance(fixtureRows)');
   h.ctx.newFile={name:'new.csv',size:100,text:async()=> 'date,stage_m\n2000-01-01,1\n2000-01-02,2'};
   await h.run('loadConditions(newFile,v)');d.resolve('date,stage_m\n2000-01-01,9');await old;
-  assert.match(h.run("$('conditionNote').textContent"),/new.csv/);assert.equal(h.run('plotCalls.length'),1);
+  assert.match(h.run("$('conditionNote').textContent"),/new.csv/);assert.equal(h.run('plotCalls.filter(c=>c[0].id!=="jointPlot").length'),1);
 });
 test('oversized files are rejected before reading; stale CSV after selection change is ignored',async()=>{
   const h=harness(),d=deferred();h.ctx.v=h.view();let read=false;
@@ -172,7 +174,7 @@ test('deferred CSV alone completes after scale change and a routine render',asyn
   const h=harness(),d=deferred();h.ctx.v=h.view();h.ctx.file={name:'kept.csv',size:80,text:()=>d.promise};
   const work=h.run('loadConditions(file,v)');h.run("S.sort='low';preparePerformance(fixtureRows);lockJointScale=false;drawJointPlot(v)");
   d.resolve('date,stage_m\n2000-01-01,1');await work;
-  assert.match(h.run("$('conditionNote').textContent"),/kept.csv/);assert.equal(h.run('plotCalls.length'),1);
+  assert.match(h.run("$('conditionNote').textContent"),/kept.csv/);assert.equal(h.run('plotCalls.filter(c=>c[0].id!=="jointPlot").length'),1);
 });
 test('explicit custom registration does not hide a fifth built-in policy',()=>{
   const h=harness();h.run(template.match(/const isCustom=.*?;/)[0]);

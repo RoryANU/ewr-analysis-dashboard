@@ -263,7 +263,7 @@ function render(){
     ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
 
   const pv=preparePerformance(rows);
-  $("panel").innerHTML=h; wireFlow(); mountPerformance(pv);
+  $("panel").innerHTML=h; mountPerformance(pv); wireFlow();
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -442,11 +442,11 @@ function flowCtx(){
 }
 const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
 // every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
-const CHARTS={heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
+const CHARTS={joint:"Joint frequency & inter-event performance",heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
   "ev-year":"EWR achievement by year","ev-events":"EWR events","ev-timing":"EWR event timing","ev-gaps":"Gaps between events vs MRIP",regimes:"Flow regime components",spells:"Low-flow spells"};
-const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"]],["EWR performance",["ev-year","ev-events","ev-timing","ev-gaps"]],["Flow regime",["regimes","spells"]]];
+const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"]],["EWR performance",["joint","ev-year","ev-events","ev-timing","ev-gaps"]],["Flow regime",["regimes","spells"]]];
 const chartsFor=D=>CHART_GROUPS(D).flatMap(g=>g[1]);
-const famOf=k=>k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
+const famOf=k=>k==="joint"?"joint":k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
 const thrKey=e=>e.code+"|"+e.pu;
 // differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
 const stemOf=c=>c.replace(/_[^_]+$/,"");
@@ -457,15 +457,16 @@ function thrGroups(list,g){ const rk=new Map(), rn=new Map(); ROWS.forEach(r=>{ 
     .sort((a,b)=>a.rank-b.rank||a.thr-b.thr||a.code.localeCompare(b.code)); }
 const TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
 function flowPanel(){
-  const c=flowCtx(); if(!c) return "";
+  const c=flowCtx();
   const f=S.flow, D=isDiff();
-  if(!c.ok) return `<div class="note">${esc(c.msg)}</div>`;
-  if(!f.chart||!chartsFor(D).includes(f.chart)) f.chart="heat";
+  const groups=c?.ok?CHART_GROUPS(D):[["EWR performance",["joint"]]];
+  if(!f.chart||!groups.flatMap(g=>g[1]).includes(f.chart)) f.chart=c?.ok?"heat":"joint";
   const tabs=(items,cur,act)=>`<span class="tabs sm">${items.map(([v,l])=>`<button data-fl="${act}" data-v="${v}" class="${cur===v?"on":""}">${l}</button>`).join("")}</span>`;
   const mo=(cur,k)=>`<select data-fl="${k}">${MONTHS.map((m,i)=>`<option value="${i+1}"${cur===i+1?" selected":""}>${m}</option>`).join("")}</select>`;
   const multi=f.chart==="dfdc", fam=famOf(f.chart);
-  const sel=`<div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${CHART_GROUPS(D).map(([g,ks])=>`<optgroup label="${g}">${ks.map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</optgroup>`).join("")}</select></div>`;
-  const head=`<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${esc(gaugeName(S.sel.i))}</summary>`;
+  const sel=`<div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${groups.map(([g,ks])=>`<optgroup label="${g}">${ks.map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</optgroup>`).join("")}</select></div>`;
+  const head=`<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${S.sel.type==="gauge"?esc(gaugeName(S.sel.i)):"selected area"}</summary>`;
+  if(f.chart==="joint") return head+`<div class="mxbar">${sel}</div><div id="jointSlot"></div></details>`;
   if(fam==="ev") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">EWR</span><select id="evEwr"><option>loading …</option></select></div></div>
     <div id="evMsg" class="note"></div><div id="evPlot"></div><div id="evTbl"></div></details>`;
   if(fam==="sp") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">Spell = consecutive days with flow below (ML/d)</span><input id="spThr" type="number" min="0" step="any" value="${esc(S.sp.thr)}" placeholder="1"></div><div class="seg" id="spQuick"></div></div>
@@ -788,6 +789,12 @@ let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): 
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 async function drawFlow(){
+  if(S.flow.chart==="joint"){
+    const view=performanceView;
+    if(view?.gauge) await ewrsAt(view.gauge);
+    if(view && currentPerformance(view) && S.flow.chart==="joint" && $("jointPlot")) drawJointPlot(view);
+    return;
+  }
   const fam=famOf(S.flow.chart); if(fam==="ev") return drawEwr(); if(fam==="sp") return drawSpells(); if(fam==="m") return drawMonthly(); if(fam==="rg") return drawRegimes();
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
   if(typeof Plotly==="undefined"){ $("flowMsg").textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
