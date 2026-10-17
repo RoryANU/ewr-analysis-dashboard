@@ -186,6 +186,19 @@ test('ETP band: a change counts when it moves at least one year of record beyond
   run("S.mode='diff'");
   assert.deepEqual(plain(run("cnts(ROWS,'et')")),{up:1,dn:0,same:1,met:0,gain:0,loss:0,n:2});
 });
+test('worst gap: the maximum, not the mean, and the EWR that sets it',()=>{
+  const sev=(r,a)=>{ r[8]={T:100,ny:100,mrip:2}; r.push(a); return r; };
+  const run=harness([sev(row(0,0,0,'A',[1,0,1,0]),[1.5,0,3.2,0]),sev(row(0,0,1,'B',[1,0,1,0]),[2.5,0,0.8,0]),sev(row(1,0,2,'C',[1,0,1,0]),[0.5,0,0.9,0]),row(1,0,3,'D',[1,0,1,0])]);
+  const a=run("aggMax(ROWS,0)"); near(a.mean,2.5); assert.equal(a.who[3],'B'); assert.equal(a.n,3);   // D has no severity
+  near(run("agg(ROWS,['pu','gauge'],'sev',2).mean"),3.2);   // the hierarchy does not average it
+  run("S.mode='diff'");
+  const d=run("aggMax(ROWS)"); near(d.mean,2.5-3.2); assert.equal(d.who[3],'A');   // the worst gap got longer: negative = worse
+  assert.equal(run("diffClass(ROWS[2],'sev').cls"),'met');   // within the MRIP in both
+  assert.equal(run("diffClass(ROWS[0],'sev').cls"),'below'); assert.equal(run("diffClass(ROWS[1],'sev').cls"),'gain'); near(run("diffClass(ROWS[1],'sev').d"),1.7);
+  // changed when the worst gap moves at least a year: |Δ| x MRIP (2 years) >= 1
+  assert.deepEqual(plain(run("cnts(ROWS,'sev')")),{up:1,dn:1,same:0,met:1,gain:1,loss:0,n:2});
+  assert.deepEqual(plain(run("aggMax(ROWS.slice(2,3))")),{n:0,mean:null,who:null});   // every EWR within the MRIP in both: met
+});
 test('agg: one scenario caps FR at the target in the mean, the per-EWR value is uncapped',()=>{
   const run=harness([row(0,0,0,'A',[.2,0,0,0]),row(0,0,0,'B',[1.8,0,0,0])]);
   near(run("agg(ROWS,[],'fr',0).mean"),.6);
@@ -200,9 +213,12 @@ test('differential labels: FR in achieved years per century, a share of EWRs in 
   assert.equal(run("fs2(.04,'fr')"),'0.0');   // a change that rounds to zero carries no sign
   assert.equal(run("fs2(.25,'ach')"),'+25 pts');
   assert.equal(run("fs2(-.1,'fb')"),'−10 pts');
-  assert.equal(run("fs2(.03,'et')"),'+0.3');
+  assert.equal(run("fs2(.03,'et')"),'+3 pts');   // % of record beyond MRIP: a difference of shares
+  assert.equal(run("fs2(-.5,'sev')"),'−0.5×');
   run("S.mode='single'");
   assert.equal(run("fs2(.9,'fr')"),'0.90'); assert.equal(run("fs2(.5,'ach')"),'50%'); assert.equal(run("f3(null,'fr')"),'–');
+  assert.equal(run("f3(.237,'et')"),'24%'); assert.equal(run("fs2(1,'et')"),'100%');   // ETP as a % of the record, no decimals
+  assert.equal(run("f3(3.288,'sev')"),'3.29×');
 });
 test('textOnColour picks the label colour with the higher contrast on its fill',()=>{
   const ctx=vm.createContext({});

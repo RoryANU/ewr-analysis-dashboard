@@ -161,7 +161,8 @@ def build_row_table(
 ) -> tuple[list[list[Any]], dict[str, Any]]:
     """The compact ROWS table the page reads, and the lookup lists (pus, sdls, gids, objs, themes, regimes, objTheme) its indices refer to.
     Columns 0-7 are fixed (the page and performance.js index them); 8 = {T, ny, dur, mrip}: target % of years, record years, required days and
-    MRIP years (from `params`, keyed (gauge, code, planning unit); None when unknown); 9 = achieved years (EventYears) per scenario."""
+    MRIP years (from `params`, keyed (gauge, code, planning unit); None when unknown); 9 = achieved years (EventYears) per scenario;
+    10 = gap severity per scenario: None here, as the results hold the MRIP parameter, not the observed gaps (uploads fill it in the page)."""
     params = params or {}
     pus = sorted({k[0] for k in rows})
     sdls = sorted({k[1] for k in rows})
@@ -182,6 +183,7 @@ def build_row_table(
             r["et"],
             {**{"T": None, "dur": None, "mrip": None}, **params.get((k[2], k[3], k[0]), {}), "ny": r.get("ny")},
             r.get("ey", [None] * NS),
+            None,
         ]
         for k, r in sorted(rows.items())
     ]

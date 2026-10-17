@@ -355,6 +355,22 @@ class TestEwrGaps:
         gaps, etp = server.ewr_gaps(ev)
         assert gaps[0]["days"] == 100 and gaps[0]["excess"] == 0 and etp == 0.0
 
+    def test_severity_by_hand(self):
+        # gaps of 400 (from the record start), 1,200 (interior) and 300 days (to the record end), MRIP 365:
+        # severity = longest interior gap / MRIP = 1200 / 365 = 3.288 -> 3.29; episodes = gaps beyond 365 days = 2
+        idx = pd.date_range("2000-01-01", periods=1950)  # days 0-399 gap, 400-425 event, 426-1625 gap, 1626-1649 event, 1650-1949 gap
+        ev = gap_ev(pd.Series(1.0, index=idx), [(idx[0], idx[399]), (idx[426], idx[1625]), (idx[1650], idx[-1])], mrip=365)
+        gaps, _ = server.ewr_gaps(ev)
+        assert [(g["days"], g["boundary"]) for g in gaps] == [(400, True), (1200, False), (300, True)]
+        assert server.gap_severity(gaps, 365) == {"sev": 3.29, "sev_b": 3.29, "eps": 2}
+        # boundary gaps are reported separately: a longer gap from the start of the record raises sev_b only
+        long_start = [{**gaps[0], "days": 1500, "excess": 1135}, *gaps[1:]]
+        assert server.gap_severity(long_start, 365) == {"sev": 3.29, "sev_b": round(1500 / 365, 2), "eps": 2}
+        # only boundary gaps: severity falls back to them; censored gaps and a missing maximum give nothing
+        assert server.gap_severity([gaps[0]], 365)["sev"] == round(400 / 365, 2)
+        assert server.gap_severity([{**gaps[1], "censored": True, "excess": None}], 365) == {"sev": None, "sev_b": None, "eps": None}
+        assert server.gap_severity(gaps, 0) == {"sev": None, "sev_b": None, "eps": None}
+
     def test_interevents_lists_only_gaps_beyond_the_limit(self, monkeypatch):
         ev = gap_ev(self.flow(), [("2000-01-01", "2000-03-10"), ("2000-04-01", "2000-12-31")], mrip=100)
         monkeypatch.setattr(server, "ewr_eval", lambda *a, **k: ev)

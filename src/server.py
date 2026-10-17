@@ -144,7 +144,7 @@ FORMATS = [
 
 
 # a run_scenario row as the page stores it (an uploaded or embedded scenario's `vals`): these keys, in this order (VALK in the page)
-VAL_KEYS = ("pu", "gauge", "ewr", "fr", "et", "ey", "ny")
+VAL_KEYS = ("pu", "gauge", "ewr", "fr", "et", "ey", "ny", "sev")
 
 
 def load_frames(fmt: str, path: str, sub: str = "") -> tuple[Any, Any]:
@@ -252,33 +252,41 @@ def run_scenario(
     # py_ewr's inter-event summary fails (KeyError 'Gauge') when no EWR in the file has any event at all, e.g. a completely dry
     # scenario (or none has a successful event): with no successful events there are no gaps, so use an empty table (as ewr_eval does).
     has_events = any(lst for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
-    inter = pd.DataFrame()
-    if has_events:
+    empty = pd.DataFrame(columns=["startDate", "endDate", "interEventLength"])
+
+    def summary(get: Any) -> Any:
         try:
-            inter = sh.get_all_successful_interEvents()
+            return get() if has_events else empty
         except KeyError as e:  # events exist but none succeeded (all shorter than MinSpell): py_ewr's summary is empty and fails the same way
             if e.args != ("Gauge",):
                 raise
+            return empty
+
+    inter, succ = summary(sh.get_all_successful_interEvents), summary(sh.get_all_successful_events)
     res = res.copy()
     freq = pd.to_numeric(res["Frequency"], errors="coerce")
     target = pd.to_numeric(res["TargetFrequency"], errors="coerce")
     res["FR"] = np.where(target > 0, freq / target, np.nan)
-    mrip = pd.to_numeric(res["MaxInterEventYears"], errors="coerce") * 365
-    days = pd.to_numeric(res["TotalDays"], errors="coerce")
-    gaps = {}
-    if len(inter):
-        inter = inter.copy()
-        inter["interEventLength"] = pd.to_numeric(inter["interEventLength"], errors="coerce")
-        for k, g in inter.groupby(["Gauge", "PlanningUnit", "Code"]):
-            gaps[k] = g.interEventLength.dropna().to_numpy()
-    etp: list[float | None] = []
-    for k, m, d in zip(zip(res.Gauge, res.PlanningUnit, res.Code, strict=True), mrip, days, strict=False):
-        if not (m > 0 and d > 0):
-            etp.append(None)
+    # ETP and gap severity from the same gap list as the flow charts (ewr_gaps): an EWR with no successful event is one gap over the record
+    by_key = lambda d: {(str(k[0]), k[1], k[2]): g for k, g in d.groupby(["Gauge", "PlanningUnit", "Code"])} if len(d) and "Gauge" in d else {}  # noqa: E731
+    inter_by, succ_by = by_key(inter), by_key(succ)
+    series = {str(g): df_F[g] for g in df_F.columns} | {str(g): df_L[g] for g in df_L.columns if str(g) not in {str(c) for c in df_F.columns}}
+    daily: dict[str, Any] = {}
+    gap_stats: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for r in res.itertuples():
+        k = (str(r.Gauge), r.PlanningUnit, r.Code)
+        mi = pd.to_numeric(r.MaxInterEventYears, errors="coerce")
+        if k[0] not in daily:
+            daily[k[0]] = record_days(series.get(k[0]))
+        flow, mrip, days = daily[k[0]], int(round(float(mi) * 365)) if mi > 0 else 0, pd.to_numeric(r.TotalDays, errors="coerce")
+        if flow is None or flow.empty:  # no dates (ten-thousand-year runs): py_ewr's gap lengths, the record as one gap when nothing succeeded
+            lens = [days] if k not in succ_by else pd.to_numeric(inter_by[k].interEventLength, errors="coerce").dropna().tolist() if k in inter_by else []
+            gap_stats[k] = {"et": round(min(1.0, sum(max(0.0, x - mrip) for x in lens) / days), 4) if mrip and days > 0 else None}
             continue
-        gap_days = gaps.get(k)
-        etp.append(0.0 if gap_days is None else min(1.0, float(np.clip(gap_days - m, 0, None).sum() / d)))  # a time proportion: at most 1
-    res["ETP"] = etp
+        ev = {"flow": flow, "mrip_days": mrip, "inter": inter_by.get(k, empty), "succ": succ_by.get(k, empty)}
+        gaps, etp = ewr_gaps(ev)
+        gap_stats[k] = {"et": etp, **gap_severity(gaps, ev["mrip_days"])}
+    res["ETP"] = [gap_stats.get((str(g), pu, c), {}).get("et") for g, pu, c in zip(res.Gauge, res.PlanningUnit, res.Code, strict=True)]
     rows = [
         {
             "pu": r.PlanningUnit,
@@ -288,6 +296,7 @@ def run_scenario(
             "et": None if r.ETP is None or pd.isna(r.ETP) else round(float(r.ETP), 4),
             "ey": None if pd.isna(pd.to_numeric(r.EventYears, errors="coerce")) else int(r.EventYears),  # achieved years
             "ny": round(float(r.TotalDays) / 365.25, 2) if pd.to_numeric(r.TotalDays, errors="coerce") > 0 else None,  # record length in years
+            **{s: gap_stats.get((str(r.Gauge), r.PlanningUnit, r.Code), {}).get(s) for s in ("sev", "sev_b", "eps")},  # gap severity (gap_severity)
         }
         for r in res.itertuples()
     ]
@@ -710,6 +719,28 @@ def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
     return gaps, etp
 
 
+def gap_severity(gaps: list[dict[str, Any]], mrip: int) -> dict[str, Any]:
+    """How far the gaps between successful events overshoot the maximum inter-event period, from the uncensored gaps:
+    sev = longest interior gap / MRIP (all gaps when none is interior), sev_b = longest gap including those from the start or to the end of
+    the record / MRIP, eps = gaps longer than MRIP (episodes). All None without a maximum or an uncensored gap."""
+    known = [g for g in gaps if not g["censored"]]
+    if not mrip or not known:
+        return {"sev": None, "sev_b": None, "eps": None}
+    inner = [g["days"] for g in known if not g["boundary"]] or [g["days"] for g in known]
+    return {"sev": round(max(inner) / mrip, 2), "sev_b": round(max(g["days"] for g in known) / mrip, 2), "eps": sum(1 for g in known if g["excess"])}
+
+
+def record_days(s: Any) -> Any:
+    """A gauge's series from its first to its last observed day on every calendar day (missing days NaN), as ewr_eval sees it; None when the
+    index is not dates (ten-thousand-year runs)."""
+    import pandas as pd
+
+    if s is None or not isinstance(s.index, pd.DatetimeIndex):
+        return None
+    s = s.loc[s.first_valid_index() : s.last_valid_index()] if s.notna().any() else s.iloc[:0]
+    return s if s.empty else s.reindex(pd.date_range(s.index[0], s.index[-1]))
+
+
 def interevents(q: dict[str, str]) -> dict[str, Any]:
     """Gaps between successful events of one EWR (py_ewr successful inter-events) that exceed its maximum inter-event period."""
     ev = ewr_eval(q["scn"], q["gauge"], q["ewr"], q.get("pu", ""))
@@ -790,6 +821,7 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "events": events,
             "gaps": gaps,
             "etp": etp,
+            **gap_severity(gaps, ev["mrip_days"]),
             "coverage": record_coverage(flow, complete),
         }
         out.update({kk: ev[kk] for kk in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})

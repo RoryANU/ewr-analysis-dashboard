@@ -119,7 +119,7 @@ class TestRunScenario:
     def test_row_structure_and_value_ranges(self, goulburn_run):
         rows, stats = goulburn_run
         assert len(rows) == stats["ewr_rows"] == 35
-        assert all(set(r) == set(server.VAL_KEYS) for r in rows)
+        assert all(set(r) == set(server.VAL_KEYS) | {"sev_b", "eps"} for r in rows)
         assert all(r["ny"] == pytest.approx(9132 / 365.25, abs=0.005) for r in rows)  # 1995-07-01 to 2020-06-30
         assert all(r["ey"] is None or 0 <= r["ey"] <= 25 for r in rows)
         assert {r["gauge"] for r in rows} <= set(GOULBURN_GAUGES)
@@ -148,7 +148,8 @@ class TestRunScenario:
         assert_snapshot("run_scenario_goulburn_A", rows)
 
     def test_fr_and_etp_agree_with_an_independent_recomputation_from_py_ewr(self, goulburn_run):
-        """Re-derive FR = Frequency / TargetFrequency and ETP = sum(max(0, gap - MRIP days)) / TotalDays with plain Python from py_ewr's own tables."""
+        """Re-derive FR = Frequency / TargetFrequency and ETP = sum(max(0, gap - MRIP days)) / TotalDays with plain Python from py_ewr's own tables
+        (MRIP days = MaxInterEventYears x 365 rounded to a day; an EWR with no successful event is one gap over the whole record)."""
         rows, _ = goulburn_run
         df_f, df_l = server.load_frames("Standard time-series", str(GOULBURN_A))
         table = data_inputs.get_EWR_table(None)
@@ -160,6 +161,7 @@ class TestRunScenario:
         sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_f, df_l
         res = sh.get_ewr_results()
         inter = sh.get_all_successful_interEvents()
+        succeeded = {(str(r.Gauge), r.PlanningUnit, r.Code) for r in sh.get_all_successful_events().itertuples()}
         gaps: dict[tuple[str, str, str], list[float]] = {}
         for r in inter.itertuples():
             gaps.setdefault((str(r.Gauge), r.PlanningUnit, r.Code), []).append(float(r.interEventLength))
@@ -167,9 +169,9 @@ class TestRunScenario:
         for r in res.itertuples():
             target, freq = float(r.TargetFrequency), float(r.Frequency)
             fr = freq / target if target > 0 else None
-            mrip, days = float(r.MaxInterEventYears) * 365, float(r.TotalDays)
+            mrip, days, key = round(float(r.MaxInterEventYears) * 365), float(r.TotalDays), (str(r.Gauge), r.PlanningUnit, r.Code)
             if mrip > 0 and days > 0:
-                excess = sum(max(0.0, g - mrip) for g in gaps.get((str(r.Gauge), r.PlanningUnit, r.Code), []))
+                excess = sum(max(0.0, g - mrip) for g in (gaps.get(key, []) if key in succeeded else [days]))
                 et = excess / days
             else:
                 et = None
@@ -233,23 +235,23 @@ class TestRunScenario:
         with pytest.raises(KeyError, match="Something else"):
             server.run_scenario(GOULBURN_A.read_bytes(), ["405201"], None, "Standard time-series", "a.csv")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="known discrepancy (see PR): the headline ETP counts no gap for an EWR with no successful event (0.0), whereas the flow-chart "
-        "ETP (ewr_gaps) treats the whole record as one gap (0.9001 here). Remove this marker when the two are reconciled.",
-    )
     def test_never_achieved_ewr_has_the_same_etp_in_the_table_and_the_flow_chart(self, tmp_path, monkeypatch):
+        """A dry record: no successful event, so the whole record is one gap and ETP = 1 - MRIP / record days, in the table as in ewr_years."""
         monkeypatch.setattr(server, "STORE", tmp_path)
         server.FLOWS.clear()
         server._EVAL_CACHE.clear()
         idx = pd.date_range("2000-07-01", "2010-06-30")
         dry = pd.DataFrame({"Date": idx.strftime("%Y-%m-%d"), "405201_flow": 0.0})
         rows, _ = server.run_scenario(dry.to_csv(index=False).encode(), ["405201"], "dry", "Standard time-series", "dry.csv")
-        chart = server.ewr_years({"base": "dry", "gauge": "405201", "ewr": "F1"})["scenarios"]["base"]["etp"]
-        table = next(r["et"] for r in rows if r["ewr"] == "F1")
+        out = server.ewr_years({"base": "dry", "gauge": "405201", "ewr": "F1"})
+        chart, mrip = out["scenarios"]["base"]["etp"], out["mrip_days"]
+        row = next(r for r in rows if r["ewr"] == "F1")
         server.FLOWS.clear()
         server._EVAL_CACHE.clear()
-        assert table == pytest.approx(chart, abs=1e-4)
+        record = len(idx)  # 3,652 days
+        assert row["et"] == chart == round(1 - mrip / record, 4)
+        assert (row["sev"], row["sev_b"], row["eps"]) == (round(record / mrip, 2),) * 2 + (1,)  # the one gap, from the start of the record
+        assert out["scenarios"]["base"]["sev"] == row["sev"]
 
     def test_flows_are_stored_for_the_charts_and_merged_by_gauge(self, tmp_path, monkeypatch):
         monkeypatch.setattr(server, "STORE", tmp_path / "store")

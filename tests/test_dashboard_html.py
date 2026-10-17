@@ -127,7 +127,7 @@ class TestRowsAndMeta:
     def test_row_shape_and_index_bounds(self, page):
         m = page["META"]
         for r in page["ROWS"]:
-            assert len(r) == 10
+            assert len(r) == 11 and r[10] is None  # gap severity: uploads only (the results hold the MRIP parameter, not the gaps)
             pu, sdl, gauge, ewr, objs, regimes, fr, et = r[:8]
             assert 0 <= pu < len(m["pus"]) and 0 <= sdl < len(m["sdls"]) and 0 <= gauge < len(m["gauges"])
             assert isinstance(ewr, str) and ewr
