@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 from shapely.geometry import mapping, shape
 
+from drought_windows import meta as drought_meta
 from flow_regime_mappings import regimes_for
 
 HERE = Path(__file__).parent  # src/
@@ -68,7 +69,7 @@ def load_results(root: Path = ROOT) -> tuple[pd.DataFrame, pd.DataFrame]:
     fr = pd.read_csv(
         root / "data/results/frequency_ratio.csv",
         dtype={"Gauge": str},
-        usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR", "EventYears", "TotalDays"],
+        usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR", "EventYears", "TotalDays", "AverageEventLength"],
     )
     et = pd.read_csv(
         root / "data/results/etp.csv",
@@ -104,12 +105,15 @@ def report_variant_conflicts(fr: pd.DataFrame, et: pd.DataFrame) -> None:
 def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, str, str, str], dict[str, Any]]:
     """One row per (planning unit, SDL unit, gauge, EWR): both files repeat each EWR once per ecological objective, so the
     metric is the plain mean over those repeats for each scenario (rounded to 4 places); None where a scenario has no result.
-    Also per EWR: the achieved years (EventYears, same mean, 2 places) per scenario and the record length in years (`ny`, TotalDays / 365.25).
+    Also per EWR: the achieved years (EventYears, same mean, 2 places) and the mean event length (AverageEventLength: py_ewr's threshold days
+    over all its events, successful or not, ÷ their number) per scenario, and the record length in years (`ny`, TotalDays / 365.25).
     """
     rows: dict[tuple[str, str, str, str], dict[str, Any]] = {}
 
     def row(k: tuple[str, str, str, str]) -> dict[str, Any]:
-        return rows.setdefault(k, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "ey": [None] * NS, "ny": None, "state": None})
+        return rows.setdefault(
+            k, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "ey": [None] * NS, "ael": [None] * NS, "ny": None, "state": None}
+        )
 
     for k, v in fr.groupby(KEY):
         r = row(k)
@@ -119,6 +123,8 @@ def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, st
             r["fr"][int(s)] = round(float(x), 4)
         for s, x in v.groupby("scn").EventYears.mean().dropna().items():
             r["ey"][int(s)] = round(float(x), 2)
+        for s, x in v.groupby("scn").AverageEventLength.mean().dropna().items():
+            r["ael"][int(s)] = round(float(x), 2)
         days = v.TotalDays.dropna()
         r["ny"] = round(float(days.mean()) / 365.25, 2) if len(days) else None
     for k, v in et.groupby(KEY):
@@ -133,6 +139,15 @@ def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, st
         if not r["rg"]:
             r["rg"] = {"Unmapped"}
     return rows
+
+
+def dr_approx(ael: list[float | None], prm: dict[str, Any]) -> list[float | None]:
+    """The review results have no yearly event lengths, so the duration ratio is approximated per scenario as the mean event length ÷ the
+    required duration, capped at 2 (py_ewr's AverageEventLength averages every event, successful or not). Flow EWRs only."""
+    dur = prm.get("dur")
+    if prm.get("kind", "F") != "F" or not dur:
+        return [None] * len(ael)
+    return [None if a is None else round(min(a / dur, 2.0), 3) for a in ael]
 
 
 def fix_theme(t: str) -> str:
@@ -162,7 +177,9 @@ def build_row_table(
     """The compact ROWS table the page reads, and the lookup lists (pus, sdls, gids, objs, themes, regimes, objTheme) its indices refer to.
     Columns 0-7 are fixed (the page and performance.js index them); 8 = {T, ny, dur, mrip}: target % of years, record years, required days and
     MRIP years (from `params`, keyed (gauge, code, planning unit); None when unknown); 9 = achieved years (EventYears) per scenario;
-    10 = gap severity per scenario: None here, as the results hold the MRIP parameter, not the observed gaps (uploads fill it in the page)."""
+    10 = gap severity per scenario: None here, as the results hold the MRIP parameter, not the observed gaps (uploads fill it in the page);
+    11 = duration ratio per scenario, approximated as mean event length ÷ required duration, capped at 2 (flow EWRs only; dr_approx);
+    12 = drought-window metrics: None here (no yearly results; uploads fill it)."""
     params = params or {}
     pus = sorted({k[0] for k in rows})
     sdls = sorted({k[1] for k in rows})
@@ -181,8 +198,10 @@ def build_row_table(
             sorted(regimes.index(g) for g in r["rg"]),
             r["fr"],
             r["et"],
-            {**{"T": None, "dur": None, "mrip": None}, **params.get((k[2], k[3], k[0]), {}), "ny": r.get("ny")},
+            {**{"T": None, "dur": None, "mrip": None}, **{s: v for s, v in params.get((k[2], k[3], k[0]), {}).items() if s != "kind"}, "ny": r.get("ny")},
             r.get("ey", [None] * NS),
+            None,
+            dr_approx(r.get("ael", [None] * NS), params.get((k[2], k[3], k[0]), {})),
             None,
         ]
         for k, r in sorted(rows.items())
@@ -271,12 +290,14 @@ def ewr_params(sheet: pd.DataFrame | None) -> dict[tuple[str, str, str], dict[st
     num = lambda c: pd.to_numeric(sheet[c], errors="coerce") if c in sheet else pd.Series(float("nan"), index=sheet.index)  # noqa: E731
     d = pd.DataFrame({"g": sheet.Gauge.astype(str), "c": sheet.Code.astype(str), "pu": sheet.PlanningUnitName.astype(str)})
     d["T"], d["dur"], d["mrip"] = num("TargetFrequency"), num("Duration"), num("MaxInter-event")
+    d["kind"] = sheet.FlowLevelVolume.astype(str) if "FlowLevelVolume" in sheet else "F"
     out: dict[tuple[str, str, str], dict[str, Any]] = {}
     for r in d.drop_duplicates(["g", "c", "pu"]).itertuples():
         out[(r.g, r.c, r.pu)] = {
             "T": None if pd.isna(r.T) else float(r.T),
             "dur": None if pd.isna(r.dur) else int(r.dur),
             "mrip": None if pd.isna(r.mrip) else round(float(r.mrip), 4),
+            "kind": r.kind,  # F / L / V (flow, level, volume); not carried into ROWS
         }
     return out
 
@@ -297,6 +318,7 @@ def build_meta(lookups: dict[str, Any], ref: pd.DataFrame, ewr_thr: dict[str, fl
     objs = lookups["objs"]
     return {
         "ewrThr": ewr_thr or {},
+        "droughts": drought_meta(),
         "policies": POLICIES,
         "climates": CLIMATES,
         "pus": lookups["pus"],

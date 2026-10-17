@@ -47,6 +47,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .seg{display:flex;align-items:center;gap:6px}.seg .lbl{font-size:11px;color:var(--mut)}
 .mmore{position:relative;display:inline-block}.mmore summary{cursor:pointer;list-style:none;border:1px solid #c5ccd6;border-left:0;border-radius:0 6px 6px 0;padding:5px 10px;background:#fff;font:inherit}.mmore summary::-webkit-details-marker{display:none}.mmore summary::after{content:" ▾"}.mmore.on summary{background:var(--acc);color:#fff;border-color:var(--acc)}.mmore .pop{position:absolute;z-index:30;top:100%;right:0;display:flex;flex-direction:column;background:#fff;border:1px solid #c5ccd6;border-radius:6px;box-shadow:0 4px 12px #0003;padding:4px;min-width:170px}.mmore .pop button{border-radius:4px!important;text-align:left;margin:1px 0}
 .tabs.sm button{padding:2px 9px;font-size:11.5px}
+#perL{position:relative}.pnote{display:none;position:absolute;top:100%;left:0;width:240px;font-weight:400;font-size:10.5px;line-height:1.35;color:var(--mut);background:var(--panel);padding:2px 0}#perL.on .pnote{display:block}
 .ghost{border:0;background:none;color:var(--mut);font-size:12px;padding:2px 6px}.ghost:hover{background:none;color:var(--acc)}#addScn{margin-left:auto}
 #scnDlg{border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(560px,92vw);font-size:13px}#scnDlg::backdrop{background:#0004}
 #scnDlg{position:fixed}#scnClose{position:absolute;top:8px;right:10px;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#4b5563;padding:2px 8px}#scnClose:hover{color:#111}
@@ -77,7 +78,8 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <button id="swapBC" title="Swap base and comparison" style="display:none">⇄ Reverse</button>
   <label id="bandL" style="display:none" title="Differential: an EWR's frequency counts as changed when it gains or loses at least this many achieved years over the record (crossing the target always counts)">Change band ≥ <select id="band"><option>1</option><option selected>2</option><option>3</option><option>5</option></select> achieved years</label>
   <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
-  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion: the share of the record that lies beyond the maximum recommended inter-event period, i.e. inside a gap between successful events, after its first MRIP days (lower is better)">% of record beyond MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button><button id="mSV" title="Longest gap between successful events (not counting the gaps from the start or to the end of the record) ÷ the MRIP: the worst EWR sets each cell (lower is better). Uploaded scenarios only">Worst gap (× MRIP)</button></div></details></span></label>
+  <label id="perL" title="Metrics over a drought window (water years, July–June) instead of the whole record">Period <select id="period"><option value="">Full record</option></select><span id="perNote" class="pnote">Compare in Differential mode: overbank EWRs fail in droughts even without development.</span></label>
+  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion: the share of the record that lies beyond the maximum recommended inter-event period, i.e. inside a gap between successful events, after its first MRIP days (lower is better)">% of record beyond MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button><button id="mDR" title="Duration ratio: how long the events last against the required duration (1 = long enough; capped at 2). Your data: the median over complete years of each year's best event ÷ the required duration (volume EWRs: the best accumulated volume ÷ the volume threshold). Review results: the mean event length ÷ the required duration, an approximation">Duration ratio</button><button id="mSV" title="Longest gap between successful events (not counting the gaps from the start or to the end of the record) ÷ the MRIP: the worst EWR sets each cell (lower is better). Uploaded scenarios only">Worst gap (× MRIP)</button></div></details></span></label>
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its % of record beyond MRIP is at or below this value, otherwise 0">MRIP achieved when % of record beyond MRIP ≤ <input id="ethr" type="number" min="0" max="100" step="1" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Frequency threshold (target = 1.0) ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="1.0" style="width:56px;font:inherit;padding:2px 4px"></label>
@@ -102,7 +104,9 @@ const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__R
 const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et,ey,ny],...]}] (VALK)
 // ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28], {T, ny, dur, mrip}, achievedYears[28]]
 //   r[8]: target % of years, record years (an upload's own in nyAt[scenario index]), required days, MRIP years; r[9]: EventYears per scenario;
-//   r[10]: worst gap between successful events ÷ MRIP per scenario (uploads only: null until one is added)
+//   r[10]: worst gap between successful events ÷ MRIP per scenario (uploads only: null until one is added); r[11]: duration ratio per scenario
+//   (review results: mean event length ÷ required duration; uploads: median over complete years of the year's best event ÷ required duration);
+//   r[12]: drought windows {fed|ww2|mil|tin: {fr, et, sev, dr, n}}, each an array per scenario (uploads only)
 ROWS.forEach(r=>{ const t=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=t.length?t:[META.themes.indexOf("Unclassified")]; });
 const NC=META.climates.length;
 const POL_L={"Without Development":"Without development","Pre Basin Plan":"Pre Basin Plan","Basin plan 2024":"Basin Plan 2024","Basin plan full implementation":"Full implementation"};
@@ -111,23 +115,34 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const $=id=>document.getElementById(id);
 
 const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
-const S={src:"demo",band:2,flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"demo",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 
 // ---- values and averages -----------------------------------------------------------------------------------------
 // Hierarchy: EWR -> gauge (mean of its EWRs) -> planning unit (mean of its gauges) -> SDL unit (mean of its planning units).
 const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c;
 const isDiff=()=>S.mode==="diff";
-const FAMN={fr:"FR",et:"% of record beyond MRIP",sev:"Worst gap ÷ MRIP"};   // the ETP (0-1 time proportion) is shown as a % of the record; stored and coloured as a proportion
-const MN={fr:"mean FR",et:"mean % of record beyond MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly",sev:"worst gap (× MRIP)"}, MS={fr:"FR",et:"% of record beyond MRIP",sev:"worst gap",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
-const FAM={fr:"f",ach:"f",fb:"f",et:"e",mz:"e",sev:"e"}, inFam=k=>["ach","fb","mz","sev"].includes(S.metric)||k===S.metric||(k==="sev"&&S.metric==="et");   // FR or % beyond MRIP selected: only that metric is shown; a metric from the "More" menu: all of them are shown
-const METRICS=["fr","et","ach","mz","fb","sev"], LOWER={et:1,fb:1,sev:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
+const FAMN={fr:"FR",et:"% of record beyond MRIP",sev:"Worst gap ÷ MRIP",dr:"Duration ratio"};   // the ETP (0-1 time proportion) is shown as a % of the record; stored and coloured as a proportion
+const MN={fr:"mean FR",et:"mean % of record beyond MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly",sev:"worst gap (× MRIP)",dr:"mean duration ratio"}, MS={fr:"FR",et:"% of record beyond MRIP",sev:"worst gap",dr:"duration ratio",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
+const FAM={fr:"f",ach:"f",fb:"f",dr:"f",et:"e",mz:"e",sev:"e"}, inFam=k=>["ach","fb","mz","sev","dr"].includes(S.metric)||k===S.metric||(k==="sev"&&S.metric==="et")||(k==="dr"&&S.metric==="fr");   // FR or % beyond MRIP selected: only that metric is shown; a metric from the "More" menu: all of them are shown
+const METRICS=["fr","et","ach","mz","fb","sev","dr"], LOWER={et:1,fb:1,sev:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
 const FR_T=1, MET_OUT=true;   // FR_T: FR at the target frequency. MET_OUT: differential means and ▲/▼ counts leave out EWRs that meet the target in both scenarios (false: they stay in as a change of 0)
 // one scenario's value of metric m: FR, ETP (capped at 1), or 1 / 0 for the binary metrics ("ach": FR >= threshold; "fb": FR < floor; "mz": ETP <= threshold, 0 = MRIP never exceeded)
-function valOne(r,m,i){ if(m==="sev") return r[10]?r[10][i]??null:null;   // worst gap ÷ MRIP
-  const raw=(m==="et"||m==="mz"?r[7]:r[6])[i], v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw;
+// the stored value behind metric m: the whole record (r[6], r[7], r[10], r[11]) or, with a drought period, that window's (r[12]; none for the review results)
+const win=r=>S.period&&r[12]?r[12][S.period]||null:null;
+function src(r,m,i){ const k=m==="et"||m==="mz"?"et":m==="sev"||m==="dr"?m:"fr";
+  if(S.period){ const w=win(r); return w&&w[k]?w[k][i]??null:null; }
+  const a=k==="et"?r[7]:k==="fr"?r[6]:k==="sev"?r[10]:r[11]; return a?a[i]??null:null; }
+// a window too short to expect one achieved year (n < 100 / T): its FR is shown as "k of n years" and kept out of the means
+const shortWin=(r,i)=>{ const w=win(r), T=r[8]&&r[8].T; return !!w&&T>0&&w.n&&w.n[i]!=null&&w.n[i]<100/T; };
+function valOne(r,m,i){ if(m==="sev"||m==="dr") return src(r,m,i);   // worst gap ÷ MRIP; duration ratio
+  if((m==="fr"||m==="ach"||m==="fb")&&shortWin(r,i)) return null;
+  const raw=src(r,m,i), v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw;
   return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; }
-const nyOf=(r,i)=>r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null, eyOf=(r,i)=>r[9]?r[9][i]??null:null;   // record years; achieved years
+const nyFull=(r,i)=>r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null;   // record years (an upload's own)
+// the years behind FR and how many were achieved: the record's, or with a drought period the window's complete years (achieved = FR x T / 100 x n)
+const nyOf=(r,i)=>S.period?(w=>w&&w.n?w.n[i]??null:null)(win(r)):nyFull(r,i);
+const eyOf=(r,i)=>{ if(!S.period) return r[9]?r[9][i]??null:null; const w=win(r), T=r[8]&&r[8].T, f=w&&w.fr?w.fr[i]:null, n=nyOf(r,i); return f==null||!T||!n?null:f*T/100*n; };
 const dYears=r=>{ const c=eyOf(r,scnIdx()), b=eyOf(r,scnIdx(S.bpol,S.bcli)); return c==null||b==null?null:c-b; };   // achieved years, comparison − base
 // differential class of an EWR (base b -> comparison c) and its change d as it enters the means (positive = better); null when either is missing.
 //   met: target met in both (d null, so out of the means; FR surplus c - b in `sur`, tooltips only) · gain: reaches it, d = min(c,1) - b
@@ -137,7 +152,7 @@ const dYears=r=>{ const c=eyOf(r,scnIdx()), b=eyOf(r,scnIdx(S.bpol,S.bcli)); ret
 // (ΔFR × T when the EWR has no achieved-years data, the same quantity); null for met
 function diffClass(r,m){ const c=valOne(r,m,scnIdx()), b=valOne(r,m,scnIdx(S.bpol,S.bcli)); if(c==null||b==null) return null;
   if(isBin(m)) return {cls:null,d:LOWER[m]?b-c:c-b};
-  const ok=m==="et"?v=>v<=S.ethr+1e-9:m==="sev"?v=>v<=1+1e-9:v=>v>=FR_T-1e-9, bo=ok(b), co=ok(c), d=LOWER[m]?b-c:c-b;
+  const ok=m==="et"?v=>v<=S.ethr+1e-9:m==="sev"?v=>v<=1+1e-9:v=>v>=FR_T-1e-9, bo=ok(b), co=ok(c), d=LOWER[m]?b-c:c-b;   // FR and duration ratio: target 1
   if(bo&&co) return {cls:"met",d:MET_OUT?null:0,sur:d};
   if(m!=="fr") return {cls:co?"gain":bo?"loss":"below",d};
   const k=co?{cls:"gain",d:Math.min(c,FR_T)-b}:bo?{cls:"loss",d:c-Math.min(b,FR_T)}:{cls:"below",d}, i1=scnIdx(), i0=scnIdx(S.bpol,S.bcli), T=r[8]?r[8].T:null;
@@ -148,12 +163,13 @@ const dFR=(r,m)=>{ const k=diffClass(r,m); return k&&k.d; };   // the change in 
 // single scenario: the value at index i; differential: the change from base to comparison (S.pol / S.bpol, not i): FR in achieved years per century
 function val(r,m,i){ if(!isDiff()) return valOne(r,m,i); const k=diffClass(r,m); return !k?null:m==="fr"?(k.cls==="met"?k.d:k.dy):k.d; }
 // is the change big enough to count as improved (1) / declined (-1)? FR: at least S.band achieved years; ETP: at least 1 year of record beyond MRIP;
-// worst gap: at least 1 year (Δ × MRIP years);
+// worst gap: at least 1 year (Δ × MRIP years); duration ratio: 0.1. With a drought period the FR band scales to the window: max(1, round(S.band x n / ny));
 // without the record length (or for the binary metrics): more than 0.01. Crossing the target always counts
 function moved(r,m,k){ if(k.cls==="gain") return 1; if(k.cls==="loss") return -1;
   const ny=nyOf(r,scnIdx())??nyOf(r,scnIdx(S.bpol,S.bcli)), band=(x,b)=>x>=b-1e-9?1:x<=-b+1e-9?-1:0;
-  const mrip=r[8]&&r[8].mrip;
-  return m==="fr"&&k.dyr!=null?band(k.dyr,S.band):m==="et"&&ny?band(k.d*ny,1):m==="sev"&&mrip?band(k.d*mrip,1):k.d>0.01?1:k.d<-0.01?-1:0; }
+  const mrip=r[8]&&r[8].mrip, i=scnIdx(), K=S.period?Math.max(1,Math.round(S.band*(nyOf(r,i)??0)/(nyFull(r,i)||1))):S.band;
+  if(m==="dr") return band(k.d,0.1);
+  return m==="fr"&&k.dyr!=null?band(k.dyr,K):m==="et"&&ny?band(k.d*ny,1):m==="sev"&&mrip?band(k.d*mrip,1):k.d>0.01?1:k.d<-0.01?-1:0; }
 const hasRes=(r,m)=>isDiff()?diffClass(r,m)!=null:valOne(r,m,scnIdx())!=null;   // a result in the scenario (both scenarios, differential)
 // per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (see moved); gain and loss
 // (crossing the target) always count as improved / declined; met in both is counted apart and, with MET_OUT, not in n
@@ -172,14 +188,16 @@ function agg(rows,levels,m,i,vf=val){   // vf: the per-EWR value (default val)
   return {n,mean:k?s/k:null};
 }
 // the worst gap is a maximum, not a mean (at every level): one scenario, the largest; differential, base's largest − comparison's largest
-// over the EWRs with both (shorter = +), unless every EWR meets the MRIP in both. `who`: the EWR that sets it (comparison's, differential)
+// over the EWRs with both (shorter = +), unless every EWR meets the MRIP in both. `who`: the EWR that sets it (comparison's, differential).
+// With a drought period: the longest gap overlapping the window, from its true start
 function aggMax(rows,i){ let n=0, hi=null, who=null, hb=null; const D=isDiff(), ic=D?scnIdx():i, ib=scnIdx(S.bpol,S.bcli); let met=0;
   for(const r of rows){ const c=valOne(r,"sev",ic), b=D?valOne(r,"sev",ib):0; if(c==null||b==null) continue; n++; if(D&&c<=1+1e-9&&b<=1+1e-9) met++;
     if(hi==null||c>hi){ hi=c; who=r; } if(D&&(hb==null||b>hb)) hb=b; }
   if(!n||(D&&MET_OUT&&met===n)) return {n:D?n-met:n,mean:null,who:null};
   return {n,mean:D?hb-hi:hi,who}; }
 const whoTxt=a=>a&&a.who?` · set by ${a.who[3]} at ${META.gauges?.[a.who[2]]??a.who[2]}`:"";   // the EWR behind a worst gap
-const hasSev=rows=>rows.some(r=>r[10]&&r[10].some(v=>v!=null));
+const hasSev=rows=>S.period?rows.some(r=>(win(r)?.sev||[]).some(v=>v!=null)):rows.some(r=>r[10]&&r[10].some(v=>v!=null));
+const hasDr=rows=>S.period?rows.some(r=>(win(r)?.dr||[]).some(v=>v!=null)):rows.some(r=>r[11]&&r[11].some(v=>v!=null));
 const LEVELS={sdl:["pu","gauge"],pu:["gauge"],gauge:[]};
 const scopeLevels=()=>LEVELS[S.sel.type]||[];
 // differential values: an FR difference is in achieved years per century; a difference of shares (of EWRs, or of the record beyond MRIP) is in percentage points (+14 pts)
@@ -188,7 +206,7 @@ const pct=v=>signed(String(Math.abs(Math.round(v*100))),v)+" pts", dfr=m=>isDiff
 const pa=v=>Math.round(v*100)+"%";
 const sg=v=>isDiff()&&v>0?"+":"", num=(v,dp)=>isDiff()?signed(Math.abs(v).toFixed(dp),v):v.toFixed(dp);
 const dyc=m=>isDiff()&&m==="fr";   // differential FR is in achieved years per century of record
-const f3=(v,m)=>v==null?"–":m==="sev"?num(v,2)+"×":m==="et"?(isDiff()?pct(v):pa(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="sev"?num(v,1)+"×":m==="et"?(isDiff()?pct(v):pa(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
+const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"?(isDiff()?pct(v):pa(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,1)+"×":m==="et"?(isDiff()?pct(v):pa(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
 const mn=m=>dyc(m)?"mean change in achieved years per century":MN[m], msn=m=>dyc(m)?"change in achieved yrs/century":MS[m];   // differential FR labels
 
 // ---- selection ---------------------------------------------------------------------------------------------------
@@ -205,11 +223,11 @@ const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
 const RYB=[[215,48,39],[252,141,89],[254,224,144],[145,191,219],[69,117,180]], ryb=s=>{ const x=Math.max(0,Math.min(1,s))*(RYB.length-1), i=Math.min(RYB.length-2,Math.floor(x)); return `rgb(${mixc(RYB[i],RYB[i+1],x-i)})`; };
 const ramp=s=>ryb(s);   // 0 worst (red) .. 1 best (blue)
 const MET_FILL="#e5e7eb", metTip=(r,m)=>{ const k=diffClass(r,m); return `meets the target in both scenarios (not in the means)${k&&k.sur!=null?`; surplus ${m==="et"?pct(k.sur):signed(Math.abs(k.sur).toFixed(2),k.sur)}`:""}`; };   // differential: every EWR meets the target in both scenarios
-const ETP_MAX=0.5, DIV={fr:10,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
+const ETP_MAX=0.5, DIV={fr:10,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1,dr:0.5};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,v/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
-  if(m==="fr"){ const x=Math.max(0,Math.min(1.0,v)), w=[255,255,255];   // frequency ratio: 0 red, 0.9 white, 1 blue (as in the Excel version)
+  if(m==="fr"||m==="dr"){ const x=Math.max(0,Math.min(1.0,v)), w=[255,255,255];   // frequency ratio (and duration ratio): 0 red, 0.9 white, 1 blue (as in the Excel version)
     return `rgb(${x<=0.9?mixc([215,48,39],w,x/0.9):mixc(w,[33,102,172],(x-0.9)/0.1)})`; }
   if(m==="sev") return ryb(v<=1+1e-9?1:v<=2?.5:v<3?.25:0);   // worst gap ÷ MRIP: blue within it, yellow 1-2, orange 2-3, red 3 or more
   if(m==="et") return ryb(1-Math.max(0,Math.min(1,v)));   // % of record beyond the MRIP: 0 blue (best), 50% pale yellow, 100% red
@@ -303,7 +321,9 @@ function paintLegend(){}
 // ---- panel -------------------------------------------------------------------------------------------------------
 const sdlOf=()=>{ const s=S.sel; return s.type==="sdl"?s.i:s.sdl; };
 function gaugeName(i){ const g=GAUGES.find(x=>x.i===i); return META.gauges[i]+(g?" · "+g.name:""); }
-function title(){
+const periodLab=()=>{ const d=META.droughts&&META.droughts.find(x=>x.k===S.period); return d?`${d.name} drought (${wyl(d.w0)} to ${wyl(d.w1)})`:""; };
+function title(){ const p=periodLab(); return (p?p+" · ":"")+title0(); }
+function title0(){
   const s=S.sel;
   if(s.type==="sdl") return META.sdls[s.i];
   if(s.type==="pu") return META.pus[s.i];
@@ -326,7 +346,7 @@ function render(){
       <table><tbody>${names.map(([n,i])=>`<tr class="click" data-act="sdl" data-i="${i}"><td>${esc(n)}</td></tr>`).join("")}</tbody></table>`;
     return;
   }
-  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), sv=agg(rows,lv,"sev",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
+  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), sv=agg(rows,lv,"sev",i), dr=agg(rows,lv,"dr",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
   const bx=k=>s.type==="gauge"&&S.metric===k?boxPlot(rows,k):"";   // gauge view, FR or % beyond MRIP selected: distribution of the EWRs beside the mean
   const foot=(k,a)=>isDiff()?(c=>`<span style="display:block">${MET_OUT?`Mean over ${a.n} EWRs below target in at least one scenario; ${c.met} met in both excluded`:`Mean over ${a.n} EWRs; ${c.met} met in both count as no change`}</span>`)(cnts(rows,k)):"";   // what the differential mean is taken over
   let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div${isDiff()?` title="Mean change in FR (ΔFR): ${(d=>d==null?"–":num(d,3))(agg(rows,lv,"fr",i,dFR).mean)} (comparison − base; capped at the target where it is crossed)"`:""}><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"achieved years per century":"mean frequency ratio (each EWR capped at 1)"} · ${fr.n} EWRs</span>${foot("fr",fr)}${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
@@ -334,10 +354,11 @@ function render(){
     ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"improvement in EWRs achieving MRIP":"EWRs achieving MRIP"} · ${mz.n} EWRs</span></div>`:""}
     ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"improvement in EWRs failing badly (fewer = +)":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
     ${inFam("et")?`<div class="tile${bx("et")?" wb":""}"><div><b>${f3(et.mean,"et")}</b><span>${isDiff()?"improvement in mean % of record beyond MRIP (less = +)":"mean % of record beyond MRIP"} · ${et.n} EWRs</span>${foot("et",et)}${bx("et")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("et")}</div>`:""}
-    ${inFam("sev")&&hasSev(rows)?`<div class="tile"><b>${f3(sv.mean,"sev")}</b><span>${isDiff()?"change in the worst gap between events, × MRIP (shorter = +)":"worst gap between events ÷ MRIP"}${whoTxt(sv)} · ${sv.n} EWRs</span></div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
+    ${inFam("sev")&&hasSev(rows)?`<div class="tile"><b>${f3(sv.mean,"sev")}</b><span>${isDiff()?"change in the worst gap between events, × MRIP (shorter = +)":"worst gap between events ÷ MRIP"}${whoTxt(sv)} · ${sv.n} EWRs</span></div>`:""}
+    ${inFam("dr")&&hasDr(rows)?`<div class="tile"><b>${f3(dr.mean,"dr")}</b><span>${isDiff()?"change in mean duration ratio":"mean duration ratio"} (${drLab()}) · ${dr.n} EWRs</span>${s.type==="gauge"?nearMiss(rows):""}</div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
     ${isDiff()&&s.type!=="sdl"?(()=>{ const c=cnts(rows,S.metric), p=x=>c.n?Math.round(100*x/c.n):0, bin=isBin(S.metric), sv=S.metric==="sev", tg=S.metric==="et"?"the MRIP target":"target";
       return `<div class="cnts"><b>${MS[S.metric]==="FR"?"Frequency ratio":MS[S.metric][0].toUpperCase()+MS[S.metric].slice(1)}: EWRs changed (comparison vs base)</b><div class="bar"><span style="width:${p(c.up)}%;background:#2166ac"></span><span style="width:${p(c.same)}%;background:#c9ced6"></span><span style="width:${p(c.dn)}%;background:#b2182b"></span></div>
-        <span class="up">▲ ${c.up} improved${bin?"":sv?` (${c.gain} now within the MRIP)`:` (${c.gain} now meet ${tg})`}</span> · <span class="dn">▼ ${c.dn} declined${bin?"":sv?` (${c.loss} now beyond it)`:` (${c.loss} drop below ${tg})`}</span> · = ${c.same} unchanged${bin?"":` · met in both: ${c.met} (${MET_OUT?"not in the mean":"in the mean as no change"})`} <span style="color:#6b7280">· ${c.n+(MET_OUT?c.met:0)} EWRs with a result in both scenarios; unchanged = ${S.metric==="fr"?`under ${S.band} achieved year${S.band===1?"":"s"}`:S.metric==="et"?"under 1 year of record beyond MRIP":sv?"worst gap moves under 1 year":"no change"}</span></div>`; })():""}
+        <span class="up">▲ ${c.up} improved${bin?"":sv?` (${c.gain} now within the MRIP)`:` (${c.gain} now meet ${tg})`}</span> · <span class="dn">▼ ${c.dn} declined${bin?"":sv?` (${c.loss} now beyond it)`:` (${c.loss} drop below ${tg})`}</span> · = ${c.same} unchanged${bin?"":` · met in both: ${c.met} (${MET_OUT?"not in the mean":"in the mean as no change"})`} <span style="color:#6b7280">· ${c.n+(MET_OUT?c.met:0)} EWRs with a result in both scenarios; unchanged = ${S.metric==="fr"?(S.period?`under max(1, ${S.band} × window years ÷ record years) achieved years`:`under ${S.band} achieved year${S.band===1?"":"s"}`):S.metric==="dr"?"duration ratio moves under 0.1":S.metric==="et"?"under 1 year of record beyond MRIP":sv?"worst gap moves under 1 year":"no change"}</span></div>`; })():""}
     <div class="mxbar"><b>${s.type==="sdl"?"Matrices":"Matrix"}</b>
       ${s.type==="sdl"?"":themeSeg()}
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
@@ -349,6 +370,11 @@ function render(){
   $("panel").innerHTML=h; mountPerformance(pv); wireFlow(); loadMcn();
 }
 
+// what the duration ratio is: uploads, the median over complete years of the year's best event ÷ required duration; the review results, an approximation
+const drLab=()=>isCustom(S.pol)?"median best event ÷ required duration":"mean event length ÷ required duration";
+// gauge view, uploads: of the years whose best event fell short (DR < 1), how many reached half the required duration (whole record only)
+function nearMiss(rows){ if(S.period||!isCustom(S.pol)) return ""; let k=0, n=0; for(const r of rows){ const v=r[8]&&r[8].nmAt&&r[8].nmAt[scnIdx()]; if(v){ k+=v[0]; n+=v[1]; } }
+  return n?`<span style="display:block">In ${k} of ${n} failed years the best event reached half the required duration</span>`:""; }
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
 const REG_ORDER=["Cease to flow","Very low flow","Baseflow","Fresh","Small fresh","Large fresh","Bankfull","Bankfull flow","Annabranch connection","Overbank","Overbank small","Overbank large","Low overbank flow","Low to moderate overbank flow","Moderate overbank flow","Moderate to large overbank flow","Wetland inundation","Wetland Large Fresh","Nesting support flow","High lake level fill","Mid level lake fill","Low level lake fill","Very high level fill","lower lakes","coorong","Annual Barrage flow","three yearly barrage flows","excluded","Unmapped"];
 const REG_ABBR={"Cease to flow":"CF","Very low flow":"VF","Baseflow":"BF","Fresh":"F","Small fresh":"SF","Large fresh":"LF","Bankfull":"BK","Bankfull flow":"BK","Overbank":"OB","Overbank small":"OB-S","Overbank large":"OB-L","Low overbank flow":"OB low","Low to moderate overbank flow":"OB low-mod","Moderate overbank flow":"OB mod","Moderate to large overbank flow":"OB mod-lg","Annabranch connection":"AC","Wetland inundation":"WL","Wetland Large Fresh":"W-LF","Nesting support flow":"Nest","High lake level fill":"HLLF","Mid level lake fill":"MLLF","Low level lake fill":"LLLF","Very high level fill":"VHLL","lower lakes":"Lakes","coorong":"Coorong","Annual Barrage flow":"Barrage 1y","three yearly barrage flows":"Barrage 3y","excluded":"Excl.","Unmapped":"–"};
@@ -431,13 +457,13 @@ function matrixSvg(rows,mxk){
   cols.forEach(c=>c.show=trunc(c.label,t==="sdl"?30:26));
   const C=isDiff()&&!cnt?28:24, PH=cnt?0:64, bandH=t==="gauge"?18:0, bandGap=t==="gauge"?6:0, TB=18;   // cell size, bar panel height, regime band, theme band width: scaled with the 10-11px type
   const lab=Math.max(...orows.map(o=>o.label.length))*6.6+10, labH=Math.max(...cols.map(c=>c.show.length))*6.2+12;   // label space estimated for 11px text
-  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","% >MRIP"],["mz","MRIP ✓"],["sev","Worst gap"]].filter(([k])=>inFam(k)&&(k!=="sev"||hasSev(rows))), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
+  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","% >MRIP"],["mz","MRIP ✓"],["sev","Worst gap"],["dr","Dur."]].filter(([k])=>inFam(k)&&(k!=="sev"||hasSev(rows))&&(k!=="dr"||hasDr(rows))), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
   const D=isDiff(), step=0.05, mid=base-PH/2;
-  const vmax=D?Math.max(2*step,Math.ceil(Math.max(0,...cols.map(c=>Math.abs(c.v||0)))/step)*step):(isBin(m)?1:m==="fr"?Math.max(1.25,Math.ceil(Math.max(...cols.map(c=>c.v||0))*4)/4):Math.max(0.5,Math.ceil(Math.max(...cols.map(c=>c.v||0))*10)/10));
+  const vmax=D?Math.max(2*step,Math.ceil(Math.max(0,...cols.map(c=>Math.abs(c.v||0)))/step)*step):(isBin(m)?1:m==="fr"||m==="dr"?Math.max(1.25,Math.ceil(Math.max(...cols.map(c=>c.v||0))*4)/4):Math.max(0.5,Math.ceil(Math.max(...cols.map(c=>c.v||0))*10)/10));
   const by=D?v=>mid-Math.max(-vmax,Math.min(vmax,v))/vmax*(PH/2):v=>base-Math.min(v,vmax)/vmax*PH;
   let g=cnt?"":`<rect x="${x0-2}" y="${base-PH-4}" width="${W-x0}" height="${PH+8}" fill="#f3f6fa"/>`;
   if(!cnt&&D) g+=`<line x1="${x0-2}" x2="${W-4}" y1="${mid}" y2="${mid}" stroke="#b9c3d1"/>`;   // differential: a zero line only, values are printed above the bars
-  if(!cnt&&!D) g+=[...new Set(D?[-vmax,0,vmax]:m==="fr"?[0,1,vmax]:[0,vmax])].map(v=>`<line x1="${x0-2}" x2="${W-4}" y1="${by(v)}" y2="${by(v)}" stroke="#d5dce6"/><text x="${x0-5}" y="${by(v)+3.5}" text-anchor="end" style="font-size:10px">${(isBin(m)||m==="et"?pa(v):+v.toFixed(2))}</text>`).join("");
+  if(!cnt&&!D) g+=[...new Set(D?[-vmax,0,vmax]:m==="fr"||m==="dr"?[0,1,vmax]:[0,vmax])].map(v=>`<line x1="${x0-2}" x2="${W-4}" y1="${by(v)}" y2="${by(v)}" stroke="#d5dce6"/><text x="${x0-5}" y="${by(v)+3.5}" text-anchor="end" style="font-size:10px">${(isBin(m)||m==="et"?pa(v):+v.toFixed(2))}</text>`).join("");
   if(!cnt){ if(!D) g+=`<text transform="translate(${x0-38},${base-PH/2}) rotate(-90)" text-anchor="middle" style="font-size:10px;font-weight:700">${D?"Δ ":""}${m==="et"?"% of record > MRIP":MN[m]}</text>`;
     g+=CHIPS.map(([k,l],n)=>`<text class="hd" x="${CX(n)+CW/2}" y="${my-6}" text-anchor="middle"${l.length>7?' style="font-size:9px"':""}>${l}</text>`).join("")+(isDiff()?`<text class="hd" x="${CX(CHIPS.length)+CCW/2}" y="${my-6}" text-anchor="middle">▲ ▼</text>`:""); }
   orows.forEach((o,ri)=>{ const y=my+ri*C, cy=y+C/2;
@@ -459,7 +485,7 @@ function matrixSvg(rows,mxk){
       const am=D&&!cnt&&allMet(q.cn), f=t==="sdl"?"#e8edf4":am?MET_FILL:q.v==null?"#fff":colour(q.v,m), masked=D&&q.cn&&((q.cn.dn>0&&q.v!=null&&q.v>=0)||q.cn.loss>0), isSel=S.cell&&S.cell.c===c.id&&S.cell.r===o.id, ring=isSel?`stroke="#1f4e8c" stroke-width="3"`:masked?`stroke="#c0392b" stroke-width="2.2"`:`stroke="#0004"`;   // red ring: net result is not worse, yet some EWRs declined   // SDL view: planning unit x theme cells are plain EWR counts
       const grouped=c.grp||o.grp||t==="sdl", ttl=esc(c.full)+" · "+esc(o.label)+": "+(t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+(am?", all meet the target in both scenarios (not in the means)":`, ${m==="sev"?"":"mean "}${msn(m)} ${f3(q.v,m)}${whoTxt(q)}`))+(D&&q.cn&&grouped?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(q.cn.met?`, ${q.cn.met} met in both`:"")+(q.cn.loss?`, ${q.cn.loss} drop below target`:"")+(masked?" (decline hidden by the average)":""):"");
       g+=`<g data-mx="${mk}" data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((grouped&&q.n>1)?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${ttl}</title></circle><text x="${x}" y="${cy+3.5}" text-anchor="middle" style="font-size:10px;fill:${textOnColour(f)}">${am?"✓":q.n}</text>`   // a count of 1 is not printed: it is drawn as the plain circle used when drilled in
-        :`<circle cx="${x}" cy="${cy}" r="5.4" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+(am?metTip(q.rows[0],m):msn(m)+" "+f3(q.v,m))}</title></circle>`+(am?`<text x="${x}" y="${cy+3}" text-anchor="middle" style="font-size:8px;pointer-events:none">✓</text>`:""))+`</g>`; });
+        :`<circle cx="${x}" cy="${cy}" r="5.4" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+(am?metTip(q.rows[0],m):S.period&&(m==="fr"||m==="ach"||m==="fb")&&shortWin(q.rows[0],i)?(r=>{ const w=win(r), x=src(r,"fr",i); return `${x==null?"–":Math.round(x*r[8].T/100*w.n[i])} of ${w.n[i]} years achieved: too few years in the window to expect one at a ${r[8].T}% target (not in the means)`; })(q.rows[0]):msn(m)+" "+f3(q.v,m))}</title></circle>`+(am?`<text x="${x}" y="${cy+3}" text-anchor="middle" style="font-size:8px;pointer-events:none">✓</text>`:""))+`</g>`; });
     g+=`<text transform="translate(${x+3.5},${my-4}) rotate(-90)"${go?go.replace('style="cursor:pointer"','style="cursor:pointer;fill:#1f4e8c"'):""}>${esc(c.show)}</text></g>`; });
   if(t==="gauge") for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++;
     const rg=cols[a].reg, single=b===a&&!cols[a].grp, closed=COLL_REG.has(rg)&&!single, bx=x0+a*C+1, bw=(b-a+1)*C-2;
@@ -478,12 +504,13 @@ function matrixLegend(cnt){
   const [lo,hi,ticks,better]=D?[-DIV[m],DIV[m],[-DIV[m],0,DIV[m]],"blue = improvement, red = decline, white = no change"]
     :m==="fr"?[0,1,[0,.5,.9],"higher is better; white at 0.9, full blue at 1.0 (target met) and above"]
     :m==="et"?[0,1,[0,.5,1],"lower is better; blue = never beyond the MRIP"]
+    :m==="dr"?[0,1,[0,.5,.9],`higher is better; 1 = the required duration (${drLab()}); white at 0.9, full blue at 1.0 and above`]
     :m==="sev"?[0,4,[0,1,2,3,4],"lower is better; blue = within the MRIP, yellow 1–2 ×, orange 2–3 ×, red 3 × or more; each cell is its worst EWR"]
     :[0,1,[0,.5,1],m==="fb"?"lower is better (fewer EWRs failing badly)":"higher is better"];
   const at=v=>(v-lo)/(hi-lo)*100, stops=Array.from({length:21},(_,k)=>{ const v=lo+(hi-lo)*k/20; return `${colour(v,m)} ${k*5}%`; }).join(",");
-  const lab=v=>m==="sev"?(D?num(v,1):String(v))+"×":D?(m==="et"||isBin(m)?pct(v):m==="fr"?num(v,0):num(v,2)):m==="et"||isBin(m)?pa(v):v.toFixed(1);
+  const lab=v=>m==="dr"?(D?num(v,1):v.toFixed(1)):m==="sev"?(D?num(v,1):String(v))+"×":D?(m==="et"||isBin(m)?pct(v):m==="fr"?num(v,0):num(v,2)):m==="et"||isBin(m)?pa(v):v.toFixed(1);
   const name=D&&m==="fr"?"Change in achieved years per century (comparison − base)":D&&m==="sev"?"Change in the worst gap, × MRIP (base − comparison)":D?`Change in ${MN[m].replace(/^mean /,"")} (${m==="et"||m==="fb"?"base − comparison":"comparison − base"})`:m==="et"?"% of record beyond MRIP":MN[m][0].toUpperCase()+MN[m].slice(1);
-  const scale=`<div><b>${esc(name)}</b><div class="it"><div><div class="rmp" style="background:linear-gradient(90deg,${stops})"></div><div class="tk">${ticks.map(v=>`<span style="left:${at(v)}%">${lab(v)}</span>`).join("")}</div></div>${!D&&m==="fr"?"<span>1.0+</span>":!D&&m==="sev"?"<span>4+</span>":D?`<span>beyond ±${lab(hi).replace(/^[+−]/,"")}: full colour</span>`:""}</div><span>${better}</span></div>`;
+  const scale=`<div><b>${esc(name)}</b><div class="it"><div><div class="rmp" style="background:linear-gradient(90deg,${stops})"></div><div class="tk">${ticks.map(v=>`<span style="left:${at(v)}%">${lab(v)}</span>`).join("")}</div></div>${!D&&(m==="fr"||m==="dr")?"<span>1.0+</span>":!D&&m==="sev"?"<span>4+</span>":D?`<span>beyond ±${lab(hi).replace(/^[+−]/,"")}: full colour</span>`:""}</div><span>${better}</span></div>`;
   const rings=`<div><b>Rings</b>${D?`<span class="it">${dot("#fff","#c0392b",2.2)}net change not worse, but some EWRs declined, or some drop below target</span>`:""}<span class="it">${dot("#fff","#1f4e8c",3)}selected cell (details below)</span></div>`;
   const met=D&&!isBin(m)?`<div><b>Met in both</b><span class="it">${dot(MET_FILL,"#0004",1,9,"✓")}every EWR meets the target in both scenarios</span><span>${MET_OUT?"left out of the means and ▲/▼ counts":"in the means as no change"}</span></div>`:"";
   return `<div class="mxleg">${scale}${counts}${met}${rings}<div><b>Chips and bars</b><span>chips = row mean per metric; bars = column mean</span></div></div>`;
@@ -499,22 +526,24 @@ function singlePU(sel){   // a level with only one child (with data in this scen
 function cellDetail(){
   const L=S.cell&&LASTMX[S.cell.mx]; if(!L) return "";
   const c=L.cols.find(x=>x.id===S.cell.c), o=L.orows.find(x=>x.id===S.cell.r); if(!c||!o){ S.cell=null; return ""; }
-  const set=new Set(o.objs), m=S.metric, D=isDiff(), cnt=L.cnt, t=S.sel.type, bin=isBin(m), fam=m==="sev"?"sev":FAM[m]==="f"?"fr":"et";
+  const set=new Set(o.objs), m=S.metric, D=isDiff(), cnt=L.cnt, t=S.sel.type, bin=isBin(m), fam=m==="sev"||m==="dr"?m:FAM[m]==="f"?"fr":"et";
   const rs=c.rows.filter(r=>r[4].some(x=>set.has(x)));
   if(!cnt) rs.sort(byThrR);
-  const shown=rs.slice(0,300), k1=scnIdx(), k0=scnIdx(S.bpol,S.bcli), arr=r=>fam==="fr"?r[6]:fam==="sev"?r[10]||[]:r[7], f=v=>v==null?"–":fam==="et"?(v*100).toFixed(1)+"%":fam==="sev"?v.toFixed(2)+"×":v.toFixed(3);
+  const shown=rs.slice(0,300), k1=scnIdx(), k0=scnIdx(S.bpol,S.bcli), f=v=>v==null?"–":fam==="et"?(v*100).toFixed(1)+"%":fam==="sev"?v.toFixed(2)+"×":fam==="dr"?v.toFixed(2):v.toFixed(3);
+  const kn=(r,i)=>{ const w=win(r), T=r[8].T, n=w.n[i], x=src(r,"fr",i); return x==null?"–":`<span style="color:#9ca3af" title="Too few complete years in the window to expect one achieved year at a ${T}% target (n < 100 / T): not in the means">${Math.round(x*T/100*n)} of ${n} years</span>`; };
+  const fv=(r,i)=>fam==="fr"&&shortWin(r,i)?kn(r,i):f(src(r,fam,i));   // the record's value, or the drought window's
   const words={ach:["achieved","not achieved"],fb:["failed badly","ok"],mz:["achieved","not achieved"]};
   const res=r=>{ const v=val(r,m); if(v==null) return "–"; if(!D) return v?words[m][0]:words[m][1]; return v>0?"improved":v<0?"declined":"unchanged"; };
   const good=d=>d==null?"":(d>0.01?"color:#1d5a99":d<-0.01?"color:#b3261e":"");   // blue = better, red = worse, as on the matrix
   const head=["EWR",t!=="gauge"?"Gauge":"",t==="sdl"?"Planning unit":"","Objectives"].filter(Boolean);
   const CLS=fam==="sev"?{met:"within MRIP in both",gain:"now within MRIP",loss:"now beyond MRIP",below:"beyond MRIP in both"}:{met:"met in both",gain:"now meets target",loss:"drops below target",below:"below target in both"};   // differential classes (diffClass)
-  const yrs=D&&!bin&&fam==="fr", mcn=yrs&&shown.some(r=>mcnKey(r));   // FR: the change in achieved years; two uploads with flows: McNemar's test on the paired years
+  const yrs=D&&!bin&&fam==="fr", mcn=yrs&&!S.period&&shown.some(r=>mcnKey(r));   // (the McNemar test is over the whole record)   // FR: the change in achieved years; two uploads with flows: McNemar's test on the paired years
   if(!cnt) head.push(...(D?[`${FAMN[fam]} base`,`${FAMN[fam]} comparison`,"improvement"]:[FAMN[fam]]), ...(yrs?["Δ achieved years"]:[]), ...(D&&!bin?["class"]:[]), ...(mcn?[`<span title="Exact McNemar test on the water years complete in both scenarios: could the years achieved in one scenario only (gained vs lost) be a 50:50 split?">p (McNemar)</span>`]:[]), ...(bin?["result"]:[]));
-  const body=shown.map(r=>{ const a=arr(r)[k1], b=arr(r)[k0], k=D&&!bin?diffClass(r,fam):null, d=k?k.d:a==null||b==null?null:LOWER[fam]?b-a:a-b, objs=r[4].filter(x=>set.has(x)).map(x=>META.objs[x]).join(", ");   // improvement: the change that enters the means (FR capped at the target when it is crossed)
+  const body=shown.map(r=>{ const a=src(r,fam,k1), b=src(r,fam,k0), k=D&&!bin?diffClass(r,fam):null, d=k?k.d:a==null||b==null?null:LOWER[fam]?b-a:a-b, objs=r[4].filter(x=>set.has(x)).map(x=>META.objs[x]).join(", ");   // improvement: the change that enters the means (FR capped at the target when it is crossed)
     const fi=v=>v==null?"–":fam==="fr"?num(v,3):f3(v,fam);   // FR: the change in FR itself (the matrix shows achieved years per century)
     const imp=k&&k.cls==="met"?`<td style="color:#6b7280" title="Met in both scenarios: not in the means. Surplus ${fi(k.sur)}">(${fi(k.sur)})</td>`:`<td style="${good(d)}">${fi(d)}</td>`;
     return `<tr><td>${esc(r[3])}</td>${t!=="gauge"?`<td>${esc(META.gauges[r[2]])}</td>`:""}${t==="sdl"?`<td>${esc(META.pus[r[0]])}</td>`:""}<td>${esc(objs)}</td>`+
-      (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td>${imp}`:`<td>${f(a)}</td>`)+(yrs?`<td title="${k&&k.dyr!=null?`achieved years ${eyOf(r,k0)} → ${eyOf(r,k1)}${k.cls==="gain"||k.cls==="loss"?"; capped at the target where it is crossed":""}`:"no achieved-years data"}">${k&&k.dyr!=null?num(k.dyr,1):"–"}</td>`:"")+(k?`<td>${CLS[k.cls]}</td>`:D&&!bin?"<td>–</td>":"")+(mcn?mcnTd(r):"")+(bin?`<td style="${D?(res(r)==="improved"?"color:#1d5a99":res(r)==="declined"?"color:#b3261e":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
+      (cnt?"":(D?`<td>${fv(r,k0)}</td><td>${fv(r,k1)}</td>${imp}`:`<td>${fv(r,k1)}</td>`)+(yrs?`<td title="${k&&k.dyr!=null?`achieved years ${num(eyOf(r,k0),1).replace(/^[+−]/,"")} → ${num(eyOf(r,k1),1).replace(/^[+−]/,"")}${k.cls==="gain"||k.cls==="loss"?"; capped at the target where it is crossed":""}`:"no achieved-years data"}">${k&&k.dyr!=null?num(k.dyr,1):"–"}</td>`:"")+(k?`<td>${CLS[k.cls]}</td>`:D&&!bin?"<td>–</td>":"")+(mcn?mcnTd(r):"")+(bin?`<td style="${D?(res(r)==="improved"?"color:#1d5a99":res(r)==="declined"?"color:#b3261e":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
   return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · by flow threshold"}</span><button data-act="cellclose" title="Close">×</button></div>
     <div class="cellt"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
@@ -555,7 +584,7 @@ function flowCtx(){
   else if(has(comp)) return {ok:true,gauge:g,base:comp.id,comp:null,bn:comp.name};
   return {ok:false,msg:"Flow charts need uploaded flows for this gauge. "+need};
 }
-const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
+const DROUGHTS=META.droughts.map(d=>[d.name,`${d.w0}-07-01`,`${d.w1+1}-06-30`]);   // drought quick filters: the drought windows' water years (src/drought_windows.py)
 // every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
 const CHARTS={joint:"Joint frequency & inter-event performance",heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
   "ev-year":"EWR achievement by year","ev-events":"EWR events","ev-timing":"EWR event timing","ev-gaps":"Gaps between events vs MRIP",regimes:"Flow regime components",spells:"Low-flow spells"};
@@ -759,33 +788,40 @@ function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment
     const dv=all.map((w,i)=>P.has(w)&&mb[i]!=null&&mc[i]!=null?mc[i]-mb[i]:null);
     tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]:,.1f} → ${esc(c.cn)} %{customdata[2]:,.1f}<br>Change: <b>%{y:+,.1f}</b><extra></extra>`});
   } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:FAILC)},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y:,.1f}<extra></extra>`});
+  // the duration ratio of each complete year (best event ÷ required duration, capped at 2) on its own right-hand axis; 1 = long enough
+  const drOf=Y=>at(Y,(Y,i)=>Y.dr?Y.dr[i]:null), hasDR=[B].concat(D?[C]:[]).some(Y=>(Y.dr||[]).some(v=>v!=null));
+  if(hasDR) [["base",B]].concat(D?[["comp",C]]:[]).forEach(([k,Y])=>tr.push({type:"scatter",mode:"lines+markers",x,y:drOf(Y),yaxis:"y4",connectgaps:false,name:`${k==="base"?c.bn:c.cn} · duration ratio`,
+    line:{color:D?SCOL[k]:"#111",width:1.5},marker:{size:4,color:D?SCOL[k]:"#111"},customdata:lab,hovertemplate:`<b>%{customdata}</b> · ${esc(k==="base"?c.bn:c.cn)}<br>Duration ratio: %{y:.2f}<extra></extra>`}));
   const lay=pLay({height:D?480:420,bargap:0.1,showlegend:false,xaxis:pAx(ayName(ys),{type:"date",anchor:"y3"}),
     yaxis:{domain:D?[0.78,1]:[0.8,1],showgrid:false,ticks:"",automargin:true,fixedrange:true,autorange:"reversed"},   // base on top
     yaxis3:pAx(D?`Change: ${mName[0].toLowerCase()+mName.slice(1)}`:mName,{domain:[0,D?0.6:0.68],zeroline:true,zerolinecolor:"#9aa3b0"}),
-    shapes:D?[]:[{type:"line",xref:"paper",x0:0,x1:1,yref:"y3",y0:need,y1:need,line:{color:"#111",width:1.2,dash:"dash"}}],
+    shapes:(D?[]:[{type:"line",xref:"paper",x0:0,x1:1,yref:"y3",y0:need,y1:need,line:{color:"#111",width:1.2,dash:"dash"}}]).concat(hasDR?[{type:"line",xref:"paper",x0:0,x1:1,yref:"y4",y0:1,y1:1,line:{color:"#6b7280",width:1,dash:"dot"}}]:[]),
     annotations:D?[]:[{xref:"paper",x:1,yref:"y3",y:need,text:`required: ${need}`,showarrow:false,xanchor:"right",yanchor:"bottom",font:{size:10}}]});
   if(D) lay.yaxis2={domain:[0.67,0.73],showgrid:false,ticks:"",automargin:true,fixedrange:true};
+  if(hasDR) lay.yaxis4={overlaying:"y3",side:"right",range:[0,2.05],title:{text:"Duration ratio (dotted: 1)"},showgrid:false,zeroline:false,showline:true,linecolor:"black",ticks:"outside"};
   Plotly.newPlot("evPlot",tr,lay,PCFG);
   const Bn=B.wy.filter((_,i)=>B.complete[i]).length, Ba=B.wy.filter((_,i)=>B.complete[i]&&B.achieved[i]).length, inc=B.wy.length-Bn, yr=ys===7?"water year":"assessment year";
-  const tail=` Achievement is the EWR tool's own; the bars show how close each year came (${mName[0].toLowerCase()+mName.slice(1)}), which can disagree with it where other parts of the rule apply.`;
+  const tail=` Achievement is the EWR tool's own; the bars show how close each year came (${mName[0].toLowerCase()+mName.slice(1)}), which can disagree with it where other parts of the rule apply.`+(hasDR?` The line is each complete year's duration ratio: its longest event (low-flow EWRs: its days at or above the threshold; k events a year: the k-th longest) ÷ the required duration, capped at 2; at 1 or above the event was long enough.`:"");
   if(!D) msg.textContent=`${def}\n`+(Bn?`${c.bn}: achieved in ${Ba} of ${Bn} complete ${yr}s (${fx(100*Ba/Bn)}%)${d.target!=null?` against a target of ${d.target}%`:""}.`:`${c.bn}: no complete ${yr}.`)+(inc?` ${inc} ${yr}${inc===1?"":"s"} with missing days in the timing window ${inc===1?"is":"are"} left blank and not counted.`:"")+tail;
   else { const p=d.paired; msg.textContent=`${def}\n`+(p.n?`Over the ${p.n} ${yr}s complete in both: ${c.bn} ${p.base} (${fx(p.pct_base)}%) → ${c.cn} ${p.comp} (${fx(p.pct_comp)}%), ${sgn(p.pct_comp-p.pct_base,1," pts")}. Achieved in ${c.cn} but not in ${c.bn}: ${p.gained} year${p.gained===1?"":"s"} (blue); the reverse: ${p.lost} (red). Equal totals can still hide years that changed.`:`No ${yr} is complete in both scenarios, so achievement cannot be compared.`)+tail; }
   $("evTbl").innerHTML=annualKey()+(D?`<div class="swl">change row: <span><i style="background:${UPC}"></i>achieved in ${esc(c.cn)} only</span><span><i style="background:${DNC}"></i>in ${esc(c.bn)} only</span><span><i style="background:#f5f6f8"></i>no change</span></div>`:"");
 }
 function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how long, how big
   const D=!!c.comp, K=keptYears(d,D), ms=d.min_spell??d.dur, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, tr=[], st={};
+  const mag=x=>x.vol==null||!(d.thr>0)||!(d.dur>0)?null:x.vol/(d.thr*d.dur);   // event magnitude index: volume ÷ (threshold × required duration), a description, not better or worse
   ks.forEach(k=>{ const ev=d.scenarios[k].events.filter(x=>K[k].has(x.wy)), ok=ev.filter(x=>x.ok), no=ev.filter(x=>!x.ok), col=D?SCOL[k]:"#1f4e8c";
-    const cd=a=>a.map(x=>[x.start,x.end,x.peak,fmtML(x.vol),x.qual<x.days?` (${x.qual} at or above the threshold)`:""]), ht=t=>`<b>${esc(nm[k])}</b> · ${t}<br>%{customdata[0]} to %{customdata[1]} · <b>%{y} days</b>%{customdata[4]}<br>peak %{customdata[2]:,.0f} ML/d · volume %{customdata[3]}<extra></extra>`;
+    const cd=a=>a.map(x=>[x.start,x.end,x.peak,fmtML(x.vol),x.qual<x.days?` (${x.qual} at or above the threshold)`:"",mag(x)==null?"–":mag(x).toFixed(2)]), ht=t=>`<b>${esc(nm[k])}</b> · ${t}<br>%{customdata[0]} to %{customdata[1]} · <b>%{y} days</b>%{customdata[4]}<br>peak %{customdata[2]:,.0f} ML/d · volume %{customdata[3]}<br>magnitude index %{customdata[5]}<extra></extra>`;
     tr.push({type:"scatter",mode:"markers",name:`${nm[k]} · successful`,x:ok.map(x=>x.start),y:ok.map(x=>x.days),customdata:cd(ok),marker:{size:8,color:col,line:{color:"white",width:1}},hovertemplate:ht("successful")});
     if(no.length) tr.push({type:"scatter",mode:"markers",name:`${nm[k]} · too short`,x:no.map(x=>x.start),y:no.map(x=>x.days),customdata:cd(no),marker:{size:7,color:"white",line:{color:col,width:1.5}},hovertemplate:ht("too short")});
-    const n=K[k].size; st[k]={yrs:n,n:ok.length,per10:n?ok.length/n*10:null,dur:med(ok.map(x=>x.days)),peak:med(ok.map(x=>x.peak)),vol:med(ok.map(x=>x.vol))}; });
+    const n=K[k].size; st[k]={yrs:n,n:ok.length,per10:n?ok.length/n*10:null,dur:med(ok.map(x=>x.days)),peak:med(ok.map(x=>x.peak)),vol:med(ok.map(x=>x.vol)),mag:med(ok.map(mag))}; });
   Plotly.newPlot("evPlot",tr,pLay({height:400,showlegend:true,legend:{orientation:"h",x:0,y:1.1},xaxis:pAx("Event start",{type:"date"}),yaxis:pAx("Event length, start to end (days)",{rangemode:"tozero"}),
     shapes:[{type:"line",xref:"paper",x0:0,x1:1,y0:ms,y1:ms,line:{color:"#111",width:1.2,dash:"dash"}}],
     annotations:[{xref:"paper",x:1,y:ms,text:`minimum: ${ms} d`,showarrow:false,xanchor:"right",yanchor:"bottom",font:{size:10}}]}),PCFG);
   const b=st.base, q=st.comp, ch=(f,dp,u)=>D?sgn(q[f]!=null&&b[f]!=null?q[f]-b[f]:null,dp,u):null, yr=d.ystart===7?"Water years":"Assessment years";
   const rows=[[`${yr} counted`,b.yrs,D?q.yrs:null,null],["Successful events",b.n,D?q.n:null,ch("n",0)],["… per 10 years",fx(b.per10),D?fx(q.per10):null,ch("per10",1)],
     ["Median length (days)",fx(b.dur),D?fx(q.dur):null,ch("dur",1)],["Median peak (ML/d)",fx(b.peak,0),D?fx(q.peak,0):null,ch("peak",0)],
-    ["Median volume",fmtML(b.vol),D?fmtML(q.vol):null,D&&q.vol!=null&&b.vol!=null?(q.vol>=b.vol?"+":"−")+fmtML(Math.abs(q.vol-b.vol)):null]];
+    ["Median volume",fmtML(b.vol),D?fmtML(q.vol):null,D&&q.vol!=null&&b.vol!=null?(q.vol>=b.vol?"+":"−")+fmtML(Math.abs(q.vol-b.vol)):null],
+    [`<span title="Event volume ÷ (flow threshold × required duration): 1 = as much water as the threshold flow for the required days. A description of the events, not better or worse">Median magnitude index</span>`,fx(b.mag,2),D?fx(q.mag,2):null,D?sgn(q.mag!=null&&b.mag!=null?q.mag-b.mag:null,2):null]];
   msg.textContent=`${def}\nEach dot is one event the EWR tool found in the timing window: filled = successful (at least ${ms} days), hollow = too short. Length runs from the event's first to its last day${d.gap_tol?" (bridged dips included)":""}; volume = sum of the daily flows over those days (ML), not only the part above the threshold. Whether a year is achieved also depends on the annual rule (EWR achievement by year). `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
   $("evTbl").innerHTML=statTbl(rows,D,c);
 }
@@ -1043,9 +1079,11 @@ function refresh(){ guardSame(); if(typeof syncSrc==="function") syncSrc(); if(t
 
 // ---- user scenarios: py_ewr is run by server.py on an uploaded Standard time-series file; the results join the picker as extra policies --
 const isCustom=p=>CUSTOM.some(c=>c.P===p);   // explicit registration, independent of the number of built-in policies
-const VALK=["pu","gauge","ewr","fr","et","ey","ny","sev"];   // a run_scenario row as stored in a scenario's vals (server.VAL_KEYS)
+const VALK=["pu","gauge","ewr","fr","et","ey","ny","sev","dr","nm","win"];   // a run_scenario row as stored in a scenario's vals (server.VAL_KEYS)
 function putVals(r,P,v){ const i=P*NC; r[6][i]=v[3]??null; r[7][i]=v[4]??null; if(r[9]) r[9][i]=v[5]??null; if(r[8]) (r[8].nyAt??={})[i]=v[6]??null;
-  if(r.length>10&&(r[10]||v[7]!=null)) (r[10]??=r[6].map(()=>null))[i]=v[7]??null; }   // severity: the column exists once an upload has a value   // one upload's results into its scenario column; [] clears it
+  if(r.length>10&&(r[10]||v[7]!=null)) (r[10]??=r[6].map(()=>null))[i]=v[7]??null;   // severity: the column exists once an upload has a value
+  if(r.length>11){ if(r[11]||v[8]!=null) (r[11]??=r[6].map(()=>null))[i]=v[8]??null; if(r[8]) (r[8].nmAt??={})[i]=v[9]??null;   // duration ratio; near misses [k, failed years]
+    if(r[12]||v[10]) for(const d of META.droughts){ const w=((r[12]??={})[d.k]??={}), x=v[10]&&v[10][d.k]||{}; for(const f of ["fr","et","sev","dr","n"]) (w[f]??=r[6].map(()=>null))[i]=x[f]??null; } } }   // one upload's results into its scenario column; [] clears it
 const PUKEY=new Map(); ROWS.forEach(r=>{ const k=META.pus[r[0]]+"|"+META.gauges[r[2]]+"|"+r[3]; (PUKEY.get(k)||PUKEY.set(k,[]).get(k)).push(r); });   // a planning unit / gauge / EWR can sit in more than one SDL unit
 function addCustom(name,vals,id,flowGauges,fmt){
   performanceRevision++;
@@ -1123,6 +1161,8 @@ function updateClimDisable(){ if(isCustom(S.pol)&&S.cli!==0){ S.cli=0; $("cli").
   $("cli").disabled=isCustom(S.pol); $("bcli").disabled=isCustom(S.bpol); }
 function syncSrc(){ $("srcD").classList.toggle("on",S.src==="demo"); $("srcU").classList.toggle("on",S.src==="user");
   $("mSV").disabled=S.src==="demo"; if(S.src==="demo"&&S.metric==="sev"){ S.metric="et"; syncUI(); }   // the review results hold the MRIP parameter, not the observed gaps
+  const pd=S.src==="demo"; $("period").disabled=pd; if(pd) S.period=""; $("period").value=S.period; $("perL").classList.toggle("on",!!S.period);   // drought windows need yearly results: uploads only
+  $("perL").title=pd?"Drought windows need yearly results, which the review results do not have: add your own scenarios (Your data)":"Metrics over a drought window (water years, July–June) instead of the whole record";
   $("addScn").style.display=S.src==="user"?"":"none"; $("cli").style.display=$("bcli").style.display=S.src==="user"?"none":""; }
 function setSrc(src){ S.src=src; S.cell=null;
   if(src==="demo"){ S.pol=META.policies.indexOf("Basin plan full implementation"); S.bpol=META.policies.indexOf("Pre Basin Plan"); }
@@ -1168,14 +1208,16 @@ $("swapBC").onclick=()=>{ [S.pol,S.bpol]=[S.bpol,S.pol]; [S.cli,S.bcli]=[S.bcli,
 function setMode(md){ S.mode=md; $("modeS").classList.toggle("on",md==="single"); $("modeD").classList.toggle("on",md==="diff");
   $("baseL").style.display=$("bandL").style.display=md==="diff"?"":"none"; $("swapBC").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
 $("modeS").onclick=()=>setMode("single"); $("modeD").onclick=()=>setMode("diff");
-const MORE={ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved",sev:"Worst gap"};
+const MORE={ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved",sev:"Worst gap",dr:"Duration ratio"};
 function syncMore(){ const k=S.metric, on=k in MORE; $("mMore").classList.toggle("on",on); $("mMoreS").textContent=on?MORE[k]:"More"; $("mMore").open=false; }
-function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mMZ").classList.toggle("on",m==="mz"); $("mSV").classList.toggle("on",m==="sev"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
+function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mMZ").classList.toggle("on",m==="mz"); $("mSV").classList.toggle("on",m==="sev"); $("mDR").classList.toggle("on",m==="dr"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
   $("thrL").style.display=m==="ach"?"":"none"; $("ethrL").style.display=m==="mz"?"":"none"; refresh(); }
-$("mAC").onclick=()=>setMetric("ach"); $("mSV").onclick=()=>setMetric("sev"); $("mFB").onclick=()=>setMetric("fb");
+$("mAC").onclick=()=>setMetric("ach"); $("mSV").onclick=()=>setMetric("sev"); $("mDR").onclick=()=>setMetric("dr"); $("mFB").onclick=()=>setMetric("fb");
 $("fbthr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.fbthr=v; refresh(); } }; $("mMZ").onclick=()=>setMetric("mz");
 $("ethr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.ethr=v/100; refresh(); } };
 $("band").onchange=e=>{ S.band=+e.target.value; refresh(); };
+$("period").innerHTML+=META.droughts.map(d=>`<option value="${d.k}">${esc(d.name)} ${wyl(d.w0)} to ${wyl(d.w1)}</option>`).join("");
+$("period").onchange=e=>{ S.period=e.target.value; S.cell=null; refresh(); };
 $("thr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.thr=v; refresh(); } };
 $("mFR").onclick=()=>setMetric("fr"); $("mET").onclick=()=>setMetric("et");
 map.on("click",()=>select({type:"none"}));
@@ -1210,7 +1252,7 @@ function encodeState(){
   if(isDiff()){ p.set("bpol",META.policies[S.bpol]); p.set("bcli",META.climates[S.bcli]); }
   p.set("metric",S.metric);
   if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
-  if(S.sort!=="default") p.set("sort",S.sort); if(S.band!==2) p.set("band",S.band);
+  if(S.sort!=="default") p.set("sort",S.sort); if(S.band!==2) p.set("band",S.band); if(S.period) p.set("period",S.period);
   if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
   else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
   else if(s.type==="gauge") p.set("sel","gauge~"+META.gauges[s.i]+"~"+(s.sdl!=null?META.sdls[s.sdl]:"")+"~"+(s.pu!=null?META.pus[s.pu]:""));
@@ -1225,7 +1267,7 @@ function applyHash(){
   if(["single","diff"].includes(p.get("mode"))) S.mode=p.get("mode");
   if(METRICS.includes(p.get("metric"))) S.metric=p.get("metric");
   const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",p.get("v")==="2"?1.0:0.9); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
-  if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort"); S.band=[1,2,3,5].includes(+p.get("band"))?+p.get("band"):2;
+  if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort"); S.band=[1,2,3,5].includes(+p.get("band"))?+p.get("band"):2; S.period=META.droughts.some(d=>d.k===p.get("period"))?p.get("period"):"";
   const sel=(p.get("sel")||"").split("~"), sdl=n=>META.sdls.indexOf(n), pu=n=>META.pus.indexOf(n), ga=n=>META.gauges.indexOf(n);
   S.sel={type:"none"};
   if(sel[0]==="sdl"&&sdl(sel[1])>=0) S.sel={type:"sdl",i:sdl(sel[1])};
@@ -1238,7 +1280,7 @@ function syncUI(){   // bring the header controls in line with the state
   $("pol").value=S.pol; $("cli").value=S.cli; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
   $("modeS").classList.toggle("on",S.mode==="single"); $("modeD").classList.toggle("on",S.mode==="diff");
   $("baseL").style.display=$("swapBC").style.display=$("bandL").style.display=S.mode==="diff"?"":"none"; $("band").value=S.band; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
-  for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"],["mSV","sev"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
+  for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"],["mSV","sev"],["mDR","dr"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
   $("thrL").style.display=S.metric==="ach"?"":"none"; $("fbL").style.display=S.metric==="fb"?"":"none"; $("ethrL").style.display=S.metric==="mz"?"":"none";
   $("thr").value=S.thr; $("fbthr").value=S.fbthr; $("ethr").value=+(S.ethr*100).toFixed(2);
 }

@@ -129,11 +129,29 @@ class TestRunFile:
 
         def fake(body, gauges, scn_id, fmt, name):
             seen.update(body=body, gauges=gauges, scn_id=scn_id, fmt=fmt, name=name)
-            return [{"pu": "P", "gauge": "1", "ewr": "E", "fr": 0.1, "et": None, "ey": 3, "ny": 25.0, "sev": 1.5, "sev_b": 2.0, "eps": 1}], {"s": 1}
+            return [
+                {
+                    "pu": "P",
+                    "gauge": "1",
+                    "ewr": "E",
+                    "fr": 0.1,
+                    "et": None,
+                    "ey": 3,
+                    "ny": 25.0,
+                    "sev": 1.5,
+                    "sev_b": 2.0,
+                    "eps": 1,
+                    "dr": 0.8,
+                    "nm": [1, 2],
+                    "win": {"mil": {"n": 3}},
+                }
+            ], {"s": 1}
 
         monkeypatch.setattr(em, "run_scenario", fake)
         rows, stats = em.run_file(str(f), "Standard time-series", gauges=["1"])
-        assert rows == [["P", "1", "E", 0.1, None, 3, 25.0, 1.5]] and stats == {"s": 1}  # in server.VAL_KEYS order (the page's VALK)
+        assert rows == [["P", "1", "E", 0.1, None, 3, 25.0, 1.5, 0.8, [1, 2], {"mil": {"n": 3}}]] and stats == {
+            "s": 1
+        }  # in server.VAL_KEYS order (the page's VALK)
         assert seen == {"body": b"data", "gauges": ["1"], "scn_id": None, "fmt": "Standard time-series", "name": "a.csv"}
 
     def test_review_gauges_are_the_distinct_sorted_gauges_of_the_results(self):

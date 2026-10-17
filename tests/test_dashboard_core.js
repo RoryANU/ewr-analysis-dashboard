@@ -199,6 +199,39 @@ test('worst gap: the maximum, not the mean, and the EWR that sets it',()=>{
   assert.deepEqual(plain(run("cnts(ROWS,'sev')")),{up:1,dn:1,same:0,met:1,gain:1,loss:0,n:2});
   assert.deepEqual(plain(run("aggMax(ROWS.slice(2,3))")),{n:0,mean:null,who:null});   // every EWR within the MRIP in both: met
 });
+// a drought window for scenario index 0 and 2: {fr, et, sev, dr, n}
+const withWin=(r,w)=>{ while(r.length<12) r.push(null); r[12]={mil:w}; return r; };
+test('drought period: values come from the window; review results have none',()=>{
+  const run=harness([withWin(row(0,0,0,'A',[.9,0,.8,0],[.1,0,.2,0]),{fr:[.5,0,1.2,0],et:[.4,0,0,0],sev:[3,0,.9,0],dr:[.7,0,1.1,0],n:[14,0,14,0]}),row(0,0,0,'B',[.9,0,.8,0])]);
+  assert.equal(run("val(ROWS[0],'fr',0)"),.9);
+  run("S.period='mil'");
+  assert.equal(run("val(ROWS[0],'fr',0)"),.5); assert.equal(run("val(ROWS[0],'et',2)"),0); assert.equal(run("val(ROWS[0],'sev',0)"),3); assert.equal(run("val(ROWS[0],'dr',2)"),1.1);
+  assert.equal(run("val(ROWS[1],'fr',0)"),null);   // no window results ("–")
+  assert.equal(run("val(ROWS[0],'ach',2)"),1);
+  // achieved years in the window: FR x T / 100 x n (T = 100% here), the window's years stand in for the record's
+  near(run("eyOf(ROWS[0],0)"),7); assert.equal(run("nyOf(ROWS[0],0)"),14); assert.equal(run("nyFull(ROWS[0],0)"),100);
+});
+test('drought period: a window shorter than 100 / T years is out of the means; the band scales to the window',()=>{
+  // T 5%: one achieved year expected per 20 years; a 14-year window is too short
+  const run=harness([withWin(row(0,0,0,'A',[.9,0,.8,0],undefined,{T:5,ny:100}),{fr:[1.4,0,0,0],et:[0,0,0,0],sev:[1,0,1,0],dr:[1,0,1,0],n:[14,0,14,0]}),
+    withWin(row(0,0,0,'B',[.9,0,.8,0],undefined,{T:50,ny:100}),{fr:[.5,0,.6,0],et:[0,0,0,0],sev:[1,0,1,0],dr:[1,0,1,0],n:[20,0,20,0]})]);
+  run("S.period='mil'");
+  assert.equal(run("shortWin(ROWS[0],0)"),true); assert.equal(run("val(ROWS[0],'fr',0)"),null); assert.equal(run("val(ROWS[0],'ach',0)"),null);
+  assert.equal(run("agg(ROWS,[],'fr',0).n"),1);
+  // B: 5 -> 6 achieved years of 20 (FR .5 -> .6 at 50%); band max(1, round(2 x 20 / 100)) = 1 year, so it counts as improved
+  run("S.mode='diff'"); near(run("diffClass(ROWS[1],'fr').dyr"),1);
+  assert.deepEqual(plain(run("cnts(ROWS.slice(1),'fr')")),{up:1,dn:0,same:0,met:0,gain:0,loss:0,n:1});
+  run("S.period=''"); assert.equal(run("cnts(ROWS.slice(1),'fr').dn"),1);   // the full record tells another story: 45 -> 40 achieved years
+});
+test('duration ratio: higher is better, met at 1 in both, changed at 0.1',()=>{
+  const dr=(r,a)=>{ r.push(null,a); return r; };
+  const run=harness([dr(row(0,0,0,'A',[1,0,1,0]),[1.2,0,1.6,0]),dr(row(0,0,0,'B',[1,0,1,0]),[.5,0,.55,0]),dr(row(0,0,0,'C',[1,0,1,0]),[.6,0,1.1,0]),dr(row(0,0,0,'D',[1,0,1,0]),[.9,0,.7,0])]);
+  near(run("agg(ROWS,[],'dr',0).mean"),(1.2+.5+.6+.9)/4);   // not capped like FR
+  run("S.mode='diff'");
+  assert.deepEqual([0,1,2,3].map(i=>run(`diffClass(ROWS[${i}],'dr').cls`)),['met','below','gain','below']);
+  assert.deepEqual(plain(run("cnts(ROWS,'dr')")),{up:1,dn:1,same:1,met:1,gain:1,loss:0,n:3});
+  assert.equal(run("fs2(.25,'dr')"),'+0.25');
+});
 test('agg: one scenario caps FR at the target in the mean, the per-EWR value is uncapped',()=>{
   const run=harness([row(0,0,0,'A',[.2,0,0,0]),row(0,0,0,'B',[1.8,0,0,0])]);
   near(run("agg(ROWS,[],'fr',0).mean"),.6);

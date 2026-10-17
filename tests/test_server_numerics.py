@@ -291,6 +291,73 @@ def gap_ev(flow: pd.Series, inter_rows: list[tuple[str, str]], mrip: int, succes
     return {"flow": flow, "mrip_days": mrip, "inter": inter, "succ": succ}
 
 
+class TestDroughtWindows:
+    def test_window_metrics_counts_only_in_window_breach_days_of_a_gap_that_began_before(self):
+        # record 1990-07-01 .. 2000-06-30; one interior gap 1993-01-01 .. 1997-12-31 (1,826 days), MRIP 365: beyond it from 1994-01-01
+        # window = water years 1995-96 .. 1996-97 (1995-07-01 .. 1997-06-30, 731 days), wholly inside the breach: et = 1
+        gaps = [{"start": "1993-01-01", "end": "1997-12-31", "days": 1826, "censored": False, "boundary": False, "excess": 1461}]
+        years = {"wy": list(range(1990, 2000)), "achieved": [1, 1, 0, 0, 0, 0, 0, 0, 1, 1], "complete": [1] * 10, "dr": [1.5] * 3 + [0.2] * 7, "ystart": 7}
+        out = server.window_metrics(years, gaps, 365, 50, "1995-07-01", "1997-06-30", record=("1990-07-01", "2000-06-30"))
+        assert out["n"] == 2 and out["fr"] == 0.0 and out["et"] == 1.0 and out["dr"] == 0.2
+        assert out["sev"] == round(1826 / 365, 2)  # the gap from its true start, not cut at the window
+        # a window that starts before the breach: 1993-07-01 .. 1994-06-30 (365 days); beyond MRIP from 1994-01-01 = 181 days
+        out = server.window_metrics(years, gaps, 365, 50, "1993-07-01", "1994-06-30", record=("1990-07-01", "2000-06-30"))
+        assert out["et"] == round(181 / 365, 4) and out["n"] == 1 and out["fr"] == 0.0
+        # a window after the gap with achieved years: FR = (2 / 2) / 0.5
+        out = server.window_metrics(years, gaps, 365, 50, "1998-07-01", "2000-06-30", record=("1990-07-01", "2000-06-30"))
+        assert (out["n"], out["fr"], out["et"], out["sev"]) == (2, 2.0, 0.0, None)
+
+    def test_window_outside_the_record_and_censored_days(self):
+        gaps = [{"start": "1990-07-01", "end": "1991-06-30", "days": 365, "censored": True, "boundary": True, "excess": None}]
+        years = {"wy": [1990], "achieved": [0], "complete": [0], "dr": [None], "ystart": 7}
+        out = server.window_metrics(years, gaps, 100, 50, "1895-07-01", "1903-06-30", record=("1990-07-01", "1991-06-30"))
+        assert out == {"n": 0, "fr": None, "et": None, "sev": None, "dr": None}
+        out = server.window_metrics(years, gaps, 100, 50, "1990-07-01", "1991-06-30", record=("1990-07-01", "1991-06-30"))
+        assert out["et"] is None and out["sev"] is None  # every day of the window is inside a censored gap
+
+    def test_window_dates_follow_the_assessment_year(self):
+        from drought_windows import DROUGHTS, window_dates
+
+        assert DROUGHTS["mil"] == ("Millennium", 1996, 2009)
+        assert [str(d) for d in window_dates("mil")] == ["1996-07-01", "2010-06-30"]
+        assert [str(d) for d in window_dates("tin", 6)] == ["2017-06-01", "2020-05-31"]  # a Jun-Nov EWR's year starts in June
+        assert server.assessment_start(6, 11) == 6 and server.assessment_start(7, 6) == 7 and server.assessment_start(9, 3) == 7
+
+
+class TestDurationRatio:
+    YR = pd.DataFrame({"X_maxEventDays": [10, 30, 0, 50], "X_totalEventDays": [40, 30, 5, 200]}, index=[2000, 2001, 2002, 2003])
+
+    def test_longest_event_over_the_required_duration_capped_at_2(self):
+        assert server.dr_years(self.YR, "X", 20, False, 1) == [0.5, 1.5, 0.0, 2.0]  # 50 / 20 = 2.5 -> 2
+
+    def test_low_flow_ewrs_use_the_days_at_or_above_the_threshold(self):
+        assert server.dr_years(self.YR, "X", 100, True, 1) == [0.4, 0.3, 0.05, 2.0]  # totalEventDays / 100; 200 / 100 -> 2
+
+    def test_k_events_a_year_use_the_kth_longest(self):
+        events = {2000: [[1] * 12, [1] * 4, [1] * 9], 2001: [[1] * 30], 2002: [], 2003: [[1] * 50, [1] * 50]}
+        assert server.dr_years(self.YR, "X", 10, False, 2, events) == [0.9, 0.0, 0.0, 2.0]  # second longest: 9, none, none, 50
+
+    def test_no_duration_and_the_summary(self):
+        assert server.dr_years(self.YR, "X", None, False, 1) == [None] * 4
+        # median over complete years; near misses = 0.5 <= DR < 1 among the years with DR < 1
+        assert server.year_summary([0.5, 1.5, 0.0, 2.0, 0.7], [1, 1, 1, 1, 0]) == {"dr": 1.0, "nm": [1, 2]}
+        assert server.year_summary([None], [1]) == {"dr": None, "nm": None}
+
+    def test_volume_ratio_is_the_best_accumulated_volume_in_the_window(self):
+        idx = pd.date_range("2000-07-01", "2002-06-30")
+        flow = pd.Series(10.0, index=idx)
+        flow[(idx >= "2000-09-01") & (idx <= "2000-09-03")] = 100.0  # 3-day sum 300 inside a Aug-Oct window in water year 2000
+        assert server.vr_years(flow, [2000, 2001], 7, 8, 10, 3, 150) == [2.0, 0.2]  # 300 / 150 -> 2; 30 / 150
+        assert server.vr_years(flow, [2000], 7, 8, 10, None, 150) == [None]
+
+    def test_complete_years_need_every_day_of_the_timing_window(self):
+        idx = pd.date_range("2000-07-01", "2003-06-30")
+        flow = pd.Series(1.0, index=idx)
+        flow[pd.Timestamp("2001-12-25")] = np.nan  # outside a Jul-Sep window, inside a Nov-Jan one
+        assert server.complete_years(flow, [2000, 2001, 2002, 2003], 7, 7, 9) == [1, 1, 1, 0]  # 2003 is beyond the record
+        assert server.complete_years(flow, [2000, 2001, 2002], 7, 11, 1) == [1, 0, 1]
+
+
 class TestMcNemar:
     def test_exact_two_sided_p_by_hand(self):
         # 8 gained, 2 lost: P(X <= 2), X ~ Bin(10, 1/2) = (1 + 10 + 45) / 1024 = 56 / 1024; two-sided: 112 / 1024 = 0.109375
