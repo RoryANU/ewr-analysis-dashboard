@@ -220,6 +220,6 @@ test('existing metric tiles cap ETP from legacy saved uploads consistently',()=>
   h.ctx.legacy=row('F1',[1,1],[1.2,.5]);
   assert.equal(h.run("val(legacy,'et',0)"),1);
   assert.equal(h.run("S.ethr=1;val(legacy,'mz',0)"),1);
-  h.run("S.mode='diff'; S.bpol=0; S.bcli=1");
+  h.run("S.ethr=0; S.mode='diff'; S.bpol=0; S.bcli=1");   // threshold back to 0: at 1 both scenarios would meet the MRIP target and leave the means
   assert.equal(h.run("val(legacy,'et')"),-.5);   // capped ETP rises from .5 (base) to 1: a decline, as lower is better
 });

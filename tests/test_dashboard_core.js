@@ -95,8 +95,9 @@ test('agg: binary and differential metrics aggregate through the same hierarchy'
   const run=harness(rows);
   // ach at thr 1 (comparison, index 2): PU 0 (gauge 0) -> 1, PU 1 (gauge 1) -> 0; SDL .5
   near(run("agg(ROWS,['pu','gauge'],'ach',2)").mean,.5);
-  // differential FR: PU 0 = mean(+.5, 0) = .25, PU 1 = -.5 -> SDL -.125
-  run("S.mode='diff'"); near(run("agg(ROWS,['pu','gauge'],'fr')").mean,-.125);
+  // differential FR: PU 0 = +.5 (B meets the target in both, so it is left out), PU 1 = -.5 -> SDL 0
+  run("S.mode='diff'"); near(run("agg(ROWS,['pu','gauge'],'fr')").mean,0);
+  assert.equal(run("agg(ROWS,['pu','gauge'],'fr')").n,2);
 });
 test('scopeLevels: each selection type averages over the levels beneath it',()=>{
   const run=harness();
@@ -126,7 +127,43 @@ test('selRows: SDL, planning unit and gauge selections, including shared units',
 test('cnts: differential changes under one point are unchanged',()=>{
   const run=harness([row(0,0,0,'A',[.5,0,.52,0]),row(0,0,0,'B',[.5,0,.505,0]),row(0,0,0,'C',[.5,0,.4,0]),row(0,0,0,'D',[null,0,.4,0])]);
   run("S.mode='diff'");
-  assert.deepEqual(plain(run("cnts(ROWS,'fr')")),{up:1,dn:1,same:1,n:3});
+  assert.deepEqual(plain(run("cnts(ROWS,'fr')")),{up:1,dn:1,same:1,met:0,gain:0,loss:0,n:3});
+});
+test('diffClass: FR above target in both is met, crossings are capped at the target',()=>{
+  // base (index 0) -> comparison (index 2)
+  const run=harness([row(0,0,0,'A',[3,0,1.5,0]),row(0,0,0,'B',[1.2,0,.8,0]),row(0,0,0,'C',[.6,0,1.4,0]),row(0,0,0,'D',[.3,0,.5,0])]);
+  run("S.mode='diff'");
+  const k=i=>plain(run(`diffClass(ROWS[${i}],'fr')`));
+  assert.equal(k(0).cls,'met'); assert.equal(k(0).d,null); near(k(0).sur,-1.5);   // the surplus is kept for tooltips only
+  assert.equal(k(1).cls,'loss'); near(k(1).d,-.2);
+  assert.equal(k(2).cls,'gain'); near(k(2).d,.4);
+  assert.equal(k(3).cls,'below'); near(k(3).d,.2);
+  assert.equal(run("diffClass([0,0,0,'E',[],[],[null,0,1,0],[0,0,0,0]],'fr')"),null);
+  assert.equal(run("diffClass(ROWS[1],'ach').cls"),null);   // binary metrics keep their plain difference
+});
+test('diffClass: ETP is met at or below the MRIP threshold in both; lower is better',()=>{
+  const run=harness([row(0,0,0,'A',[1,0,1,0],[0,0,0,0]),row(0,0,0,'B',[1,0,1,0],[.3,0,0,0]),row(0,0,0,'C',[1,0,1,0],[0,0,.2,0]),row(0,0,0,'D',[1,0,1,0],[.5,0,.2,0])]);
+  run("S.mode='diff'");
+  assert.deepEqual([0,1,2,3].map(i=>run(`diffClass(ROWS[${i}],'et').cls`)),['met','gain','loss','below']);
+  near(run("diffClass(ROWS[1],'et').d"),.3); near(run("diffClass(ROWS[3],'et').d"),.3);
+  run('S.ethr=.25'); assert.equal(run("diffClass(ROWS[2],'et').cls"),'met');
+});
+test('agg and cnts: met in both is out of the mean and of n; crossings count as improved / declined',()=>{
+  const run=harness([row(0,0,0,'A',[3,0,1.5,0]),row(0,0,0,'B',[1.2,0,.8,0]),row(0,0,0,'C',[.6,0,1.4,0]),row(0,0,0,'D',[.3,0,.5,0])]);
+  run("S.mode='diff'");
+  const a=plain(run("agg(ROWS,[],'fr')")); assert.equal(a.n,3); near(a.mean,(-.2+.4+.2)/3);
+  assert.deepEqual(plain(run("agg(ROWS.slice(0,1),[],'fr')")),{n:0,mean:null});
+  assert.deepEqual(plain(run("cnts(ROWS,'fr')")),{up:2,dn:1,same:0,met:1,gain:1,loss:1,n:3});
+  // a crossing smaller than the 1-point band is still a gain
+  const g=harness([row(0,0,0,'A',[.995,0,1.3,0])]); g("S.mode='diff'");
+  assert.deepEqual(plain(g("cnts(ROWS,'fr')")),{up:1,dn:0,same:0,met:0,gain:1,loss:0,n:1});
+  assert.equal(run("allMet(cnts(ROWS.slice(0,1),'fr'))"),true); assert.equal(run("allMet(cnts(ROWS,'fr'))"),false);
+});
+test('agg: one scenario caps FR at the target in the mean, the per-EWR value is uncapped',()=>{
+  const run=harness([row(0,0,0,'A',[.2,0,0,0]),row(0,0,0,'B',[1.8,0,0,0])]);
+  near(run("agg(ROWS,[],'fr',0).mean"),.6);
+  assert.equal(run("val(ROWS[1],'fr',0)"),1.8);
+  near(run("agg(ROWS,[],'et',0).mean"),0);   // ETP is not capped beyond its own 0-1 range
 });
 test('differential labels: an FR difference is a ratio difference, a share of EWRs is in points',()=>{
   const run=harness();
