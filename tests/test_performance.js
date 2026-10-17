@@ -53,7 +53,9 @@ test('plot bounds check BOTH endpoints, ETP above 1 capped, negatives and unlock
   assert.equal(h.run('plotCalls.length'),1);
   assert.match(h.run('plotCalls[0][1][0].hovertemplate'),/Maximum gap exceeded/);
   assert.equal(h.run("plotCalls[0][2].yaxis.tickformat"),'.0%');
-  assert.equal(h.run('plotCalls[0][2].annotations.length'),2);
+  // the joint plot is always drawn unlocked: the axis reaches the largest FR and every baseline -> comparison arrow is shown
+  assert.deepEqual(plain(h.run('plotCalls[0][2].xaxis.range')),[0,unlocked.xmax]);
+  assert.equal(h.run('plotCalls[0][2].annotations.length'),unlocked.arrows.length);
 });
 test('known climate outcomes require complete nonempty climate sets',()=>{
   const h=harness();h.ctx.climateRows=[row('resilient',[1,1],[0,0]),row('crossing',[1,.5],[0,0]),row('incomplete',[1,null],[0,0]),row('fails',[.5,.5],[0,0])];
@@ -77,7 +79,7 @@ test('details are lazy and memoised, routine renders retain context, scale chang
   assert.equal(h.run("S.sort='high'; preparePerformance(fixtureRows)"),v);
   assert.equal(h.run('S.thr=.9; preparePerformance(fixtureRows)'),v);
   v.sequence=new AbortController();v.conditions=new AbortController();
-  h.run('lockJointScale=false; drawJointPlot(v)');assert.equal(v.sequence.signal.aborted,false);assert.equal(v.conditions.signal.aborted,false);
+  h.run('drawJointPlot(v)');assert.equal(v.sequence.signal.aborted,false);assert.equal(v.conditions.signal.aborted,false);
   h.run('S.cli=1; preparePerformance(fixtureRows)');assert.equal(v.sequence.signal.aborted,true);assert.equal(v.conditions.signal.aborted,true);
 });
 test('sequence uncertainty across missing years is preserved',()=>{
@@ -147,7 +149,7 @@ test('late annual response cannot update a changed selection',async()=>{
 });
 test('CSV read survives scale toggles and routine renders; newer file wins',async()=>{
   const h=harness(),d=deferred();h.ctx.v=h.view();h.ctx.file={name:'old.csv',size:100,text:()=>d.promise};
-  const old=h.run('loadConditions(file,v)');h.run('lockJointScale=false;drawJointPlot(v);preparePerformance(fixtureRows)');
+  const old=h.run('loadConditions(file,v)');h.run('drawJointPlot(v);preparePerformance(fixtureRows)');
   h.ctx.newFile={name:'new.csv',size:100,text:async()=> 'date,stage_m\n2000-01-01,1\n2000-01-02,2'};
   await h.run('loadConditions(newFile,v)');d.resolve('date,stage_m\n2000-01-01,9');await old;
   assert.match(h.run("$('conditionNote').textContent"),/new.csv/);assert.equal(h.run('plotCalls.filter(c=>c[0].id!=="jointPlot").length'),1);
@@ -172,7 +174,7 @@ test('generated script syntax and real-data largest-gauge timings',()=>{
 });
 test('deferred CSV alone completes after scale change and a routine render',async()=>{
   const h=harness(),d=deferred();h.ctx.v=h.view();h.ctx.file={name:'kept.csv',size:80,text:()=>d.promise};
-  const work=h.run('loadConditions(file,v)');h.run("S.sort='low';preparePerformance(fixtureRows);lockJointScale=false;drawJointPlot(v)");
+  const work=h.run('loadConditions(file,v)');h.run("S.sort='low';preparePerformance(fixtureRows);drawJointPlot(v)");
   d.resolve('date,stage_m\n2000-01-01,1');await work;
   assert.match(h.run("$('conditionNote').textContent"),/kept.csv/);assert.equal(h.run('plotCalls.filter(c=>c[0].id!=="jointPlot").length'),1);
 });

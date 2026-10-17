@@ -41,7 +41,6 @@ const http=require('node:http'),fs=require('node:fs'),assert=require('node:asser
     assert.match(await page.locator('#robustnessValues').textContent(),/FR/);
     await page.evaluate(()=>{window.originalPerformanceNode=performanceView.node;S.sort='high';render();});
     assert.equal(await page.evaluate(()=>performanceView.node===window.originalPerformanceNode),true);
-    await page.locator('#lockJointScale').uncheck();
     assert.equal(await page.locator('#jointSlot #jointContent').count(),1);
     assert.equal(await page.locator('#otherDetails #jointDetails').count(),1);
     assert.equal(await page.locator('#otherDetails #robustnessDetails').count(),1);

@@ -911,7 +911,14 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
     comps = []
     for rg, es in by.items():
         thr = min(e["thr"] for e in es)
-        comps.append({"regime": rg, "thr": thr, "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in es}, key=lambda x: (x[1], x[0]))], "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
+        comps.append(
+            {
+                "regime": rg,
+                "thr": thr,
+                "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in es}, key=lambda x: (x[1], x[0]))],
+                "at_thr": sorted({e["code"] for e in es if e["thr"] == thr}),
+            }
+        )
     comps.sort(key=lambda c: c["thr"])
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
     out: dict[str, Any] = {"gauge": gauge, "regimes": comps, "scenarios": {}}
@@ -927,6 +934,12 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
 
 
 def heatmap(q: dict[str, str]) -> dict[str, Any]:
+    """Return annual achievement frequencies over a flow-threshold and duration grid.
+
+    Query parameters select the gauge, base and optional comparison scenarios, season, day-count mode and visible bounds.
+    The requested column count (default 400, clamped to 40–1500) sets threshold spacing. Return the grids and, for a comparison,
+    their difference; raise ValueError when the scenarios share no dates at the gauge.
+    """
     import numpy as np
     import pandas as pd
 
@@ -943,7 +956,9 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
     # a zoomed view asks for just its own threshold / duration window, so the same ~400 columns are spread over the visible range
     xmin = max(0, min(int(float(q["xmin"])), xlim - 1)) if q.get("xmin") else 0
     dmin = max(1, min(int(float(q["dmin"])), dmax)) if q.get("dmin") else 1
-    spacing = max(1, int(math.ceil((xlim - xmin + 1) / 400)))
+    # the browser sends the number of columns that fit the plot's pixel width (default 400), so the grid follows the plot size
+    cols = max(40, min(int(float(q.get("cols") or 400)), 1500))
+    spacing = max(1, int(math.ceil((xlim - xmin + 1) / cols)))
     thresholds = np.arange(xmin, xlim + 1, spacing)
     durations = np.arange(dmin, dmax + 1)
     af, n_years = achievement_frequencies(df.to_numpy(dtype=float), df.index, thresholds, durations, sm, em, consec)

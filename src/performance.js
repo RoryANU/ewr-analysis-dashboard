@@ -65,7 +65,7 @@ function sequenceStats(years, window = ROLLING_YEARS) {
 
 // One retained view per analytical selection. Sorting, expanding existing matrices and changing
 // scatter scales preserve this node, its charts, in-flight work and lazy caches.
-let performanceView = null, performanceRevision = 0, lockJointScale = true;
+let performanceView = null, performanceRevision = 0;
 function performanceKey() {
   return JSON.stringify([S.src, S.sel, S.pol, S.cli, S.mode, isDiff() ? [S.bpol, S.bcli] : null, S.ethr, S.fbthr, performanceRevision, FLOWGEN]);
 }
@@ -97,13 +97,12 @@ function detailText(view, index) {
   }).join('\n'));
   return view.details.get(index);
 }
+/** Return panel markup for a performance view, with lazy rule details and robustness results. */
 function performancePanels(view) {
   const q = summaryFor(view, view.i);
   return `<section id="performancePanel">
     <div id="jointContent">
     <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
-    <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]}</span></div>`).join('')}</div>
-    <div class="mxbar"><label class="seg"><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> <span class="lbl">Lock frequency axis to 0–2</span></label></div>
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
     <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
     </div>
@@ -114,11 +113,11 @@ function performancePanels(view) {
       <div id="robustnessTable"></div><pre id="robustnessValues" style="white-space:pre-wrap"></pre></details>
     </details></section>`;
 }
+/** Attach the retained view to the panel and bind detail handlers when first mounted. */
 function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
-  $('lockJointScale').onchange = e => { lockJointScale = e.target.checked; drawJointPlot(view); };
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
@@ -195,8 +194,9 @@ function jointRegimeOrder(rows) {
   const rank = name => typeof REG_ORDER === 'undefined' || !REG_ORDER.includes(name) ? Infinity : REG_ORDER.indexOf(name);
   return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
 }
+/** Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range. */
 function drawJointPlot(view) {
-  const g = jointGeometry(view.rows,view.i,view.base,lockJointScale);
+  const g = jointGeometry(view.rows,view.i,view.base,false);
   if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
@@ -235,7 +235,7 @@ function drawJointPlot(view) {
       if (g.arrows.length) Plotly.relayout(plot, updates);
     });
   });
-  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Unlock the axis to show higher frequency ratios. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
+  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
 }
 
 async function performanceJSON(url, signal) {
@@ -299,6 +299,7 @@ function freshChart(parent) {
   parent.replaceChildren(chart);
   return chart;
 }
+/** Load annual diagnostics for selected rules, updating charts only while this request is current. */
 async function loadSequences(view) {
   if (!currentPerformance(view) || !view.ctx?.ok) return;
   view.sequence?.abort();
@@ -335,7 +336,7 @@ async function loadSequences(view) {
     if (!series.length) throw Error('No annual results. '+errors.join('; '));
     await plotSequences(series,active);
     if (!active()) return;
-    note.textContent = `${series.length} rule/scenario rows. Grey = failed, green = achieved, blank = incomplete/unavailable. Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
+    note.textContent = `${series.length} rule/scenario rows. Blue = achieved, dark grey with × = failed, white = incomplete/unavailable (not a failure). Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
     $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily flow records. '+coverage.join(' | ');
   } catch (error) { if (active()) note.textContent = 'Could not load annual diagnostics: '+error.message; }
   finally {
@@ -346,17 +347,54 @@ async function loadSequences(view) {
     }
   }
 }
+// Each series keeps one colour and dash on every chart: 8 distinguishable colours (all at least 4.5:1 on white), then the dash changes.
+const SERIES_COLOURS = ['#1f4e8c','#c0392b','#0e7a62','#8e44ad','#a65200','#2c3e50','#c2185b','#5f6b6d'], SERIES_DASHES = ['solid','dash','dot','dashdot'];
+/** Return a stable colour and dash for a zero-based series index, cycling dashes after each palette. */
+const seriesStyle = i => ({color:SERIES_COLOURS[i % SERIES_COLOURS.length], dash:SERIES_DASHES[Math.floor(i / SERIES_COLOURS.length) % SERIES_DASHES.length]});
+const DASH_SVG = {solid:'', dash:'5 3', dot:'1.5 2.5', dashdot:'5 2 1.5 2'};
+// Three annual states: achieved, failed and missing. A colour bar cannot show missing (null) cells, so the key is HTML with a swatch for each.
+const ANNUAL_ACHIEVED = '#2166ac', ANNUAL_FAILED = '#6b7280';
+/** Return an HTML key distinguishing achieved, failed and missing annual assessments. */
+const annualStateKey = () => `<div class="swl"><span><i style="background:${ANNUAL_ACHIEVED}"></i>achieved</span><span><i style="background:${ANNUAL_FAILED}">×</i>failed</span><span><i style="background:#fff;border:1px dashed #9aa3b0"></i>missing: incomplete or unavailable</span></div>`;
+// A selector toggles series on the line charts instead of a legend, which is unreadable past a handful of long rule names.
+/** Populate an optional selector that toggles matching series on the supplied line charts. */
+function seriesSelector(el, series, charts) {
+  if (!el) return;
+  el.innerHTML = annualStateKey()+`<details class="sersel"><summary>Series shown: <span>${series.length} of ${series.length}</span></summary><div class="pop"><div><button type="button" class="ghost" data-all="1">All</button><button type="button" class="ghost" data-all="0">None</button></div>${series.map((s,i) => { const st = seriesStyle(i);
+    return `<label><input type="checkbox" data-i="${i}" checked><svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="${st.color}" stroke-width="2" stroke-dasharray="${DASH_SVG[st.dash]}"/></svg>${esc(s.name)}</label>`; }).join('')}</div></details>`;
+  /** Apply checkbox visibility to every initialized chart and update the selected-series count. */
+  const sync = () => {
+    const on = [...el.querySelectorAll('input[data-i]')].map(i => i.checked);
+    charts.forEach(chart => { if (chart.data) Plotly.restyle(chart,{visible:on}); });
+    el.querySelector('summary span').textContent = `${on.filter(Boolean).length} of ${on.length}`;
+  };
+  el.onchange = sync;
+  el.onclick = event => { const b = event.target.closest('[data-all]'); if (!b) return; el.querySelectorAll('input[data-i]').forEach(i => { i.checked = b.dataset.all === '1'; }); sync(); };
+}
+/** Align annual series by start year and draw the raster and trends, purging charts if active() is false. */
 async function plotSequences(series, active) {
   const years = [...new Set(series.flatMap(s => s.years.wy))].sort((a,b) => a-b);
   const aligned = (s,v) => { const m = new Map(s.years.wy.map((w,i) => [w,v[i]])); return years.map(w => m.get(w) ?? null); };
   // Each run owns its chart nodes, including retries within the SAME analytical selection.
   const raster = freshChart($('sequenceRaster')), since = freshChart($('sequenceSince')), rolling = freshChart($('sequenceRolling'));
-  await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map(s => s.name),z:series.map(s => aligned(s,s.years.achieved.map((a,i) => s.years.complete[i] ? (a ? 1 : 0) : null))),zmin:0,zmax:1,colorscale:[[0,'#eee'],[1,'#207a65']],hoverongaps:false,xgap:1,ygap:2,colorbar:{tickvals:[0,1],ticktext:['Failed','Achieved']}}],{height:Math.max(250,series.length*30),margin:{l:230,r:90,t:20,b:40},xaxis:{title:'Assessment start year (windows shown in row labels)',dtick:1}},PCFG);
+  const z = series.map(s => aligned(s,s.years.achieved.map((a,i) => s.years.complete[i] ? (a ? 1 : 0) : null)));
+  // Row labels are short (rule · scenario); the full name, with group, planning unit and window, is in the hover.
+  /** Shorten a series name to rule and scenario, falling back to the full name. */
+  const short = s => s.name.split(' · ').slice(1,2).concat(s.name.split(' · ').slice(3,4)).join(' · ') || s.name;
+  await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map((s,i) => `${i+1}. ${short(s)}`),z,zmin:0,zmax:1,
+    colorscale:[[0,ANNUAL_FAILED],[.5,ANNUAL_FAILED],[.5,ANNUAL_ACHIEVED],[1,ANNUAL_ACHIEVED]],showscale:false,hoverongaps:true,xgap:1,ygap:2,
+    text:z.map(r => r.map(v => v === 0 ? '×' : '')),texttemplate:'%{text}',textfont:{color:'#fff',size:11},
+    customdata:z.map((r,j) => r.map(v => [series[j].name, v == null ? 'missing (incomplete or unavailable)' : v ? 'achieved' : 'failed'])),
+    hovertemplate:'%{customdata[0]}<br>%{x}: <b>%{customdata[1]}</b><extra></extra>'}],
+    {height:Math.max(250,series.length*30),margin:{l:20,r:20,t:20,b:40},plot_bgcolor:'#fff',yaxis:{automargin:true,autorange:'reversed',tickfont:{size:11}},xaxis:{title:'Assessment start year (windows shown in the hover)',dtick:1}},PCFG);
   if (!active()) { Plotly.purge(raster); return; }
   for (const [el,key,title] of [[since,'since','Years since last successful assessment year'],[rolling,'rolling',`${ROLLING_YEARS}-year rolling achievement proportion`]]) {
-    await Plotly.newPlot(el,series.map(s => ({type:'scatter',mode:'lines+markers',name:s.name,x:years,y:aligned(s,s.stats[key]),connectgaps:false})),{height:280,margin:{l:70,r:20,t:20,b:45},showlegend:false,xaxis:{title:'Assessment start year'},yaxis:{title,...(key === 'rolling' ? {range:[0,1]} : {})}},PCFG);
+    await Plotly.newPlot(el,series.map((s,i) => ({type:'scatter',mode:'lines+markers',name:s.name,x:years,y:aligned(s,s.stats[key]),connectgaps:false,
+      line:{color:seriesStyle(i).color,dash:seriesStyle(i).dash,width:2},marker:{color:seriesStyle(i).color,size:5},hovertemplate:`${esc(s.name)}<br>%{x}: <b>%{y:.2f}</b><extra></extra>`})),
+      {height:280,margin:{l:70,r:20,t:20,b:45},showlegend:false,xaxis:{title:'Assessment start year'},yaxis:{title,...(key === 'rolling' ? {range:[0,1]} : {})}},PCFG);
     if (!active()) { Plotly.purge(el); return; }
   }
+  seriesSelector($('sequenceSeries'),series,[since,rolling]);
 }
 
 const CONDITION_MAX_BYTES = 2*1024*1024, CONDITION_MAX_ROWS = 20000;

@@ -9,14 +9,14 @@
 html,body{height:100%;margin:0;font:13px system-ui,sans-serif;color:var(--fg);background:var(--bg)}
 #app{display:flex;flex-direction:column;height:100%}
 #bar{position:relative;z-index:1200;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
-#bar h1{font-size:15px;margin:0 6px 0 0}
+#bar h1{font-size:15px;margin:0 6px 0 0}#barTog{display:none}
 #bar label{display:flex;align-items:center;gap:6px;font-weight:600;color:#4b5563;font-size:12px}
 select,button{font:500 12.5px system-ui,sans-serif;color:var(--fg);background:#fff;border:1px solid #c5ccd6;border-radius:6px;padding:4px 8px}
 button{cursor:pointer}button:hover{border-color:var(--acc);background:#f4f8fd}
 #main{flex:1;display:flex;min-height:0}
 #map{flex:1;min-width:0}
 #divider{flex:none;width:6px;margin:0 -3px;cursor:col-resize;z-index:500;background:transparent;position:relative}#divider:hover,#divider.drag{background:#1f4e8c55}
-#panel{width:600px;max-width:80%;min-width:260px;overflow:auto;border-left:1px solid var(--line);padding:12px 14px;background:#fff}
+#panel{width:var(--panel-w,600px);max-width:80%;min-width:260px;overflow:auto;container-type:inline-size;border-left:1px solid var(--line);padding:12px 14px;background:#fff}
 #panel h2{font-size:15px;margin:0 0 2px}
 .crumbs{font-size:12px;color:var(--mut);margin-bottom:8px}.crumbs a{color:var(--acc);cursor:pointer}
 .flowp{border:1px solid var(--line);border-radius:8px;margin:10px 0;padding:6px 10px}.flowp summary{cursor:pointer;font-weight:600;font-size:12.5px}.flowp details.multi{position:relative;display:inline-block}.flowp details.multi summary{font-weight:400;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;cursor:pointer}.flowp .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:220px;overflow:auto;min-width:230px;box-shadow:0 4px 14px #0003}.flowp .pop label{display:block;white-space:nowrap;padding:1px 0;font-size:12px}
@@ -25,7 +25,7 @@ button{cursor:pointer}button:hover{border-color:var(--acc);background:#f4f8fd}
 .flowp .mxbar{margin:8px 0 4px}.flowp input[type=number]{width:96px;font:inherit;padding:2px 4px}.flowp select{padding:2px 6px}
 .cellp{border:1px solid var(--line);border-radius:8px;margin:8px 0}.cellh{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px}.cellh span{color:var(--mut);flex:1}.cellh button{border:0;background:none;font-size:16px;line-height:1;padding:0 4px;color:var(--mut)}.cellt{max-height:300px;overflow:auto}.cellt th{position:sticky;top:0;text-align:left}.cellt td{text-align:left;white-space:normal}
 .tiles{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}.tiles .tile{min-width:110px}
-.cnts{margin:0 0 12px;font-size:12px}.cnts .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:4px 0;background:#eee}.cnts .up{color:#2a9d4a}.cnts .dn{color:#d1495b}
+.cnts{margin:0 0 12px;font-size:12px}.cnts .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:4px 0;background:#eee}.cnts .up{color:#1d5a99}.cnts .dn{color:#b3261e}
 .tile{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
 .tile.wb{display:flex;gap:14px;align-items:center;flex:2 1 300px}.tile.wb>div:first-child{flex:0 0 125px}.tile.wb svg{flex:none;width:200px;height:auto;margin-left:auto}.bt{display:inline-block;margin:2px 0 0;font-size:11px;color:#1f4e8c;cursor:pointer;border:0;background:none;padding:0;font-weight:600}.bregs{border:1px solid var(--line);border-radius:8px;padding:4px 10px;margin:-4px 0 12px}.brow,.bhead{display:grid;grid-template-columns:1fr 46px 200px;gap:8px;align-items:center;font-size:11.5px}.brow{border-top:1px solid #eee}.brow b{font-size:13px;font-weight:600}.brow svg,.bhead svg{width:200px;height:26px;display:block}.bhead svg{height:16px}.bhead{color:var(--mut);font-size:10.5px;padding:3px 0}.bn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bone{font-size:11px;color:#6b7280}
 .tile b{display:block;font-size:20px;font-weight:600}.tile span{font-size:11px;color:var(--mut)}
@@ -40,14 +40,14 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .legend{background:#fff;padding:8px 10px;border-radius:6px;box-shadow:0 1px 4px #0004;font-size:11.5px;line-height:1.5}
 .legend .ramp{height:10px;width:160px;border:1px solid #0004;margin:3px 0}
 .legend .ends{display:flex;justify-content:space-between}
-.mxw{overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px;margin:6px 0}.mxw text{font:10px system-ui,sans-serif;fill:#222}.mxw .hd{font-size:10px;fill:#555}
+.mxw{overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px;margin:6px 0}.mxw text{font:11px system-ui,sans-serif;fill:#222}.mxw .hd{font-size:11px;fill:#4b5563}
 .con{width:11px;height:11px;background:#d1495b;border:1.5px solid #fff;box-shadow:0 0 0 1px #7a1f2b;transform:rotate(45deg);margin:1.5px}
 .legend i{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:1px solid #0006}
 .mxbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin:14px 0 4px}.mxbar>b{font-size:13px}
 .seg{display:flex;align-items:center;gap:6px}.seg .lbl{font-size:11px;color:var(--mut)}
 .mmore{position:relative;display:inline-block}.mmore summary{cursor:pointer;list-style:none;border:1px solid #c5ccd6;border-left:0;border-radius:0 6px 6px 0;padding:5px 10px;background:#fff;font:inherit}.mmore summary::-webkit-details-marker{display:none}.mmore summary::after{content:" ▾"}.mmore.on summary{background:var(--acc);color:#fff;border-color:var(--acc)}.mmore .pop{position:absolute;z-index:30;top:100%;right:0;display:flex;flex-direction:column;background:#fff;border:1px solid #c5ccd6;border-radius:6px;box-shadow:0 4px 12px #0003;padding:4px;min-width:170px}.mmore .pop button{border-radius:4px!important;text-align:left;margin:1px 0}
 .tabs.sm button{padding:2px 9px;font-size:11.5px}
-.ghost{border:0;background:none;color:var(--mut);font-size:12px;padding:2px 6px;opacity:.7}.ghost:hover{opacity:1;background:none;color:var(--acc)}#addScn{margin-left:auto}
+.ghost{border:0;background:none;color:var(--mut);font-size:12px;padding:2px 6px}.ghost:hover{background:none;color:var(--acc)}#addScn{margin-left:auto}
 #scnDlg{border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(560px,92vw);font-size:13px}#scnDlg::backdrop{background:#0004}
 #scnDlg{position:fixed}#scnClose{position:absolute;top:8px;right:10px;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#4b5563;padding:2px 8px}#scnClose:hover{color:#111}
 #scnDlg h3{margin:0 0 4px;font-size:15px}#scnDlg .fld{display:flex;flex-direction:column;gap:3px;margin:10px 0}#scnDlg .fld>span{font-size:11.5px;font-weight:600;color:#4b5563}
@@ -56,11 +56,21 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 #scnList{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}#scnList div{display:flex;align-items:center;gap:8px;padding:2px 0}#scnList span{flex:1}
 .tabs{display:inline-flex}.tabs button{border-radius:0}.tabs button:first-child{border-radius:6px 0 0 6px}.tabs button:last-child{border-radius:0 6px 6px 0}
 .tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-@media(max-width:800px){#divider{display:none}#main{flex-direction:column}#panel{width:100%;max-width:none;height:55%;border-left:0;border-top:1px solid var(--line)}}
+@media(max-width:800px){#bar{gap:6px 10px;padding:6px 10px}#bar h1{font-size:14px}#bar label{flex-wrap:wrap;max-width:100%;min-width:0}#bar select{max-width:min(44vw,190px)}#bar .tabs button{padding:4px 7px}
+  #barTog{display:inline-block;margin-left:auto;font-weight:600}#bar:not(.open)>*:not(h1):not(#barTog){display:none!important}   /* small screens: the controls fold away so the map and panel keep the screen */
+  #divider{display:none}#main{flex-direction:column}#map{flex:0 0 28%}#panel{flex:1;width:100%;max-width:none;min-width:0;height:auto;border-left:0;border-top:1px solid var(--line)}}   /* the map keeps under 30% of a small screen; the saved desktop width (--panel-w) does not apply here */
+/* the panel is a size container: its contents follow the panel's own width (the divider, a phone), not the window's */
+@container (max-width:520px){.tile.wb{flex-wrap:wrap}.tile.wb>div:first-child{flex:1 1 100%}.tile.wb svg{width:100%;max-width:260px;margin-left:0}.tiles .tile{min-width:0;flex:1 1 40%}
+  .brow,.bhead{grid-template-columns:1fr 46px 120px}.brow svg,.bhead svg{width:120px}.mxbar{gap:6px 10px}}
+@container (max-width:360px){.tiles .tile{flex-basis:100%}.brow,.bhead{grid-template-columns:1fr 40px}.brow svg,.bhead svg,.bhead>svg{display:none}}
+.mxleg{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:flex-start;font-size:11.5px;color:#374151;margin:4px 0 2px}.mxleg>div{display:flex;flex-direction:column;gap:2px}.mxleg .rmp{position:relative;width:180px;height:12px;border:1px solid #0004;border-radius:2px}.mxleg .tk{position:relative;width:180px;height:14px;font-size:11px}.mxleg .tk span{position:absolute;transform:translateX(-50%);white-space:nowrap}.mxleg .tk span:first-child{transform:none}.mxleg .tk span:last-child{transform:translateX(-100%)}.mxleg .it{display:flex;align-items:center;gap:6px}.mxleg svg{flex:none}
+.legend{max-height:calc(100vh - 220px);overflow:auto}.legend .row2{display:flex;align-items:center;gap:6px;margin:2px 0}.legend .row2 svg{flex:none}
+.swl{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:#374151;margin:4px 0}.swl span{display:inline-flex;align-items:center;gap:5px}.swl i{display:inline-block;width:14px;height:12px;border-radius:2px;border:1px solid #0003;font-style:normal;font-size:10px;line-height:11px;text-align:center;color:#fff}
+.sersel{position:relative;display:inline-block;margin:4px 0}.sersel summary{cursor:pointer;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;font-size:12px}.sersel .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:260px;overflow:auto;min-width:260px;max-width:min(560px,90cqw);box-shadow:0 4px 14px #0003}.sersel label{display:flex;align-items:flex-start;gap:6px;padding:1px 0;font-size:12px}
 .performance{border-top:2px solid var(--line);margin-top:18px;padding-top:12px}.performance h2{margin-top:18px!important}.performance details{margin:10px 0}.performance summary{cursor:pointer;font-weight:600}.performance footer{border-top:1px solid var(--line);padding-top:10px}.performance svg circle:focus{stroke:#111;stroke-width:2}
 </style></head><body><div id="app">
 <div id="bar">
-  <h1>EWR analysis tool</h1>
+  <h1>EWR analysis tool</h1><button id="barTog" class="ghost" aria-expanded="false" aria-controls="bar">Controls ▾</button>
   <span class="tabs" id="srcTabs"><button id="srcD" class="on" title="The review's built-in results: all policies and climates, all SDL units">Demo data</button><button id="srcU" title="Only the model output you add yourself, with the extra flow charts">Your data</button></span>
   <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and years in 10 exceeding MRIP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
@@ -124,10 +134,12 @@ function agg(rows,levels,m,i){
 }
 const LEVELS={sdl:["pu","gauge"],pu:["gauge"],gauge:[]};
 const scopeLevels=()=>LEVELS[S.sel.type]||[];
-// differential values (FR and ETP) are shown as whole percentage points, e.g. +14%
-const pct=v=>(v>0?"+":"")+Math.round(v*100)+"%", dfr=m=>isDiff();
+// differential values: an FR difference is a difference of ratios (+0.14, not "+14%"); a difference of shares of EWRs is in percentage points (+14 pts)
+const signed=(t,v)=>(+t===0?"":v>0?"+":v<0?"−":"")+t.replace("-","");   // a value that rounds to 0 has no sign; minus is a true minus sign
+const pct=v=>signed(String(Math.abs(Math.round(v*100))),v)+" pts", dfr=m=>isDiff()&&isBin(m);
 const pa=v=>Math.round(v*100)+"%";
-const sg=v=>isDiff()&&v>0?"+":"", f3=(v,m)=>v==null?"–":m==="et"?sg(v)+(v*ETY).toFixed(2):dfr(m)?pct(v):isBin(m)?pa(v):(isDiff()&&v>0?"+":"")+v.toFixed(3), fs2=(v,m)=>m==="et"?sg(v)+(v*ETY).toFixed(1):dfr(m)?pct(v):isBin(m)?pa(v):(isDiff()&&v>0?"+":"")+v.toFixed(2);
+const sg=v=>isDiff()&&v>0?"+":"", num=(v,dp)=>isDiff()?signed(Math.abs(v).toFixed(dp),v):v.toFixed(dp);
+const f3=(v,m)=>v==null?"–":m==="et"?num(v*ETY,2):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="et"?num(v*ETY,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
 
 // ---- selection ---------------------------------------------------------------------------------------------------
 function selRows(){
@@ -139,16 +151,23 @@ function selRows(){
 }
 // ---- colours -----------------------------------------------------------------------------------------------------
 const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
-const ramp=(s)=>`rgb(${s<.5?mixc([209,73,91],[233,162,59],s/.5):mixc([233,162,59],[42,157,74],(s-.5)/.5)})`;   // 0 red .. 1 green
+// colour-blind-safe red - pale yellow - blue (ColorBrewer RdYlBu): blue is always the better end, as in the FR and differential scales
+const RYB=[[215,48,39],[252,141,89],[254,224,144],[145,191,219],[69,117,180]], ryb=s=>{ const x=Math.max(0,Math.min(1,s))*(RYB.length-1), i=Math.min(RYB.length-2,Math.floor(x)); return `rgb(${mixc(RYB[i],RYB[i+1],x-i)})`; };
+const ramp=s=>ryb(s);   // 0 worst (red) .. 1 best (blue)
 const ETP_MAX=0.5, DIV={fr:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25};   // differential: differences of this size (or more) get the full colour
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,v/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
   if(m==="fr"){ const x=Math.max(0,Math.min(1.0,v)), w=[255,255,255];   // frequency ratio: 0 red, 0.9 white, 1 blue (as in the Excel version)
     return `rgb(${x<=0.9?mixc([215,48,39],w,x/0.9):mixc(w,[33,102,172],(x-0.9)/0.1)})`; }
-  if(m==="et"){ const x=Math.max(0,Math.min(1,v*ETY/10));   // years in 10 exceeding the MRIP: 0 green, 5 yellow, 10 red (Excel green-yellow-red)
-    return `rgb(${x<.5?mixc([99,190,123],[255,235,132],x/.5):mixc([255,235,132],[248,105,107],(x-.5)/.5)})`; }
+  if(m==="et") return ryb(1-Math.max(0,Math.min(1,v*ETY/10)));   // years in 10 exceeding the MRIP: 0 blue (best), 5 pale yellow, 10 red
   return m==="ach"||m==="mz"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
+
+// text drawn on a coloured fill: near-black or white, whichever has the higher WCAG contrast ratio against the fill
+const rgbOf=c=>{ c=String(c).trim(); if(c[0]==="#"){ const h=c.length===4?c.slice(1).split("").map(x=>x+x).join(""):c.slice(1,7); return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)); } const m=c.match(/[\d.]+/g); return m?m.slice(0,3).map(Number):[255,255,255]; };
+const lum=c=>{ const [r,g,b]=rgbOf(c).map(v=>{ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }); return 0.2126*r+0.7152*g+0.0722*b; };
+const contrast=(a,b)=>{ const x=lum(a), y=lum(b); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+const textOnColour=bg=>contrast(bg,"#111111")>=contrast(bg,"#ffffff")?"#111111":"#ffffff";
 
 // ---- map (same look as the original SDL map) ---------------------------------------------------------------------
 const colours={NSW:"#4e79a7",VIC:"#59a14f",QLD:"#e15759",SA:"#f28e2b",ACT:"#b07aa1"};
@@ -180,7 +199,9 @@ const conLayer=L.layerGroup(CONSTRAINTS.map(c=>{ const m=L.marker([c.lat,c.lon],
   m.bindPopup(`<b>${esc(c.name)}</b> (${esc(c.river)})<br>${body}`);
   return m; })).addTo(map);
 const riverW=o=>({3:0.7,4:1.1,5:1.6,6:2.2}[o]??3);
-L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:L.canvas({pane:"rivers"}),style:f=>({color:"#1f78b4",weight:riverW(f.properties.o),opacity:0.85})}).addTo(map);
+const riverR=L.canvas({pane:"rivers"});   // one canvas: a pale casing under the blue line keeps rivers readable over the state fills (NSW is blue too) and the grey basemap
+L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:riverR,style:f=>({color:"#ffffff",weight:riverW(f.properties.o)+2,opacity:0.75})}).addTo(map);
+L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:riverR,style:f=>({color:"#0b5a9c",weight:riverW(f.properties.o),opacity:0.95})}).addTo(map);
 const GM={}, gaugeRows={}; ROWS.forEach(r=>(gaugeRows[r[2]]??=[]).push(r));
 GAUGES.forEach(g=>{
   const mk=L.circleMarker([g.lat,g.lon],{pane:"gauges",radius:4.5,weight:1,color:"#111",fillColor:"#ffd92f",fillOpacity:.95});
@@ -208,11 +229,19 @@ function paintMap(){   // map look is fixed; only the selection is highlighted
     if(hide){ if(map.hasLayer(GM[g.i])) map.removeLayer(GM[g.i]); continue; } if(!map.hasLayer(GM[g.i])) GM[g.i].addTo(map);
     GM[g.i].setStyle({fillOpacity:on?.95:nodata?.4:.25,opacity:on?1:nodata?.6:.3,weight:sel?3:1,radius:sel?7:4.5,color:sel?"#d1495b":"#111"}); if(sel) GM[g.i].bringToFront(); }
 }
-const lg=L.control({position:"bottomleft"});
+const lg=L.control({position:"topright"});   // top right: clear of the attribution, which wraps across the bottom of a narrow map
 lg.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); L.DomEvent.disableClickPropagation(d);
   const btn=L.DomUtil.create("button","",d); btn.type="button"; btn.textContent="Legend ▸"; btn.style.cssText="border:0;background:none;font:600 12px system-ui;cursor:pointer;padding:0";
   const body=L.DomUtil.create("div","",d); body.style.display="none";
-  body.innerHTML=`<label style="cursor:pointer"><input type="checkbox" id="conToggle" checked> <i style="background:#d1495b;transform:rotate(45deg);width:9px;height:9px"></i>Constraint sites</label>`;
+  const sq=(fill,op,dash)=>`<svg width="16" height="12"><rect x="1" y="1" width="14" height="10" fill="${fill}" fill-opacity="${op}" stroke="#333" stroke-dasharray="${dash||""}"/></svg>`;
+  body.innerHTML=`<b>SDL units (by state)</b>`+Object.entries(colours).map(([st,c])=>`<div class="row2">${sq(c,.6)}${st}</div>`).join("")+
+    `<div class="row2">${sq("#888",.2,"3 2")}not in this view (no data)</div>`+
+    `<b style="display:block;margin-top:4px">Gauges and rivers</b>`+
+    `<div class="row2"><svg width="16" height="14"><circle cx="8" cy="7" r="4.5" fill="#ffd92f" stroke="#111"/></svg>gauge (click for its EWRs)</div>`+
+    `<div class="row2"><svg width="16" height="16"><circle cx="8" cy="8" r="6.5" fill="#ffd92f" stroke="#d1495b" stroke-width="2.5"/></svg>selected gauge</div>`+
+    `<div class="row2"><svg width="16" height="14"><circle cx="8" cy="7" r="4.5" fill="#ffd92f" fill-opacity=".25" stroke="#111" stroke-opacity=".3"/></svg>gauge outside the selection</div>`+
+    `<div class="row2"><svg width="16" height="10"><line x1="0" y1="5" x2="16" y2="5" stroke="#fff" stroke-width="5"/><line x1="0" y1="5" x2="16" y2="5" stroke="#0b5a9c" stroke-width="3"/></svg>river (wider = larger)</div>`+
+    `<label class="row2" style="cursor:pointer"><input type="checkbox" id="conToggle" checked style="margin:0"><svg width="16" height="16"><rect x="4" y="4" width="8" height="8" fill="#d1495b" stroke="#fff" transform="rotate(45 8 8)"/></svg>constraint sites</label>`;
   setTimeout(()=>{ const t=document.getElementById("conToggle"); if(t) t.onchange=()=>t.checked?conLayer.addTo(map):map.removeLayer(conLayer); },0);
   btn.onclick=()=>{ const open=body.style.display==="none"; body.style.display=open?"block":"none"; btn.textContent=open?"Legend ▾":"Legend ▸"; body.style.marginTop=open?"4px":"0"; };
   return d; };
@@ -247,20 +276,20 @@ function render(){
   }
   const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
   const bx=k=>s.type==="gauge"&&S.metric===k?boxPlot(rows,k):"";   // gauge view, FR or years-in-10 selected: distribution of the EWRs beside the mean
-  let h=`<div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"mean FR difference":"mean frequency ratio"} · ${fr.n} EWRs</span>${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
+  let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"mean FR difference":"mean frequency ratio"} · ${fr.n} EWRs</span>${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
     ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"improvement in EWRs achieving":"hierarchical % meeting frequency threshold"} · ${ac.n} EWRs</span></div>`:""}
     ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"improvement in EWRs achieving MRIP":"EWRs achieving MRIP"} · ${mz.n} EWRs</span></div>`:""}
     ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"improvement in EWRs failing badly (fewer = +)":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
     ${inFam("et")?`<div class="tile${bx("et")?" wb":""}"><div><b>${f3(et.mean,"et")}</b><span>${isDiff()?"improvement in mean years in 10 exceeding MRIP (fewer = +)":"mean years in 10 exceeding MRIP"} · ${et.n} EWRs</span>${bx("et")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("et")}</div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
     ${isDiff()&&s.type!=="sdl"?(()=>{ const c=cnts(rows,S.metric), p=x=>c.n?Math.round(100*x/c.n):0;
-      return `<div class="cnts"><b>${MS[S.metric]==="FR"?"Frequency ratio":MS[S.metric][0].toUpperCase()+MS[S.metric].slice(1)}: EWRs changed (comparison vs base)</b><div class="bar"><span style="width:${p(c.up)}%;background:#2a9d4a"></span><span style="width:${p(c.same)}%;background:#c9ced6"></span><span style="width:${p(c.dn)}%;background:#d1495b"></span></div>
+      return `<div class="cnts"><b>${MS[S.metric]==="FR"?"Frequency ratio":MS[S.metric][0].toUpperCase()+MS[S.metric].slice(1)}: EWRs changed (comparison vs base)</b><div class="bar"><span style="width:${p(c.up)}%;background:#2166ac"></span><span style="width:${p(c.same)}%;background:#c9ced6"></span><span style="width:${p(c.dn)}%;background:#b2182b"></span></div>
         <span class="up">▲ ${c.up} improved (${p(c.up)}%)</span> · <span class="dn">▼ ${c.dn} declined (${p(c.dn)}%)</span> · = ${c.same} unchanged (${p(c.same)}%) <span style="color:#6b7280">of ${c.n} EWRs with a result in both scenarios</span></div>`; })():""}
     <div class="mxbar"><b>${s.type==="sdl"?"Matrices":"Matrix"}</b>
       ${s.type==="sdl"?"":themeSeg()}
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
       ${s.type==="gauge"?`<div class="seg"><span class="lbl">Columns · flow regimes</span><span class="tabs sm"><button data-act="expand-x" class="${COLL_REG.size===0?"on":""}" title="Expand every flow regime into its EWRs">Expand</button><button data-act="collapse-x" class="${META.regimes.every(x=>COLL_REG.has(x))?"on":""}" title="Collapse every flow regime into one column">Collapse</button></span></div>`:""}
     </div>
-    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
+    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div>${matrixLegend(true)}</details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>${matrixLegend(false)}`}${cellDetail()}${flowPanel()}`;
 
   const pv=preparePerformance(rows);
   $("panel").innerHTML=h; mountPerformance(pv); wireFlow();
@@ -281,8 +310,8 @@ function boxRegimes(rows,m){   // one row per flow regime: mean beside its box p
   const ref=isDiff()?0:m==="fr"?1:null, dom=[Math.min(...all,ref??Infinity),Math.max(...all,ref??-Infinity)];
   const regs=META.regimes.map((n,k)=>[n,k]).sort((a,b)=>{const x=REG_ORDER.indexOf(a[0]),y=REG_ORDER.indexOf(b[0]); return (x<0?99:x)-(y<0?99:y);});
   const X=x=>dom[1]>dom[0]?10+(x-dom[0])/(dom[1]-dom[0])*180:100,   // same x scale as the overall box plot (viewBox 200, margins 10)
-    lbl=(x,t,c,b)=>`<text x="${x}" y="11" text-anchor="${b||"middle"}" style="font-size:9px;fill:${c}">${t}</text>`, rx=ref==null?null:X(ref),
-    axis=`<svg viewBox="0 0 200 16">${lbl(10,fs2(dom[0],m),"#6b7280",rx!=null&&Math.abs(rx-10)<16?"start":"middle")}${lbl(190,fs2(dom[1],m),"#6b7280",rx!=null&&Math.abs(rx-190)<16?"end":"middle")}${rx==null?"":`<text x="${rx}" y="11" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#2a9d4a">${isDiff()?"0":"1"}</text>`}</svg>`;
+    lbl=(x,t,c,b)=>`<text x="${x}" y="11" text-anchor="${b||"middle"}" style="font-size:10px;fill:${c}">${t}</text>`, rx=ref==null?null:X(ref),
+    axis=`<svg viewBox="0 0 200 16">${lbl(2,fs2(dom[0],m),"#4b5563","start")}${lbl(198,fs2(dom[1],m),"#4b5563","end")}${rx==null?"":`<text x="${rx}" y="11" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#374151">${isDiff()?"0":"1"}</text>`}</svg>`;
   const line=([rg,k])=>{ const rs=rows.filter(r=>r[5].includes(k)), v=rs.map(r=>val(r,m,i)).filter(x=>x!=null); if(!v.length) return "";
     const mean=v.reduce((a,b)=>a+b,0)/v.length;
     return `<div class="brow"><span class="bn" title="${esc(rg)}">${esc(rg)} <small>(${v.length})</small></span><b>${f3(mean,m)}</b>${v.length>1?boxPlot(rs,m,dom,true):`<span class="bone" title="a single EWR">${fs2(v[0],m)}</span>`}</div>`; };
@@ -294,13 +323,13 @@ function boxPlot(rows,m,dom,compact){   // horizontal box plot of the per-EWR va
   const q1=q(.25), md=q(.5), q3=q(.75), mean=v.reduce((a,b)=>a+b,0)/v.length, iqr=q3-q1, wl=v.find(x=>x>=q1-1.5*iqr), wh=[...v].reverse().find(x=>x<=q3+1.5*iqr);
   const ref=isDiff()?0:m==="fr"?1:null, lo=dom?dom[0]:Math.min(v[0],ref??v[0]), hi=dom?dom[1]:Math.max(v[v.length-1],ref??v[v.length-1]), W=200, H=compact?26:44, a=10, b=W-10, X=x=>hi>lo?a+(x-lo)/(hi-lo)*(b-a):(a+b)/2, y=compact?13:22, h=compact?14:18, fmt=x=>fs2(x,m);
   const tip=`Box = middle 50% of EWRs, line = median, diamond = mean. ${v.length} EWRs: min ${fmt(lo)}, Q1 ${fmt(q1)}, median ${fmt(md)}, mean ${fmt(mean)}, Q3 ${fmt(q3)}, max ${fmt(hi)}`;
-  const rl=ref==null?"":`<line x1="${X(ref)}" x2="${X(ref)}" y1="3" y2="${compact?H-3:H-14}" stroke="#2a9d4a" stroke-width="1.6" stroke-dasharray="4 2"/>${compact?"":`<text x="${X(ref)}" y="${H-4}" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#2a9d4a">${isDiff()?"0":"1"}</text>`}`;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img"><title>${esc(tip)}${ref==null?"":isDiff()?" Green dashed line = no change.":" Green dashed line = 1 (target frequency met)."}</title>${rl}`+
+  const rl=ref==null?"":`<line x1="${X(ref)}" x2="${X(ref)}" y1="3" y2="${compact?H-3:H-14}" stroke="#374151" stroke-width="1.6" stroke-dasharray="4 2"/>${compact?"":`<text x="${X(ref)}" y="${H-4}" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#374151">${isDiff()?"0":"1"}</text>`}`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img"><title>${esc(tip)}${ref==null?"":isDiff()?" Dashed line = no change.":" Dashed line = 1 (target frequency met)."}</title>${rl}`+
     `<line x1="${X(wl)}" x2="${X(wh)}" y1="${y}" y2="${y}" stroke="#4b5563"/><line x1="${X(wl)}" x2="${X(wl)}" y1="${y-5}" y2="${y+5}" stroke="#4b5563"/><line x1="${X(wh)}" x2="${X(wh)}" y1="${y-5}" y2="${y+5}" stroke="#4b5563"/>`+
     v.filter(x=>x<wl||x>wh).map(x=>`<circle cx="${X(x)}" cy="${y}" r="2.4" fill="none" stroke="#4b5563"/>`).join("")+
     `<rect x="${X(q1)}" y="${y-h/2}" width="${Math.max(1,X(q3)-X(q1))}" height="${h}" fill="#dbe7f5" stroke="#1f4e8c"/><line x1="${X(md)}" x2="${X(md)}" y1="${y-h/2}" y2="${y+h/2}" stroke="#1f4e8c" stroke-width="2"/>`+
     `<path d="M${X(mean)} ${y-5}l4 5-4 5-4-5z" fill="#c0392b" stroke="#fff" stroke-width=".8"/>`+
-    (compact?"":`<text x="${a}" y="${H-4}" text-anchor="middle" style="font-size:9px;fill:#6b7280">${ref!=null&&Math.abs(X(ref)-a)<16?"":fmt(lo)}</text><text x="${b}" y="${H-4}" text-anchor="middle" style="font-size:9px;fill:#6b7280">${ref!=null&&Math.abs(X(ref)-b)<16?"":fmt(hi)}</text>`)+
+    (compact?"":`<text x="2" y="${H-4}" text-anchor="start" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-a)<16?"":fmt(lo)}</text><text x="${W-2}" y="${H-4}" text-anchor="end" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-b)<16?"":fmt(hi)}</text>`)+
     `</svg>`;
 }
 let LASTMX={};   // matrix key ("pu" / "regime" in the SDL view, else "main") -> {cols,orows,cnt}
@@ -346,46 +375,62 @@ function matrixSvg(rows,mxk){
   const cell=cols.map(c=>orows.map(o=>{ const set=new Set(o.objs), rs=c.rows.filter(r=>r[4].some(x=>set.has(x))); return cnt?{n:mc(rs,o),v:null}:{n:rs.length,v:rs.length?agg(rs,clv,m,i).mean:null,cn:cnts(rs,m)}; }));
   const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+"…":s;
   cols.forEach(c=>c.show=trunc(c.label,t==="sdl"?30:26));
-  const C=isDiff()&&!cnt?26:21, PH=cnt?0:60, bandH=t==="gauge"?15:0, bandGap=t==="gauge"?6:0;
-  const lab=Math.max(...orows.map(o=>o.label.length))*6.1+8, labH=Math.max(...cols.map(c=>c.show.length))*5.6+10;
-  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","Yrs/10"],["mz","MRIP ✓"]].filter(([k])=>inFam(k)), CW=38, CS=40, CX=k=>16+k*CS, chipsEnd=16+CHIPS.length*CS+(isDiff()?62:0), xL=cnt?20:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:26)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
+  const C=isDiff()&&!cnt?28:24, PH=cnt?0:64, bandH=t==="gauge"?18:0, bandGap=t==="gauge"?6:0, TB=18;   // cell size, bar panel height, regime band, theme band width: scaled with the 10-11px type
+  const lab=Math.max(...orows.map(o=>o.label.length))*6.6+10, labH=Math.max(...cols.map(c=>c.show.length))*6.2+12;   // label space estimated for 11px text
+  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","Yrs/10"],["mz","MRIP ✓"]].filter(([k])=>inFam(k)), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
   const D=isDiff(), step=0.05, mid=base-PH/2;
   const vmax=D?Math.max(2*step,Math.ceil(Math.max(0,...cols.map(c=>Math.abs(c.v||0)))/step)*step):(isBin(m)?1:m==="fr"?Math.max(1.25,Math.ceil(Math.max(...cols.map(c=>c.v||0))*4)/4):Math.max(0.5,Math.ceil(Math.max(...cols.map(c=>c.v||0))*10)/10));
   const by=D?v=>mid-Math.max(-vmax,Math.min(vmax,v))/vmax*(PH/2):v=>base-Math.min(v,vmax)/vmax*PH;
   let g=cnt?"":`<rect x="${x0-2}" y="${base-PH-4}" width="${W-x0}" height="${PH+8}" fill="#f3f6fa"/>`;
   if(!cnt&&D) g+=`<line x1="${x0-2}" x2="${W-4}" y1="${mid}" y2="${mid}" stroke="#b9c3d1"/>`;   // differential: a zero line only, values are printed above the bars
-  if(!cnt&&!D) g+=[...new Set(D?[-vmax,0,vmax]:m==="fr"?[0,1,vmax]:[0,vmax])].map(v=>`<line x1="${x0-2}" x2="${W-4}" y1="${by(v)}" y2="${by(v)}" stroke="#d5dce6"/><text x="${x0-5}" y="${by(v)+3}" text-anchor="end" style="font-size:8.5px">${(dfr(m)?pct(v):isBin(m)?pa(v):+(m==="et"?(v*ETY).toFixed(1):v.toFixed(2)))}</text>`).join("");
-  if(!cnt){ if(!D) g+=`<text transform="translate(${x0-30},${base-PH/2}) rotate(-90)" text-anchor="middle" style="font-size:9px;font-weight:700">${D?"Δ ":""}${m==="et"?"Yrs in 10 > MRIP":MN[m]}</text>`;
-    g+=CHIPS.map(([k,l],n)=>`<text class="hd" x="${CX(n)+CW/2}" y="${my-6}" text-anchor="middle">${l}</text>`).join("")+(isDiff()?`<text class="hd" x="${CX(CHIPS.length)+28}" y="${my-6}" text-anchor="middle">▲ ▼</text>`:""); }
+  if(!cnt&&!D) g+=[...new Set(D?[-vmax,0,vmax]:m==="fr"?[0,1,vmax]:[0,vmax])].map(v=>`<line x1="${x0-2}" x2="${W-4}" y1="${by(v)}" y2="${by(v)}" stroke="#d5dce6"/><text x="${x0-5}" y="${by(v)+3.5}" text-anchor="end" style="font-size:10px">${(isBin(m)?pa(v):+(m==="et"?(v*ETY).toFixed(1):v.toFixed(2)))}</text>`).join("");
+  if(!cnt){ if(!D) g+=`<text transform="translate(${x0-38},${base-PH/2}) rotate(-90)" text-anchor="middle" style="font-size:10px;font-weight:700">${D?"Δ ":""}${m==="et"?"Yrs in 10 > MRIP":MN[m]}</text>`;
+    g+=CHIPS.map(([k,l],n)=>`<text class="hd" x="${CX(n)+CW/2}" y="${my-6}" text-anchor="middle">${l}</text>`).join("")+(isDiff()?`<text class="hd" x="${CX(CHIPS.length)+CCW/2}" y="${my-6}" text-anchor="middle">▲ ▼</text>`:""); }
   orows.forEach((o,ri)=>{ const y=my+ri*C, cy=y+C/2;
-    const chip=(x,v,mm)=>v==null?`<text x="${x+CW/2}" y="${cy+3.5}" text-anchor="middle" style="fill:#999;font-size:9px">n/a</text>`:`<rect x="${x}" y="${y+2}" width="${CW}" height="${C-4}" rx="3" fill="${colour(v,mm)}" stroke="#0002"/><text x="${x+CW/2}" y="${cy+3.5}" text-anchor="middle" style="font-size:9px;fill:#111">${fs2(v,mm)}</text>`;
-    const cchip=()=>{ const x=CX(CHIPS.length); return `<rect x="${x}" y="${y+2}" width="56" height="${C-4}" rx="3" fill="#f1f3f6" stroke="#0002"/><text x="${x+28}" y="${cy+3.5}" text-anchor="middle" style="font-size:9px"><tspan style="fill:#2a9d4a">▲${o.cn.up}</tspan> <tspan style="fill:#d1495b;font-weight:${o.cn.dn?700:400}">▼${o.cn.dn}</tspan></text>`; };
+    const chip=(x,v,mm)=>{ if(v==null) return `<text x="${x+CW/2}" y="${cy+3.5}" text-anchor="middle" style="fill:#6b7280;font-size:10px">n/a</text>`; const bg=colour(v,mm); return `<rect x="${x}" y="${y+2}" width="${CW}" height="${C-4}" rx="3" fill="${bg}" stroke="#0002"/><text x="${x+CW/2}" y="${cy+3.5}" text-anchor="middle" style="font-size:10px;fill:${textOnColour(bg)}">${fs2(v,mm)}</text>`; };
+    const cchip=()=>{ const x=CX(CHIPS.length); return `<rect x="${x}" y="${y+2}" width="${CCW}" height="${C-4}" rx="3" fill="#f1f3f6" stroke="#0002"/><text x="${x+CCW/2}" y="${cy+3.5}" text-anchor="middle" style="font-size:10px"><tspan style="fill:#1d5a99">▲${o.cn.up}</tspan> <tspan style="fill:#b3261e;font-weight:${o.cn.dn?700:400}">▼${o.cn.dn}</tspan></text>`; };
     const tip=o.grp?`${o.label}: ${o.objs.map(x=>META.objs[x]).join(", ")}`:`${o.label} (${o.theme}): ${o.desc||"no description"}`;
     const sep=ri>0&&orows[ri-1].theme!==o.theme?`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="#8a8a8a"/>`:"";
-    g+=`<g><title>${esc(tip)}${cnt?"":` — ${MN[m]} ${f3(o.vals[m],m)}${isDiff()?` (▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged)`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+3.5}">${esc(o.label)}</text></g>`; });
+    g+=`<g><title>${esc(tip)}${cnt?"":` — ${MN[m]} ${f3(o.vals[m],m)}${isDiff()?` (▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged)`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+4}">${esc(o.label)}</text></g>`; });
   cols.forEach((c,ci)=>{ const x=x0+ci*C+C/2, hit=orows.map((o,ri)=>cell[ci][ri].n>0?ri:-1).filter(r=>r>=0);
     const go=byReg?"":t==="sdl"?` class="colsel" data-act="pu" data-i="${c.key}" data-sdl="${S.sel.i}" style="cursor:pointer"`:t==="pu"?` class="colsel" data-act="gauge" data-i="${c.key}" style="cursor:pointer"`:"";
     g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+[...c.rows].sort(byThrR).map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${MN[m]} ${f3(c.v,m)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
     if(!cnt&&c.v!=null) g+=`<rect x="${x-6}" y="${D?Math.min(by(c.v),mid):by(c.v)}" width="12" height="${D?Math.abs(by(c.v)-mid)||1:base-by(c.v)}" fill="${colour(c.v,m)}" stroke="#0004"${go}/>`;
-    if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid; g+=`<text x="${x}" y="${top-3}" text-anchor="middle" style="font-size:8px;font-weight:600">${m==="et"?sg(c.v)+(c.v*ETY).toFixed(1):pct(c.v)}</text>`; }   // exact change above the bar
-    if(!cnt&&c.v==null) g+=`<text x="${x}" y="${base-3}" text-anchor="middle" style="font-size:7px;fill:#999">n/a</text>`;
+    if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid; g+=`<text x="${x}" y="${top-3}" text-anchor="middle" style="font-size:10px;font-weight:600">${fs2(c.v,m)}</text>`; }   // exact change above the bar
+    if(!cnt&&c.v==null) g+=`<text x="${x}" y="${base-3}" text-anchor="middle" style="font-size:10px;fill:#6b7280">n/a</text>`;
     g+=`<rect x="${x-C/2}" y="${base}" width="${C}" height="${H-base}" fill="transparent"/>`;
     if(hit.length>1) g+=`<line x1="${x}" x2="${x}" y1="${my+hit[0]*C+C/2}" y2="${my+hit[hit.length-1]*C+C/2}" stroke="#999" stroke-width="2"/>`;
-    orows.forEach((o,ri)=>{ const q=cell[ci][ri], cy=my+ri*C+C/2; if(!q.n){ g+=`<circle cx="${x}" cy="${cy}" r="3.2" fill="#e4e4e4"/>`; return; }
+    orows.forEach((o,ri)=>{ const q=cell[ci][ri], cy=my+ri*C+C/2; if(!q.n){ g+=`<circle cx="${x}" cy="${cy}" r="3.4" fill="#d1d5db"/>`; return; }
       const f=t==="sdl"?"#e8edf4":q.v==null?"#fff":colour(q.v,m), masked=D&&q.cn&&q.cn.dn>0&&q.v!=null&&q.v>=0, isSel=S.cell&&S.cell.c===c.id&&S.cell.r===o.id, ring=isSel?`stroke="#1f4e8c" stroke-width="3"`:masked?`stroke="#c0392b" stroke-width="2.2"`:`stroke="#0004"`;   // red ring: net result is not worse, yet some EWRs declined   // SDL view: planning unit x theme cells are plain EWR counts
       const grouped=c.grp||o.grp||t==="sdl", ttl=esc(c.full)+" · "+esc(o.label)+": "+(t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+`, mean ${MS[m]} ${f3(q.v,m)}`)+(D&&q.cn&&grouped?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(masked?" (decline hidden by the average)":""):"");
-      g+=`<g data-mx="${mk}" data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((grouped&&q.n>1)?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${ttl}</title></circle><text x="${x}" y="${cy+3.3}" text-anchor="middle" style="font-size:9px">${q.n}</text>`   // a count of 1 is not printed: it is drawn as the plain circle used when drilled in
-        :`<circle cx="${x}" cy="${cy}" r="4.8" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+MS[m]+" "+f3(q.v,m)}</title></circle>`)+`</g>`; });
+      g+=`<g data-mx="${mk}" data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((grouped&&q.n>1)?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${ttl}</title></circle><text x="${x}" y="${cy+3.5}" text-anchor="middle" style="font-size:10px;fill:${textOnColour(f)}">${q.n}</text>`   // a count of 1 is not printed: it is drawn as the plain circle used when drilled in
+        :`<circle cx="${x}" cy="${cy}" r="5.4" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+MS[m]+" "+f3(q.v,m)}</title></circle>`)+`</g>`; });
     g+=`<text transform="translate(${x+3.5},${my-4}) rotate(-90)"${go?go.replace('style="cursor:pointer"','style="cursor:pointer;fill:#1f4e8c"'):""}>${esc(c.show)}</text></g>`; });
   if(t==="gauge") for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++;
     const rg=cols[a].reg, single=b===a&&!cols[a].grp, closed=COLL_REG.has(rg)&&!single, bx=x0+a*C+1, bw=(b-a+1)*C-2;
-    g+=`<g${single?"":` class="tog" data-k="reg" data-v="${esc(rg)}" style="cursor:pointer"`}><title>${esc(rg)}${single?"":` — click to ${closed?"expand into EWRs":"collapse into one column"}`}</title><rect x="${bx}" y="${bandTop}" width="${bw}" height="${bandH-2}" rx="3" fill="${closed?"#9fb3cc":"#dde5ef"}" stroke="#8aa0bd"/><text x="${bx+bw/2}" y="${bandTop+bandH-5}" text-anchor="middle" style="font-size:${bw<34?8:9}px;font-weight:600">${bw<34||single?"":(closed?"▸ ":"▾ ")}${esc((REG_ABBR[rg]||rg).slice(0,bw<34?4:12))}</text></g>`; a=b+1; }
+    g+=`<g${single?"":` class="tog" data-k="reg" data-v="${esc(rg)}" style="cursor:pointer"`}><title>${esc(rg)}${single?"":` — click to ${closed?"expand into EWRs":"collapse into one column"}`}</title><rect x="${bx}" y="${bandTop}" width="${bw}" height="${bandH-2}" rx="3" fill="${closed?"#9fb3cc":"#dde5ef"}" stroke="#8aa0bd"/><text x="${bx+bw/2}" y="${bandTop+bandH-6}" text-anchor="middle" style="font-size:10px;font-weight:600;fill:${textOnColour(closed?"#9fb3cc":"#dde5ef")}">${bw<40||single?"":(closed?"▸ ":"▾ ")}${esc((REG_ABBR[rg]||rg).slice(0,bw<40?4:12))}</text></g>`; a=b+1; }
   for(let a=0;a<orows.length;){ let b=a; while(b+1<orows.length&&orows[b+1].theme===orows[a].theme) b++;
     const th=orows[a].theme, closed=CT.has(th), yy=my+a*C+1, bh=(b-a+1)*C-2;
-    g+=`<g class="tog" data-k="theme" data-mx="${mk}" data-v="${esc(th)}" style="cursor:pointer"><title>${esc(th)} — click to ${closed?"expand into objectives":"collapse into one row"}</title><rect x="0" y="${yy}" width="14" height="${bh}" rx="3" fill="${TCOL[th]||"#888"}" opacity="${closed?1:.55}" stroke="#0004"/><text transform="translate(10.5,${yy+bh/2}) rotate(-90)" text-anchor="middle" style="font-size:9px;font-weight:600;fill:#fff">${closed?"▸ ":"▾ "}${esc(THEME_ABBR[th]||th)}</text></g>`; a=b+1; }
+    g+=`<g class="tog" data-k="theme" data-mx="${mk}" data-v="${esc(th)}" style="cursor:pointer"><title>${esc(th)} — click to ${closed?"expand into objectives":"collapse into one row"}</title><rect x="0" y="${yy}" width="${TB}" height="${bh}" rx="3" fill="${TCOL[th]||"#888"}" stroke="#0004"/><text transform="translate(${TB/2+3.5},${yy+bh/2}) rotate(-90)" text-anchor="middle" style="font-size:10px;font-weight:600;fill:${textOnColour(TCOL[th]||"#888")}">${closed?"▸ ":"▾ "}${esc(THEME_ABBR[th]||th)}</text></g>`; a=b+1; }
   return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`;
 }
 
+// legend for the matrix above it: the colour scale (sampled from colour() itself), its numeric anchors and which end is better, and what the counts and rings mean
+function matrixLegend(cnt){
+  const D=isDiff(), m=S.metric, dot=(f,st,sw,r,t)=>`<svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="${r||9}" fill="${f}" stroke="${st||"#0004"}" stroke-width="${sw||1}"/>${t?`<text x="11" y="14.5" text-anchor="middle" style="font:10px system-ui,sans-serif;fill:#111">${t}</text>`:""}</svg>`;
+  const counts=`<div><b>Cells</b><span class="it">${dot("#e8edf4","#0004",1,9,"7")}number = EWRs averaged in the cell</span><span class="it">${dot("#e8edf4","#222",1,5.4)}one EWR</span><span class="it">${dot("#d1d5db","none",0,3.4)}no EWR for this pair</span></div>`;
+  if(cnt) return `<div class="mxleg">${counts.replace("EWRs averaged in the cell","EWR → objective mappings")}<div><b>Columns</b><span>click a planning unit to open it</span></div></div>`;
+  const [lo,hi,ticks,better]=D?[-DIV[m],DIV[m],[-DIV[m],0,DIV[m]],"blue = improvement, red = decline, white = no change"]
+    :m==="fr"?[0,1,[0,.5,.9],"higher is better; white at 0.9, full blue at 1.0 (target met) and above"]
+    :m==="et"?[0,1/ETY*10,[0,.5,1],"lower is better; blue = never exceeded"]
+    :[0,1,[0,.5,1],m==="fb"?"lower is better (fewer EWRs failing badly)":"higher is better"];
+  const at=v=>(v-lo)/(hi-lo)*100, stops=Array.from({length:21},(_,k)=>{ const v=lo+(hi-lo)*k/20; return `${colour(v,m)} ${k*5}%`; }).join(",");
+  const lab=v=>D?(m==="et"?num(v*ETY,1):isBin(m)?pct(v):num(v,2)):m==="et"?(v*ETY).toFixed(0):isBin(m)?pa(v):v.toFixed(1);
+  const name=D?`Change in ${MN[m].replace(/^mean /,"")} (${m==="et"||m==="fb"?"base − comparison":"comparison − base"})`:m==="et"?"Years in 10 exceeding MRIP":MN[m][0].toUpperCase()+MN[m].slice(1);
+  const scale=`<div><b>${esc(name)}</b><div class="it"><div><div class="rmp" style="background:linear-gradient(90deg,${stops})"></div><div class="tk">${ticks.map(v=>`<span style="left:${at(v)}%">${lab(v)}</span>`).join("")}</div></div>${!D&&m==="fr"?"<span>1.0+</span>":D?`<span>beyond ±${lab(hi).replace(/^[+−]/,"")}: full colour</span>`:""}</div><span>${better}</span></div>`;
+  const rings=`<div><b>Rings</b>${D?`<span class="it">${dot("#fff","#c0392b",2.2)}net change not worse, but some EWRs declined</span>`:""}<span class="it">${dot("#fff","#1f4e8c",3)}selected cell (details below)</span></div>`;
+  return `<div class="mxleg">${scale}${counts}${rings}<div><b>Chips and bars</b><span>chips = row mean per metric; bars = column mean</span></div></div>`;
+}
 function singlePU(sel){   // a level with only one child (with data in this scenario) is skipped: SDL -> its only planning unit -> its only gauge
   const k=scnIdx(), has=r=>val(r,"fr",k)!=null||val(r,"et",k)!=null;
   if(sel.type==="sdl"){ const pus=new Set(ROWS.filter(r=>r[1]===sel.i&&has(r)).map(r=>r[0]));
@@ -403,12 +448,12 @@ function cellDetail(){
   const shown=rs.slice(0,300), k1=scnIdx(), k0=scnIdx(S.bpol,S.bcli), arr=r=>fam==="fr"?r[6]:r[7], f=v=>v==null?"–":(fam==="et"?v*ETY:v).toFixed(fam==="et"?2:3);
   const words={ach:["achieved","not achieved"],fb:["failed badly","ok"],mz:["achieved","not achieved"]};
   const res=r=>{ const v=val(r,m); if(v==null) return "–"; if(!D) return v?words[m][0]:words[m][1]; return v>0?"improved":v<0?"declined":"unchanged"; };
-  const good=d=>d==null?"":(d>0.01?"color:#2a9d4a":d<-0.01?"color:#d1495b":"");
+  const good=d=>d==null?"":(d>0.01?"color:#1d5a99":d<-0.01?"color:#b3261e":"");   // blue = better, red = worse, as on the matrix
   const head=["EWR",t!=="gauge"?"Gauge":"",t==="sdl"?"Planning unit":"","Objectives"].filter(Boolean);
   if(!cnt) head.push(...(D?[`${FAMN[fam]} base`,`${FAMN[fam]} comparison`,"improvement"]:[FAMN[fam]]), ...(bin?["result"]:[]));
   const body=shown.map(r=>{ const a=arr(r)[k1], b=arr(r)[k0], d=a==null||b==null?null:LOWER[fam==="fr"?"fr":"et"]?b-a:a-b, objs=r[4].filter(x=>set.has(x)).map(x=>META.objs[x]).join(", ");
     return `<tr><td>${esc(r[3])}</td>${t!=="gauge"?`<td>${esc(META.gauges[r[2]])}</td>`:""}${t==="sdl"?`<td>${esc(META.pus[r[0]])}</td>`:""}<td>${esc(objs)}</td>`+
-      (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td><td style="${good(d)}">${d==null?"–":fam==="et"?(d>0?"+":"")+(d*ETY).toFixed(2):pct(d)}</td>`:`<td>${f(a)}</td>`)+(bin?`<td style="${D?(res(r)==="improved"?"color:#2a9d4a":res(r)==="declined"?"color:#d1495b":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
+      (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td><td style="${good(d)}">${f3(d,fam)}</td>`:`<td>${f(a)}</td>`)+(bin?`<td style="${D?(res(r)==="improved"?"color:#1d5a99":res(r)==="declined"?"color:#b3261e":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
   return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · by flow threshold"}</span><button data-act="cellclose" title="Close">×</button></div>
     <div class="cellt"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
@@ -458,7 +503,7 @@ function thrGroups(list,g){ const rk=new Map(), rn=new Map(); ROWS.forEach(r=>{ 
   const m=new Map(); list.forEach(e=>{ const k=[stemOf(e.code),e.thr,e.sm,e.em].join("|"); (m.get(k)||m.set(k,[]).get(k)).push(e); });
   return [...m].map(([k,es])=>({key:"g:"+k,code:es.length>1?stemOf(es[0].code):es[0].code,thr:es[0].thr,sm:es[0].sm,em:es[0].em,codes:es.map(e=>e.code),pu:es[0].pu,pus:es[0].pus,members:es,rank:rk.get(es[0].code)??99,reg:rn.get(es[0].code)||""}))
     .sort(byThrE); }
-const TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
+const TCOLS=["#c0392b","#a65200","#8e44ad","#0e7a62","#2c3e50","#9c3d00","#5f6b6d","#c2185b"];   // all at least 4.5:1 on white: they also colour the labels
 function flowPanel(){
   const c=flowCtx();
   const f=S.flow, D=isDiff();
@@ -564,7 +609,7 @@ async function fillEwrSelect(){
   }
 }
 // ---- annual volumes, EWR performance by water year, low-flow spells (uploaded scenarios) ------------------------------------
-const SCOL={base:"#4b5563",comp:"#eb6834"}, UPC="rgb(33,102,172)", DNC="rgb(178,24,43)";   // scenario identity: base grey, comparison orange; a change: blue better, red worse
+const SCOL={base:"#4b5563",comp:"#eb6834"}, UPC="rgb(33,102,172)", DNC="rgb(178,24,43)", FAILC="#6b7280";   // FAILC: a failed year (dark grey with a ×), distinct from a missing one (no fill)   // scenario identity: base grey, comparison orange; a change: blue better, red worse
 const wyl=w=>`${w}–${String((w+1)%100).padStart(2,"0")}`, wyMid=w=>`${w+1}-01-01`;   // water year 1 Jul w – 30 Jun w+1 (py_ewr labels it w), drawn on a date axis at its middle
 const fmtML=v=>v==null?"–":Math.abs(v)>=1000?(v/1000).toLocaleString(undefined,{maximumFractionDigits:Math.abs(v)>=1e5?0:1})+" GL":Math.round(v).toLocaleString()+" ML";
 const med=a=>{ const v=a.filter(x=>x!=null).sort((x,y)=>x-y); if(!v.length) return null; const m=v.length>>1; return v.length%2?v[m]:(v[m-1]+v[m])/2; };
@@ -573,6 +618,8 @@ const fx=(v,dp=1)=>v==null||!isFinite(v)?"–":v.toLocaleString(undefined,{maxim
 const pAx=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
 const pLay=extra=>Object.assign({margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},hovermode:"closest",hoverlabel:{bgcolor:"white",bordercolor:"#9aa3b0",font:{size:11,color:"#1f2937"},align:"left"}},extra);
 const PCFG={responsive:true,displaylogo:false};
+// the three annual states: a colour bar cannot show a missing (null) value, so each state has its own swatch
+const annualKey=()=>`<div class="swl"><span><i style="background:${UPC}"></i>achieved</span><span><i style="background:${FAILC}">×</i>not achieved</span><span><i style="background:#fff;border:1px dashed #9aa3b0"></i>missing: incomplete year (not counted)</span></div>`;
 const sw=(col,hollow)=>`<span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin:0 4px 0 10px;${hollow?`border:1.5px solid ${col};background:#fff`:`background:${col}`}"></span>`;
 // rows: [label, base, comparison, change]; one scenario: [label, value]
 const statTbl=(rows,D,c)=>`<table class="ewrtbl"><tr><th></th>${D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Change</th>`:`<th>${esc(c.bn)}</th>`}</tr>${rows.map(r=>`<tr><td style="text-align:left">${r[0]}</td>${D?`<td>${r[1]}</td><td>${r[2]}</td><td>${r[3]??""}</td>`:`<td>${r[1]}</td>`}</tr>`).join("")}</table>`;
@@ -632,15 +679,15 @@ function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment
   const ach=Y=>at(Y,(Y,i)=>Y.achieved[i]?1:0), met=Y=>at(Y,(Y,i)=>Y[mKey][i]);
   const rows=[ach(B)].concat(D?[ach(C)]:[]), names=[c.bn].concat(D?[c.cn]:[]);
   const word=v=>v==null?"":v?"achieved":"not achieved";
-  const tr=[{type:"heatmap",x,y:names,z:rows,zmin:0,zmax:1,colorscale:[[0,"#e5e7eb"],[0.5,"#e5e7eb"],[0.5,UPC],[1,UPC]],showscale:false,xgap:1,ygap:4,hoverongaps:false,
-    text:rows.map(r=>r.map(word)),customdata:names.map(()=>lab),hovertemplate:"<b>%{customdata}</b> · %{y}<br>%{text}<extra></extra>"}];
+  const tr=[{type:"heatmap",x,y:names,z:rows,zmin:0,zmax:1,colorscale:[[0,FAILC],[0.5,FAILC],[0.5,UPC],[1,UPC]],showscale:false,xgap:1,ygap:4,hoverongaps:false,
+    text:rows.map(r=>r.map(v=>v===0?"×":"")),texttemplate:"%{text}",textfont:{color:"#fff",size:11},customdata:rows.map(r=>r.map((v,i)=>[lab[i],word(v)])),hovertemplate:"<b>%{customdata[0]}</b> · %{y}<br>%{customdata[1]}<extra></extra>"}];   // a failed year carries a ×, so it does not rely on colour alone
   const P=D?new Set(d.paired.wy):null, mb=met(B), mc=D?met(C):null;
   if(D){ const ch=all.map((w,i)=>!P.has(w)?null:rows[1][i]-rows[0][i]);
     tr.push({type:"heatmap",x,y:["Change"],z:[ch],zmin:-1,zmax:1,yaxis:"y2",colorscale:[[0,DNC],[0.34,DNC],[0.34,"#f5f6f8"],[0.66,"#f5f6f8"],[0.66,UPC],[1,UPC]],showscale:false,xgap:1,hoverongaps:false,
       text:[ch.map(v=>v==null?"":v>0?`achieved in ${c.cn} only`:v<0?`achieved in ${c.bn} only`:"no change")],customdata:[lab],hovertemplate:"<b>%{customdata}</b><br>%{text}<extra></extra>"});
     const dv=all.map((w,i)=>P.has(w)&&mb[i]!=null&&mc[i]!=null?mc[i]-mb[i]:null);
-    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]} → ${esc(c.cn)} %{customdata[2]}<br>Change: <b>%{y:+.2~f}</b><extra></extra>`});
-  } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:"#b8bfca")},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y}<extra></extra>`});
+    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]:,.1f} → ${esc(c.cn)} %{customdata[2]:,.1f}<br>Change: <b>%{y:+,.1f}</b><extra></extra>`});
+  } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:FAILC)},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y:,.1f}<extra></extra>`});
   const lay=pLay({height:D?480:420,bargap:0.1,showlegend:false,xaxis:pAx(ayName(ys),{type:"date",anchor:"y3"}),
     yaxis:{domain:D?[0.78,1]:[0.8,1],showgrid:false,ticks:"",automargin:true,fixedrange:true,autorange:"reversed"},   // base on top
     yaxis3:pAx(D?`Change: ${mName[0].toLowerCase()+mName.slice(1)}`:mName,{domain:[0,D?0.6:0.68],zeroline:true,zerolinecolor:"#9aa3b0"}),
@@ -652,7 +699,7 @@ function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment
   const tail=` Achievement is the EWR tool's own; the bars show how close each year came (${mName[0].toLowerCase()+mName.slice(1)}), which can disagree with it where other parts of the rule apply.`;
   if(!D) msg.textContent=`${def}\n`+(Bn?`${c.bn}: achieved in ${Ba} of ${Bn} complete ${yr}s (${fx(100*Ba/Bn)}%)${d.target!=null?` against a target of ${d.target}%`:""}.`:`${c.bn}: no complete ${yr}.`)+(inc?` ${inc} ${yr}${inc===1?"":"s"} with missing days in the timing window ${inc===1?"is":"are"} left blank and not counted.`:"")+tail;
   else { const p=d.paired; msg.textContent=`${def}\n`+(p.n?`Over the ${p.n} ${yr}s complete in both: ${c.bn} ${p.base} (${fx(p.pct_base)}%) → ${c.cn} ${p.comp} (${fx(p.pct_comp)}%), ${sgn(p.pct_comp-p.pct_base,1," pts")}. Achieved in ${c.cn} but not in ${c.bn}: ${p.gained} year${p.gained===1?"":"s"} (blue); the reverse: ${p.lost} (red). Equal totals can still hide years that changed.`:`No ${yr} is complete in both scenarios, so achievement cannot be compared.`)+tail; }
-  $("evTbl").innerHTML=`<div class="note">${sw(UPC)}achieved${sw("#e5e7eb")}not achieved · blank = incomplete year${D?` · change row: ${sw(UPC)}achieved in ${esc(c.cn)} only${sw(DNC)}in ${esc(c.bn)} only${sw("#f5f6f8")}no change`:""}</div>`;
+  $("evTbl").innerHTML=annualKey()+(D?`<div class="swl">change row: <span><i style="background:${UPC}"></i>achieved in ${esc(c.cn)} only</span><span><i style="background:${DNC}"></i>in ${esc(c.bn)} only</span><span><i style="background:#f5f6f8"></i>no change</span></div>`:"");
 }
 function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how long, how big
   const D=!!c.comp, K=keptYears(d,D), ms=d.min_spell??d.dur, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, tr=[], st={};
@@ -674,7 +721,7 @@ function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how
 function evTiming(d,c,e,def,msg){   // in which months the successful events start, per 10 years
   const D=!!c.comp, K=keptYears(d,D), ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, ys=d.ystart, ord=Array.from({length:12},(_,i)=>(ys-1+i)%12+1), ml=ord.map(m=>MONTHS[m-1]), per={};
   ks.forEach(k=>{ const ev=d.scenarios[k].events.filter(x=>x.ok&&K[k].has(x.wy)), n=K[k].size; per[k]=ord.map(m=>ev.filter(x=>+x.start.slice(5,7)===m).length/n*10); per[k].tot=ev.length/n*10; });
-  const tr=ks.map(k=>({type:"bar",name:nm[k],x:ml,y:per[k],marker:{color:D?SCOL[k]:"#1f4e8c"},hovertemplate:`<b>${esc(nm[k])}</b> · %{x}<br>%{y:.2f} events per 10 years<extra></extra>`}));
+  const tr=ks.map(k=>({type:"bar",name:nm[k],x:ml,y:per[k],marker:{color:D?SCOL[k]:"#1f4e8c"},hovertemplate:`<b>${esc(nm[k])}</b> · %{x}<br>%{y:.1f} events per 10 years<extra></extra>`}));
   const inWin=m=>d.sm<=d.em?m>=d.sm&&m<=d.em:m>=d.sm||m<=d.em;
   const shapes=ord.every(inWin)?[]:ord.map((m,i)=>inWin(m)?{type:"rect",xref:"x",x0:i-0.5,x1:i+0.5,yref:"paper",y0:0,y1:1,fillcolor:"rgba(31,78,140,.07)",line:{width:0},layer:"below"}:null).filter(Boolean);
   Plotly.newPlot("evPlot",tr,pLay({height:360,barmode:"group",bargap:0.25,bargroupgap:0.08,showlegend:D,legend:{orientation:"h",x:0,y:1.1},xaxis:pAx(`Month the event starts (${ys===7?"water year":"assessment year"} order)`,{type:"category"}),yaxis:pAx("Events per 10 years",{rangemode:"tozero"}),shapes}),PCFG);
@@ -686,7 +733,7 @@ function evTiming(d,c,e,def,msg){   // in which months the successful events sta
 function evGaps(d,c,e,def,msg){   // gaps between successful events against the maximum inter-event period
   const D=!!c.comp, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, M=d.mrip_days, tr=[], st={};
   ks.forEach(k=>{ const g=d.scenarios[k].gaps, seg=(a,col,name,dash)=>{ if(!a.length) return; const x=[], y=[], cd=[]; a.forEach(z=>{ const t=[z.start,z.end,z.days,z.censored?"length unknown: missing days inside":z.excess?`${z.excess.toLocaleString()} days beyond the maximum`:"",z.boundary?"<br>runs from the start or to the end of the record":""]; x.push(z.start,z.end,null); y.push(z.days/365,z.days/365,null); cd.push(t,t,null); });
-      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.2f} years)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
+      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.1f} years)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
     const known=g.filter(z=>!z.censored), unk=g.filter(z=>z.censored);
     if(D) seg(known,SCOL[k],nm[k]); else { seg(known.filter(z=>!z.excess),"#9ca3af","within the maximum"); seg(known.filter(z=>z.excess),DNC,"longer than the maximum"); }
     seg(unk,"#9ca3af",`${D?nm[k]+" · ":""}length unknown (missing data)`,"dot");
@@ -718,7 +765,7 @@ async function drawSpells(){
     const B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, keep=D?new Set(d.paired.wy):new Set(B.wy.filter((_,i)=>B.complete[i]));
     const pick=Y=>{ const m=new Map(Y.wy.map((w,i)=>[w,i])); return [...keep].sort((a,b)=>a-b).map(w=>({w,...(i=>({longest:Y.longest[i],below:Y.below[i],n:Y.n[i]}))(m.get(w))})); };
     const pb=pick(B), pc=D?pick(C):null, x=pb.map(r=>wyMid(r.w));
-    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br>Change: <b>%{y:+.2~f} days</b><extra></extra>`}]
+    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br>Change: <b>%{y:+,.1f} days</b><extra></extra>`}]
       :[{type:"bar",x,y:pb.map(r=>r.longest),marker:{color:"#1f4e8c"},customdata:pb.map(r=>[wyl(r.w),r.below,r.n]),hovertemplate:"<b>%{customdata[0]}</b><br>longest spell <b>%{y} days</b><br>%{customdata[1]} days below in the year · %{customdata[2]} spells start in it<extra></extra>"}];
     Plotly.newPlot("spPlot",tr,pLay({height:320,bargap:0.1,showlegend:false,xaxis:pAx("Water year (July–June)",{type:"date"}),yaxis:pAx(D?"Change in the longest spell (days)":"Longest spell in the year (days)",{zeroline:true,zerolinecolor:"#9aa3b0"})}),PCFG);
     const sm=(a,f)=>{ const v=a.map(f); return {mean:v.length?v.reduce((s,z)=>s+z,0)/v.length:null,med:med(v),max:v.length?Math.max(...v):null,any:v.filter(z=>z>0).length}; };
@@ -773,8 +820,8 @@ async function drawMonthly(){
       if(!isFinite(mn)) return [-5,5]; mn=Math.min(mn,0); mx=Math.max(mx,0); let lo=Math.floor(mn/5)*5, hi=Math.ceil(mx/5)*5; if(hi===lo){ lo=-5; hi=5; } return [lo,hi]; };
     const [zlo,zhi]=fitZ();
     const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
-    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,colorscale:divScale(zlo,zhi),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
-        hovertemplate:"Change: <b>%{z:+.2f} pts</b> of days<br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
+    await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,colorscale:divScale(zlo,zhi),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})<br><i>colour range: visible data</i>`,side:"right"}},
+        hovertemplate:"Change: <b>%{z:+.1f} pts</b> of days<br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
       {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category",range:S.mflow.xr||undefined}),yaxis:ax("Flow (ML/day)",{range:S.mflow.yr||undefined}),showlegend:false},{responsive:true,displaylogo:false});
     const mp=$("mflowPlot"); if(mp.removeAllListeners) mp.removeAllListeners("plotly_relayout");
     mp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to the cells in view, and fetch finer flow steps for the zoomed flow range
@@ -782,7 +829,7 @@ async function drawMonthly(){
       const yr=ya.autorange?null:[Math.max(0,+ya.range[0]),+ya.range[1]], same=(u,v)=>(!u&&!v)||(u&&v&&Math.abs(u[0]-v[0])<1e-6&&Math.abs(u[1]-v[1])<1e-6);
       if(!same(yr,S.mflow.yr)){ S.mflow.xr=xa.autorange?null:[...xa.range]; S.mflow.yr=yr; clearTimeout(MTIMER); MTIMER=setTimeout(drawMonthly,250); }
       else S.mflow.xr=xa.autorange?null:[...xa.range]; });
-    msg.style.whiteSpace="pre-wrap"; msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: for each month, the change in the % of that month's days at or above each flow (blue = more time at or above that flow).`;
+    msg.style.whiteSpace="pre-wrap"; msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: for each month, the change in the % of that month's days at or above each flow (blue = more time at or above that flow). The colour range fits the cells in view, so it changes when you zoom.`;
   }catch(e){ if(tok===MTOKEN) msg.textContent="Could not draw: "+e.message; }
 }
 const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
@@ -791,6 +838,8 @@ const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), o
 let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
+const heatCols=()=>{ const w=($("flowPlot")&&$("flowPlot").clientWidth)||600; return Math.max(60,Math.min(1200,Math.round((w-150)/3/20)*20)); };   // ~3 px per heat-map column, bucketed so small drags don't refetch
+const r0=v=>v==null||!isFinite(v)?"–":Math.round(v).toLocaleString(), r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: whole flows, one-decimal percentages
 async function drawFlow(keepZoom){
   if(S.flow.chart==="joint"){
     const view=performanceView;
@@ -811,7 +860,7 @@ async function drawFlow(keepZoom){
     if(f.chart==="heat"){
       if(f.ewr&&!EWRLIST.has(c.gauge)) await fillEwrSelect();
       if(!keepZoom) f.zoom=null;
-      const zm=f.zoom, ew=curEwr(), q=`/api/heatmap?${base}&xlim=${zm?zm.x[1]:encodeURIComponent(f.xlim)}&dmax=${zm?zm.y[1]:f.dmax}${zm?`&xmin=${zm.x[0]}&dmin=${zm.y[0]}`:""}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
+      const zm=f.zoom, ew=curEwr(); f.cols=heatCols(); const q=`/api/heatmap?${base}&cols=${f.cols}&xlim=${zm?zm.x[1]:encodeURIComponent(f.xlim)}&dmax=${zm?zm.y[1]:f.dmax}${zm?`&xmin=${zm.x[0]}&dmin=${zm.y[0]}`:""}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
       let d=d0; f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
       const kind=D?f.show:"base", diff=D&&kind==="diff"; let z=d[kind]||d.base;
       // colour range follows the cells in view, snapped to 5% steps (symmetric about 0 for differences)
@@ -819,9 +868,9 @@ async function drawFlow(keepZoom){
         if(!isFinite(mn)) return diff?[-5,5]:[0,100]; if(diff){ let lo=Math.floor(Math.min(mn,0)/5)*5, hi=Math.ceil(Math.max(mx,0)/5)*5; if(hi===lo){ lo=-5; hi=5; } return [lo,hi]; }   // min to max in 5-point steps, 0 stays white (zmid)
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
-      const title=diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
-      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(2);
-        hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${+df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
+      const title=(diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`)+"<br><i>colour range: visible data</i>";   // the range is refitted on every zoom
+      let hvt=""; if(ew&&d.mark){ const m=d.mark, dd=m[1]-m[0], df=signed(Math.abs(dd).toFixed(1),dd);
+        hvt=D?`${esc(c.bn)} <b>${r1(m[0])}%</b> → ${esc(c.cn)} <b>${r1(m[1])}%</b> (${df} pts)`:`<b>${r1(m[0])}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
       // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
       const shapesFor=()=>{ const x0=d.xmin||0, cx=ew?x0+Math.round((ew.thr-x0)/d.spacing)*d.spacing:0; return ew&&ew.dur>=d0.durations[0]&&ew.dur<=d0.durations[d0.durations.length-1]?[
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
@@ -831,10 +880,10 @@ async function drawFlow(keepZoom){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"Change: <b>%{z:+.2f} pts</b> of years":"<b>%{z:.0f}%</b> of years")+"<br>Flow ≥ %{x:,} ML/d for %{y} days<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"Change: <b>%{z:+.1f} pts</b> of years":"<b>%{z:.1f}%</b> of years")+"<br>Flow ≥ %{x:,.0f} ML/d for %{y:.0f} days<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
-        lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim]}),yaxis:ax("Duration (days)",zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{}),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
+        lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim],hoverformat:",.0f"}),yaxis:ax("Duration (days)",Object.assign({hoverformat:".0f"},zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{})),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
         break; }catch(er){ if(!/call stack/i.test(String(er&&er.message))||ck>=16) throw er; ck*=2; d=coarsen(d0,ck); z=d[kind]||d.base; [zmin,zmax]=fitScale(); coarseNote=` Drawn at 1/${ck} of the resolution (the full grid was too large for the browser).`; } }
       if(!zm) f.full=[d0.xlim,d0.durations.length];
       const hp=$("flowPlot"); if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
@@ -846,10 +895,10 @@ async function drawFlow(keepZoom){
           if(nz&&(nz.x[1]-nz.x[0]<2||nz.y[1]-nz.y[0]<1)) return;
           if(JSON.stringify(nz)!==JSON.stringify(f.zoom||null)){ if(nz||f.zoom){ f.zoom=nz; clearTimeout(f.zt); f.zt=setTimeout(()=>drawFlow(true),120); return; } } }
         const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b],colorscale:[diff?divScale(a,b):scale(BLUES)]},[0]); });
-      let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}.`;
-      let tbl=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(2);
+      let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}. The colour range fits the cells in view, so it changes when you zoom.`;
+      let tbl=""; if(ew&&d.mark){ const m=d.mark, dd=m[1]-m[0], df=signed(Math.abs(dd).toFixed(2),dd);
         tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
-          (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${+df>=0?"+":""}${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
+          (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
       msg.style.whiteSpace="pre-wrap"; msg.textContent=info+coarseNote; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
     } else {
       const thr=curThr(), tq=f.chart==="dfdc"&&thr.length?"&thr="+thr.map(e=>e.thr).join(",")+"&sm="+thr[0].sm+"&em="+thr[0].em:"";   // the curve covers the shared timing window of the selected EWRs
@@ -902,9 +951,9 @@ async function drawFlow(keepZoom){
         let lo=0, hi=0; for(let i=0;i<d.x.length;i++) if(d.x[i]<=xm){ lo=Math.min(lo,d.diff[i]); hi=Math.max(hi,d.diff[i]); }
         const pad=Math.max((hi-lo)*0.12,1), xr=f.xlog?[Math.log10(d.x[0]),Math.log10(xm)]:[0,xm], yr=[lo-pad,hi+pad];
         const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
-        const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=(m.comp-m.base).toFixed(2); return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${+dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
-          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${+dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
-        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"Change: <b>%{y:+.2f} pts</b> of time<br>Flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
+        const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dd=m.comp-m.base, dv=dd.toFixed(2); return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${signed(Math.abs(dd).toFixed(2),dd)}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
+          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${r1(m.base)}% → ${esc(c.cn)} ${r1(m.comp)}%<br><b>${signed(Math.abs(dd).toFixed(1),dd)} pts</b> of time<extra></extra>`}; });
+        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"Change: <b>%{y:+.1f} pts</b> of time<br>Flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
           lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear",range:xr}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000",range:yr}),showlegend:false,shapes:vl}),cfg);
         msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow). `+(thr.length?`Only days in the EWR timing window (${MONTHS[thr[0].sm-1]}–${MONTHS[thr[0].em-1]}) are used.`:"All days of the year are used; select EWRs to restrict the curve to their timing window.")+markNote();
       }
@@ -1004,17 +1053,24 @@ function setSrc(src){ S.src=src; S.cell=null;
   if(src==="demo"){ S.pol=META.policies.indexOf("Basin plan full implementation"); S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   else { const u=CUSTOM.filter(c=>!c.removed).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } S.cli=0; S.bcli=0; }
   S.sel={type:"none"}; fillPolicyOptions(); syncSrc(); refresh(); }
+$("barTog").onclick=()=>{ const o=$("bar").classList.toggle("open"); $("barTog").setAttribute("aria-expanded",o); $("barTog").textContent=o?"Controls ▴":"Controls ▾"; };
 $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 
 // ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
 (function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
-  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","flowPlot2","mflowPlot","evPlot","spPlot","rgPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
-  try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) pn.style.width=w+"px"; }catch(e){}
-  if(window.ResizeObserver) new ResizeObserver(()=>map.invalidateSize()).observe($("map")); else addEventListener("resize",()=>map.invalidateSize());   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
-  map.invalidateSize(); addEventListener("load",()=>map.invalidateSize()); setTimeout(()=>map.invalidateSize(),300);   // after fonts / layout settle
+  const setW=w=>pn.style.setProperty("--panel-w",w+"px");   // a CSS variable, not an inline width: the small-screen layout (width 100%) still wins
+  const plots=()=>{ if(window.Plotly) pn.querySelectorAll(".js-plotly-plot").forEach(fp=>{ if(fp.data&&fp.offsetParent) Plotly.Plots.resize(fp); }); };   // every chart in the panel, including the joint plot and the annual charts
+  const apply=w=>{ setW(w); map.invalidateSize(); plots(); };
+  try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) setW(w); }catch(e){}
+  { let rt=0; if(window.ResizeObserver) new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(plots,80); }).observe(pn); }   // window resizes, the mobile layout and the divider all reach the charts
+  { let rt; const regrid=()=>{ clearTimeout(rt); rt=setTimeout(()=>{ const f=S.flow; if(f&&f.open&&f.chart==="heat"&&$("flowPlot")&&$("flowPlot").data&&f.cols!==heatCols()) drawFlow(true); },300); };   // resizing the panel or window re-fetches the heat map on a grid that matches its new width
+    if(window.ResizeObserver) new ResizeObserver(regrid).observe(pn); addEventListener("resize",regrid); }
+  const fitMap=()=>{ map.invalidateSize(); const l=document.querySelector(".legend"); if(l) l.style.maxHeight=Math.max(60,$("map").clientHeight-20)+"px"; };   // the legend scrolls within the map, which is short on small screens
+  if(window.ResizeObserver) new ResizeObserver(fitMap).observe($("map")); else addEventListener("resize",fitMap);   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
+  fitMap(); addEventListener("load",fitMap); setTimeout(fitMap,300);   // after fonts / layout settle
   dv.onpointerdown=e=>{ dv.setPointerCapture(e.pointerId); dv.classList.add("drag");
     const mv=ev=>{ const r=main.getBoundingClientRect(); apply(Math.round(Math.max(260,Math.min(r.right-ev.clientX,r.width*.8)))); };
-    const up=()=>{ dv.classList.remove("drag"); dv.removeEventListener("pointermove",mv); dv.removeEventListener("pointerup",up); try{ localStorage.setItem("ewrPanelW",parseInt(pn.style.width)); }catch(e){} };
+    const up=()=>{ dv.classList.remove("drag"); dv.removeEventListener("pointermove",mv); dv.removeEventListener("pointerup",up); try{ localStorage.setItem("ewrPanelW",parseInt(pn.style.getPropertyValue("--panel-w"))); }catch(e){} };
     dv.addEventListener("pointermove",mv); dv.addEventListener("pointerup",up); };
   dv.ondblclick=()=>{ apply(600); try{ localStorage.removeItem("ewrPanelW"); }catch(e){} };
 })();
@@ -1181,7 +1237,7 @@ function sequenceStats(years, window = ROLLING_YEARS) {
 
 // One retained view per analytical selection. Sorting, expanding existing matrices and changing
 // scatter scales preserve this node, its charts, in-flight work and lazy caches.
-let performanceView = null, performanceRevision = 0, lockJointScale = true;
+let performanceView = null, performanceRevision = 0;
 function performanceKey() {
   return JSON.stringify([S.src, S.sel, S.pol, S.cli, S.mode, isDiff() ? [S.bpol, S.bcli] : null, S.ethr, S.fbthr, performanceRevision, FLOWGEN]);
 }
@@ -1213,13 +1269,12 @@ function detailText(view, index) {
   }).join('\n'));
   return view.details.get(index);
 }
+/** Return panel markup for a performance view, with lazy rule details and robustness results. */
 function performancePanels(view) {
   const q = summaryFor(view, view.i);
   return `<section id="performancePanel">
     <div id="jointContent">
     <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
-    <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]}</span></div>`).join('')}</div>
-    <div class="mxbar"><label class="seg"><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> <span class="lbl">Lock frequency axis to 0–2</span></label></div>
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
     <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
     </div>
@@ -1230,11 +1285,11 @@ function performancePanels(view) {
       <div id="robustnessTable"></div><pre id="robustnessValues" style="white-space:pre-wrap"></pre></details>
     </details></section>`;
 }
+/** Attach the retained view to the panel and bind detail handlers when first mounted. */
 function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
-  $('lockJointScale').onchange = e => { lockJointScale = e.target.checked; drawJointPlot(view); };
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
@@ -1311,8 +1366,9 @@ function jointRegimeOrder(rows) {
   const rank = name => typeof REG_ORDER === 'undefined' || !REG_ORDER.includes(name) ? Infinity : REG_ORDER.indexOf(name);
   return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
 }
+/** Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range. */
 function drawJointPlot(view) {
-  const g = jointGeometry(view.rows,view.i,view.base,lockJointScale);
+  const g = jointGeometry(view.rows,view.i,view.base,false);
   if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
@@ -1351,7 +1407,7 @@ function drawJointPlot(view) {
       if (g.arrows.length) Plotly.relayout(plot, updates);
     });
   });
-  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Unlock the axis to show higher frequency ratios. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
+  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
 }
 
 async function performanceJSON(url, signal) {
@@ -1415,6 +1471,7 @@ function freshChart(parent) {
   parent.replaceChildren(chart);
   return chart;
 }
+/** Load annual diagnostics for selected rules, updating charts only while this request is current. */
 async function loadSequences(view) {
   if (!currentPerformance(view) || !view.ctx?.ok) return;
   view.sequence?.abort();
@@ -1451,7 +1508,7 @@ async function loadSequences(view) {
     if (!series.length) throw Error('No annual results. '+errors.join('; '));
     await plotSequences(series,active);
     if (!active()) return;
-    note.textContent = `${series.length} rule/scenario rows. Grey = failed, green = achieved, blank = incomplete/unavailable. Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
+    note.textContent = `${series.length} rule/scenario rows. Blue = achieved, dark grey with × = failed, white = incomplete/unavailable (not a failure). Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
     $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily flow records. '+coverage.join(' | ');
   } catch (error) { if (active()) note.textContent = 'Could not load annual diagnostics: '+error.message; }
   finally {
@@ -1462,17 +1519,54 @@ async function loadSequences(view) {
     }
   }
 }
+// Each series keeps one colour and dash on every chart: 8 distinguishable colours (all at least 4.5:1 on white), then the dash changes.
+const SERIES_COLOURS = ['#1f4e8c','#c0392b','#0e7a62','#8e44ad','#a65200','#2c3e50','#c2185b','#5f6b6d'], SERIES_DASHES = ['solid','dash','dot','dashdot'];
+/** Return a stable colour and dash for a zero-based series index, cycling dashes after each palette. */
+const seriesStyle = i => ({color:SERIES_COLOURS[i % SERIES_COLOURS.length], dash:SERIES_DASHES[Math.floor(i / SERIES_COLOURS.length) % SERIES_DASHES.length]});
+const DASH_SVG = {solid:'', dash:'5 3', dot:'1.5 2.5', dashdot:'5 2 1.5 2'};
+// Three annual states: achieved, failed and missing. A colour bar cannot show missing (null) cells, so the key is HTML with a swatch for each.
+const ANNUAL_ACHIEVED = '#2166ac', ANNUAL_FAILED = '#6b7280';
+/** Return an HTML key distinguishing achieved, failed and missing annual assessments. */
+const annualStateKey = () => `<div class="swl"><span><i style="background:${ANNUAL_ACHIEVED}"></i>achieved</span><span><i style="background:${ANNUAL_FAILED}">×</i>failed</span><span><i style="background:#fff;border:1px dashed #9aa3b0"></i>missing: incomplete or unavailable</span></div>`;
+// A selector toggles series on the line charts instead of a legend, which is unreadable past a handful of long rule names.
+/** Populate an optional selector that toggles matching series on the supplied line charts. */
+function seriesSelector(el, series, charts) {
+  if (!el) return;
+  el.innerHTML = annualStateKey()+`<details class="sersel"><summary>Series shown: <span>${series.length} of ${series.length}</span></summary><div class="pop"><div><button type="button" class="ghost" data-all="1">All</button><button type="button" class="ghost" data-all="0">None</button></div>${series.map((s,i) => { const st = seriesStyle(i);
+    return `<label><input type="checkbox" data-i="${i}" checked><svg width="24" height="8"><line x1="0" y1="4" x2="24" y2="4" stroke="${st.color}" stroke-width="2" stroke-dasharray="${DASH_SVG[st.dash]}"/></svg>${esc(s.name)}</label>`; }).join('')}</div></details>`;
+  /** Apply checkbox visibility to every initialized chart and update the selected-series count. */
+  const sync = () => {
+    const on = [...el.querySelectorAll('input[data-i]')].map(i => i.checked);
+    charts.forEach(chart => { if (chart.data) Plotly.restyle(chart,{visible:on}); });
+    el.querySelector('summary span').textContent = `${on.filter(Boolean).length} of ${on.length}`;
+  };
+  el.onchange = sync;
+  el.onclick = event => { const b = event.target.closest('[data-all]'); if (!b) return; el.querySelectorAll('input[data-i]').forEach(i => { i.checked = b.dataset.all === '1'; }); sync(); };
+}
+/** Align annual series by start year and draw the raster and trends, purging charts if active() is false. */
 async function plotSequences(series, active) {
   const years = [...new Set(series.flatMap(s => s.years.wy))].sort((a,b) => a-b);
   const aligned = (s,v) => { const m = new Map(s.years.wy.map((w,i) => [w,v[i]])); return years.map(w => m.get(w) ?? null); };
   // Each run owns its chart nodes, including retries within the SAME analytical selection.
   const raster = freshChart($('sequenceRaster')), since = freshChart($('sequenceSince')), rolling = freshChart($('sequenceRolling'));
-  await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map(s => s.name),z:series.map(s => aligned(s,s.years.achieved.map((a,i) => s.years.complete[i] ? (a ? 1 : 0) : null))),zmin:0,zmax:1,colorscale:[[0,'#eee'],[1,'#207a65']],hoverongaps:false,xgap:1,ygap:2,colorbar:{tickvals:[0,1],ticktext:['Failed','Achieved']}}],{height:Math.max(250,series.length*30),margin:{l:230,r:90,t:20,b:40},xaxis:{title:'Assessment start year (windows shown in row labels)',dtick:1}},PCFG);
+  const z = series.map(s => aligned(s,s.years.achieved.map((a,i) => s.years.complete[i] ? (a ? 1 : 0) : null)));
+  // Row labels are short (rule · scenario); the full name, with group, planning unit and window, is in the hover.
+  /** Shorten a series name to rule and scenario, falling back to the full name. */
+  const short = s => s.name.split(' · ').slice(1,2).concat(s.name.split(' · ').slice(3,4)).join(' · ') || s.name;
+  await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map((s,i) => `${i+1}. ${short(s)}`),z,zmin:0,zmax:1,
+    colorscale:[[0,ANNUAL_FAILED],[.5,ANNUAL_FAILED],[.5,ANNUAL_ACHIEVED],[1,ANNUAL_ACHIEVED]],showscale:false,hoverongaps:true,xgap:1,ygap:2,
+    text:z.map(r => r.map(v => v === 0 ? '×' : '')),texttemplate:'%{text}',textfont:{color:'#fff',size:11},
+    customdata:z.map((r,j) => r.map(v => [series[j].name, v == null ? 'missing (incomplete or unavailable)' : v ? 'achieved' : 'failed'])),
+    hovertemplate:'%{customdata[0]}<br>%{x}: <b>%{customdata[1]}</b><extra></extra>'}],
+    {height:Math.max(250,series.length*30),margin:{l:20,r:20,t:20,b:40},plot_bgcolor:'#fff',yaxis:{automargin:true,autorange:'reversed',tickfont:{size:11}},xaxis:{title:'Assessment start year (windows shown in the hover)',dtick:1}},PCFG);
   if (!active()) { Plotly.purge(raster); return; }
   for (const [el,key,title] of [[since,'since','Years since last successful assessment year'],[rolling,'rolling',`${ROLLING_YEARS}-year rolling achievement proportion`]]) {
-    await Plotly.newPlot(el,series.map(s => ({type:'scatter',mode:'lines+markers',name:s.name,x:years,y:aligned(s,s.stats[key]),connectgaps:false})),{height:280,margin:{l:70,r:20,t:20,b:45},showlegend:false,xaxis:{title:'Assessment start year'},yaxis:{title,...(key === 'rolling' ? {range:[0,1]} : {})}},PCFG);
+    await Plotly.newPlot(el,series.map((s,i) => ({type:'scatter',mode:'lines+markers',name:s.name,x:years,y:aligned(s,s.stats[key]),connectgaps:false,
+      line:{color:seriesStyle(i).color,dash:seriesStyle(i).dash,width:2},marker:{color:seriesStyle(i).color,size:5},hovertemplate:`${esc(s.name)}<br>%{x}: <b>%{y:.2f}</b><extra></extra>`})),
+      {height:280,margin:{l:70,r:20,t:20,b:45},showlegend:false,xaxis:{title:'Assessment start year'},yaxis:{title,...(key === 'rolling' ? {range:[0,1]} : {})}},PCFG);
     if (!active()) { Plotly.purge(el); return; }
   }
+  seriesSelector($('sequenceSeries'),series,[since,rolling]);
 }
 
 const CONDITION_MAX_BYTES = 2*1024*1024, CONDITION_MAX_ROWS = 20000;
