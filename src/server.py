@@ -934,6 +934,12 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
 
 
 def heatmap(q: dict[str, str]) -> dict[str, Any]:
+    """Return annual achievement frequencies over a flow-threshold and duration grid.
+
+    Query parameters select the gauge, base and optional comparison scenarios, season, day-count mode and visible bounds.
+    The requested column count (default 400, clamped to 40–1500) sets threshold spacing. Return the grids and, for a comparison,
+    their difference; raise ValueError when the scenarios share no dates at the gauge.
+    """
     import numpy as np
     import pandas as pd
 
