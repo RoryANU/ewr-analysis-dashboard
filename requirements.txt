@@ -1,4 +1,4 @@
-py_ewr>=2.4.11
+py_ewr==2.4.11
 pandas
 numpy
 shapely

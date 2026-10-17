@@ -162,6 +162,44 @@ class CommittedPageTest(StandaloneChecks, unittest.TestCase):
     def setUpClass(cls):
         cls.html = (ROOT / "index.html").read_text()
 
+    def test_is_what_the_default_build_writes(self):
+        # stale output fails: rebuild with scenarios.json (about 20 s; deterministic)
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "index.html"
+            build_dashboard.main(["--out", str(out)])
+            fresh = out.read_text()
+        if fresh != self.html:
+            old, new = (build_dashboard.read_payload(h) for h in (self.html, fresh))
+            stale = sorted(k for k in old | new if old.get(k) != new.get(k))
+            self.fail(f"index.html is stale (payload {stale}); run python build.py")
+
+
+class ReviewGaugesTest(unittest.TestCase):
+    """A scenario file is scanned for every gauge in the review, FR and ETP alike."""
+
+    ETP_ONLY = ["422030", "422207A", "422209A", "422211A", "422213A", "422316A",
+                "422325A", "422336A", "422344A", "422350A", "422404A"]  # fmt: skip
+
+    def test_covers_every_gauge_in_the_page(self):
+        gauges = set(build_dashboard.review_gauges())
+        page = build_dashboard.read_payload((ROOT / "index.html").read_text())
+        self.assertLessEqual(set(page["meta"]["gauges"]), gauges)
+        self.assertLessEqual(set(self.ETP_ONLY), gauges)
+
+    def test_etp_only_gauge_is_run_through_py_ewr(self):
+        import pandas as pd
+
+        idx = pd.date_range("2000-07-01", "2004-06-30")
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "etp_only.csv"
+            flow = [10.0 + (i % 365) * 10 for i in range(len(idx))]
+            df = pd.DataFrame({"Date": idx.strftime("%Y-%m-%d"), "422030_flow": flow})
+            df.to_csv(path, index=False)
+            (sc,) = build_dashboard.bake_scenarios([{"path": str(path)}])["scenarios"]
+        self.assertEqual(sc["flowGauges"], ["422030"])
+        self.assertTrue(sc["vals"])
+        self.assertEqual({v[1] for v in sc["vals"]}, {"422030"})
+
 
 class ScriptJsonTest(unittest.TestCase):
     def test_hostile_strings_cannot_end_the_script_element(self):

@@ -335,16 +335,18 @@ def review_payload():
 
 
 def review_gauges():
-    """Every gauge in the review results: a scenario file is scanned for all of them."""
-    return sorted(
-        pd.read_csv(
-            ROOT / "data/results/frequency_ratio.csv",
-            dtype={"Gauge": str},
-            usecols=["Gauge"],
+    """Every gauge in the review results, FR and ETP (some gauges have ETP results only):
+    a scenario file is scanned for all of them. Both the ids as given in the results and
+    as the page keys them (REKEY) are included."""
+    gauges = set()
+    for name in ("frequency_ratio.csv", "etp.csv"):
+        d = pd.read_csv(
+            ROOT / "data/results" / name,
+            dtype=str,
+            usecols=lambda c: c.strip() == "Gauge",
         )
-        .Gauge.dropna()
-        .unique()
-    )
+        gauges |= set(d.iloc[:, 0].dropna().str.strip())
+    return sorted(gauges | {REKEY.get(g, g) for g in gauges})
 
 
 # one EWR's definition, as returned by ewr_engine.ewr_years next to each scenario's results
