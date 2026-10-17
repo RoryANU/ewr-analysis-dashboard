@@ -911,7 +911,14 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
     comps = []
     for rg, es in by.items():
         thr = min(e["thr"] for e in es)
-        comps.append({"regime": rg, "thr": thr, "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in es}, key=lambda x: (x[1], x[0]))], "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
+        comps.append(
+            {
+                "regime": rg,
+                "thr": thr,
+                "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in es}, key=lambda x: (x[1], x[0]))],
+                "at_thr": sorted({e["code"] for e in es if e["thr"] == thr}),
+            }
+        )
     comps.sort(key=lambda c: c["thr"])
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
     out: dict[str, Any] = {"gauge": gauge, "regimes": comps, "scenarios": {}}
