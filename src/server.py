@@ -11,7 +11,7 @@ Endpoints (used by ewr_analysis_dashboard.html):
                                        -> {"job": id}
     GET  /api/job?id=<id>              -> {"status": "running" | "done" | "error", ...}
 
-    GET  /api/heatmap?base=<id>[&comp=<id>]&gauge=<g>&xlim=&dmax=&sm=&em=   threshold x duration achievement heat map data
+    GET  /api/heatmap?base=<id>[&comp=<id>]&gauge=<g>&xlim=&dmax=&xmin=&dmin=&sm=&em=   threshold x duration achievement heat map data
     GET  /api/ewrs?gauge=<g>                                               EWRs at a gauge handled by flow_handle / lowflow_handle
     GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
     GET  /api/ewryears?base=<id>[&comp=<id>]&gauge=<g>&ewr=<code>&pu=<name> one EWR by water year: achievement, events (duration, volume, timing), gaps vs MRIP
@@ -517,7 +517,7 @@ def ewr_list(gauge: str) -> list[dict[str, Any]]:
             uniq[k]["pus"].append(e["pu"])
         else:
             uniq[k] = {**e, "pus": [e["pu"]]}
-    return list(uniq.values())
+    return sorted(uniq.values(), key=lambda e: (e["thr"], e["code"], e["pu"]))  # increasing flow threshold, i.e. increasing flow regime
 
 
 def validate_diagnostic_gauge(gauge: str) -> None:
@@ -911,7 +911,7 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
     comps = []
     for rg, es in by.items():
         thr = min(e["thr"] for e in es)
-        comps.append({"regime": rg, "thr": thr, "codes": sorted({e["code"] for e in es}), "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
+        comps.append({"regime": rg, "thr": thr, "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in es}, key=lambda x: (x[1], x[0]))], "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
     comps.sort(key=lambda c: c["thr"])
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
     out: dict[str, Any] = {"gauge": gauge, "regimes": comps, "scenarios": {}}
@@ -940,15 +940,19 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
     dmax = max(2, min(int(float(q.get("dmax") or 120)), 366))
     sm, em = int(q.get("sm") or 7), int(q.get("em") or 6)
     consec = q.get("days") == "consec"
-    spacing = max(1, int(math.ceil((xlim + 1) / 400)))
-    thresholds = np.arange(0, xlim + 1, spacing)
-    durations = np.arange(1, dmax + 1)
+    # a zoomed view asks for just its own threshold / duration window, so the same ~400 columns are spread over the visible range
+    xmin = max(0, min(int(float(q["xmin"])), xlim - 1)) if q.get("xmin") else 0
+    dmin = max(1, min(int(float(q["dmin"])), dmax)) if q.get("dmin") else 1
+    spacing = max(1, int(math.ceil((xlim - xmin + 1) / 400)))
+    thresholds = np.arange(xmin, xlim + 1, spacing)
+    durations = np.arange(dmin, dmax + 1)
     af, n_years = achievement_frequencies(df.to_numpy(dtype=float), df.index, thresholds, durations, sm, em, consec)
     z = lambda a: np.round(a.T, 3).tolist()  # (durations x thresholds), as plotted  # noqa: E731
     out = {
         "thresholds": thresholds.tolist(),
         "durations": durations.tolist(),
         "xlim": xlim,
+        "xmin": xmin,
         "spacing": spacing,
         "years": n_years,
         "dates": [df.index[0].strftime("%Y-%m-%d"), df.index[-1].strftime("%Y-%m-%d")],

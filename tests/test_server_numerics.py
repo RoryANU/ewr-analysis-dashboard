@@ -587,6 +587,14 @@ class TestHeatmap:
         if b_level is not None:
             put(store, "b", idx, np.full(len(idx), b_level))
 
+    def test_a_zoomed_window_is_gridded_finer_over_just_that_window(self, store):
+        self.three_years(store, 100.0)
+        full = server.heatmap({"base": "a", "gauge": G, "xlim": "2000", "dmax": "5"})
+        zoom = server.heatmap({"base": "a", "gauge": G, "xlim": "1200", "xmin": "1000", "dmax": "5", "dmin": "2"})
+        assert full["spacing"] > 1 and zoom["spacing"] == 1
+        assert zoom["thresholds"][0] == 1000 and zoom["thresholds"][-1] == 1200 and zoom["durations"] == [2, 3, 4, 5]
+        assert len(zoom["base"]) == 4 and all(len(row) == 201 for row in zoom["base"])
+
     def test_structure_and_values_for_a_constant_flow(self, store):
         self.three_years(store, 100.0)
         out = server.heatmap({"base": "a", "gauge": G, "xlim": "200", "dmax": "5"})

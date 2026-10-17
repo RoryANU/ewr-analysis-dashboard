@@ -104,7 +104,7 @@ class TestRowsAndMeta:
     def test_meta_lookup_lists(self, page):
         m = page["META"]
         assert m["policies"] == bd.POLICIES and m["climates"] == bd.CLIMATES
-        assert set(m) == {"policies", "climates", "pus", "sdls", "gauges", "themes", "regimes", "objs", "objTheme", "objDesc"}
+        assert set(m) == {"policies", "climates", "pus", "sdls", "gauges", "themes", "regimes", "objs", "objTheme", "objDesc", "ewrThr"}
         for key in ("pus", "sdls", "gauges", "objs", "regimes", "themes"):
             assert m[key] == sorted(m[key]) or key == "themes" or key == "objs"  # sorted lookups (themes: fixed order; objs: by prefix)
             assert len(set(m[key])) == len(m[key]), f"duplicates in {key}"
@@ -370,3 +370,12 @@ class TestBaseline:
         assert len(s) == 18
         n_scn = {len(v) for v in s.values()}
         assert max(n_scn) == 10
+
+
+class TestEwrThresholds:
+    def test_every_threshold_is_a_non_negative_number_for_a_listed_gauge_and_code(self, page):
+        m = page["META"]
+        listed = {(m["gauges"][r[2]], r[3]) for r in page["ROWS"]}
+        for key, v in m["ewrThr"].items():
+            gauge, code = key.split("|")
+            assert (gauge, code) in listed and v >= 0

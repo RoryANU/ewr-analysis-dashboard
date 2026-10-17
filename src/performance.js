@@ -205,7 +205,7 @@ function drawJointPlot(view) {
     return {type:'scatter',mode:'markers',name,x:points.map(p=>p.fr),y:points.map(p=>p.et),
       legendgroup:name,marker:{size:9,color:colours.get(name),line:{color:'white',width:1}},
       customdata:points.map(({row,fr,et})=>[esc(ruleCode(row)),esc(ruleGauge(row)),esc(rulePU(row)),(fr*100).toFixed(0),(et*100).toFixed(1),
-        view.base == null ? '' : `<br>Baseline: FR ${ruleFR(row,view.base) ?? 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et)]]),
+        view.base == null ? '' : `<br>Baseline: FR ${Number.isFinite(ruleFR(row,view.base)) ? ruleFR(row,view.base).toFixed(2) : 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et)]]),
       hovertemplate:`<b>%{customdata[0]}</b> · %{customdata[6]}<br>Flow regime: ${esc(name)}<br>Gauge %{customdata[1]} · %{customdata[2]}<br>Frequency: %{x:.2f} × target (%{customdata[3]}%)<br>Maximum gap exceeded: %{customdata[4]}% of time%{customdata[5]}<extra></extra>`};
   });
   if(view.base != null) for (const name of regimes) {
@@ -326,12 +326,12 @@ async function loadSequences(view) {
       const group = r ? [...new Set(r[4].map(o => META.themes[META.objTheme[o]]))].sort().join(' / ') : 'Unclassified';
       for (const [key,s] of Object.entries(d.scenarios)) {
         const name = `${group} · ${e.code} · ${e.pu} · ${key === 'base' ? c.bn : c.cn} · ${ayName(d.ystart)}`;
-        series.push({name,years:s.years,stats:sequenceStats(s.years)});
+        series.push({name,group,thr:e.thr,years:s.years,stats:sequenceStats(s.years)});
         const v = s.coverage;
         coverage.push(`${name}: ${v.start ?? 'unknown'} – ${v.end ?? 'unknown'}; ${v.missing_days} missing days; ${v.complete_years}/${v.years} complete assessment years; MRIP ${d.mrip_days ?? 'unavailable'} days`);
       }
     });
-    series.sort((a,b) => a.name.localeCompare(b.name));
+    series.sort((a,b) => a.group.localeCompare(b.group) || a.thr - b.thr || a.name.localeCompare(b.name));
     if (!series.length) throw Error('No annual results. '+errors.join('; '));
     await plotSequences(series,active);
     if (!active()) return;

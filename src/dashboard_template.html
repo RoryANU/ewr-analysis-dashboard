@@ -320,7 +320,7 @@ function matrixSvg(rows,mxk){
       cols.push({id:"k"+k,label:t==="sdl"?META.pus[k]:META.gauges[k],full:t==="sdl"?META.pus[k]:gaugeName(k),rows:rs,key:k,grp:true,open:true}));
   } else {   // gauge: flow regimes small -> large; collapsed = one aggregated column, else one per EWR
     const regs=META.regimes.map((n,k)=>[n,k]).sort((a,b)=>{const x=REG_ORDER.indexOf(a[0]),y=REG_ORDER.indexOf(b[0]); return (x<0?99:x)-(y<0?99:y);});
-    for(const [rg,k] of regs){ const ids=rows.filter(r=>r[5].includes(k)); if(!ids.length) continue;
+    for(const [rg,k] of regs){ const ids=rows.filter(r=>r[5].includes(k)).sort(byThrR); if(!ids.length) continue;
       if(COLL_REG.has(rg)&&ids.length>1) cols.push({id:"g"+rg,label:`${(REG_ABBR[rg]||rg)} (${ids.length})`,full:rg,rows:ids,reg:rg,grp:true});
       else ids.forEach(r=>cols.push({id:"e"+r[3]+"|"+r[2]+"|"+r[0],label:r[3],full:r[3],rows:[r],reg:rg,grp:false})); }
   }
@@ -362,10 +362,10 @@ function matrixSvg(rows,mxk){
     const cchip=()=>{ const x=CX(CHIPS.length); return `<rect x="${x}" y="${y+2}" width="56" height="${C-4}" rx="3" fill="#f1f3f6" stroke="#0002"/><text x="${x+28}" y="${cy+3.5}" text-anchor="middle" style="font-size:9px"><tspan style="fill:#2a9d4a">▲${o.cn.up}</tspan> <tspan style="fill:#d1495b;font-weight:${o.cn.dn?700:400}">▼${o.cn.dn}</tspan></text>`; };
     const tip=o.grp?`${o.label}: ${o.objs.map(x=>META.objs[x]).join(", ")}`:`${o.label} (${o.theme}): ${o.desc||"no description"}`;
     const sep=ri>0&&orows[ri-1].theme!==o.theme?`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="#8a8a8a"/>`:"";
-    g+=`<g><title>${esc(tip)}${cnt?"":` — ${CHIPS.map(([k])=>MN[k]+" "+f3(o.vals[k],k)).join(", ")}${isDiff()?` — ▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged (${MS[m]})`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+3.5}">${esc(o.label)}</text></g>`; });
+    g+=`<g><title>${esc(tip)}${cnt?"":` — ${MN[m]} ${f3(o.vals[m],m)}${isDiff()?` (▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged)`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+3.5}">${esc(o.label)}</text></g>`; });
   cols.forEach((c,ci)=>{ const x=x0+ci*C+C/2, hit=orows.map((o,ri)=>cell[ci][ri].n>0?ri:-1).filter(r=>r>=0);
     const go=byReg?"":t==="sdl"?` class="colsel" data-act="pu" data-i="${c.key}" data-sdl="${S.sel.i}" style="cursor:pointer"`:t==="pu"?` class="colsel" data-act="gauge" data-i="${c.key}" style="cursor:pointer"`:"";
-    g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+c.rows.map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${MN[m]} ${f3(c.v,m)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
+    g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+[...c.rows].sort(byThrR).map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${MN[m]} ${f3(c.v,m)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
     if(!cnt&&c.v!=null) g+=`<rect x="${x-6}" y="${D?Math.min(by(c.v),mid):by(c.v)}" width="12" height="${D?Math.abs(by(c.v)-mid)||1:base-by(c.v)}" fill="${colour(c.v,m)}" stroke="#0004"${go}/>`;
     if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid; g+=`<text x="${x}" y="${top-3}" text-anchor="middle" style="font-size:8px;font-weight:600">${m==="et"?sg(c.v)+(c.v*ETY).toFixed(1):pct(c.v)}</text>`; }   // exact change above the bar
     if(!cnt&&c.v==null) g+=`<text x="${x}" y="${base-3}" text-anchor="middle" style="font-size:7px;fill:#999">n/a</text>`;
@@ -399,8 +399,7 @@ function cellDetail(){
   const c=L.cols.find(x=>x.id===S.cell.c), o=L.orows.find(x=>x.id===S.cell.r); if(!c||!o){ S.cell=null; return ""; }
   const set=new Set(o.objs), m=S.metric, D=isDiff(), cnt=L.cnt, t=S.sel.type, bin=isBin(m), fam=FAM[m]==="f"?"fr":"et";
   const rs=c.rows.filter(r=>r[4].some(x=>set.has(x)));
-  const bad=r=>{ const v=val(r,m); return v==null?null:-v; };   // larger = worse
-  if(!cnt) rs.sort((a,b)=>{ const x=bad(a),y=bad(b); if(x==null) return 1; if(y==null) return -1; return y-x; });
+  if(!cnt) rs.sort(byThrR);
   const shown=rs.slice(0,300), k1=scnIdx(), k0=scnIdx(S.bpol,S.bcli), arr=r=>fam==="fr"?r[6]:r[7], f=v=>v==null?"–":(fam==="et"?v*ETY:v).toFixed(fam==="et"?2:3);
   const words={ach:["achieved","not achieved"],fb:["failed badly","ok"],mz:["achieved","not achieved"]};
   const res=r=>{ const v=val(r,m); if(v==null) return "–"; if(!D) return v?words[m][0]:words[m][1]; return v>0?"improved":v<0?"declined":"unchanged"; };
@@ -410,7 +409,7 @@ function cellDetail(){
   const body=shown.map(r=>{ const a=arr(r)[k1], b=arr(r)[k0], d=a==null||b==null?null:LOWER[fam==="fr"?"fr":"et"]?b-a:a-b, objs=r[4].filter(x=>set.has(x)).map(x=>META.objs[x]).join(", ");
     return `<tr><td>${esc(r[3])}</td>${t!=="gauge"?`<td>${esc(META.gauges[r[2]])}</td>`:""}${t==="sdl"?`<td>${esc(META.pus[r[0]])}</td>`:""}<td>${esc(objs)}</td>`+
       (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td><td style="${good(d)}">${d==null?"–":fam==="et"?(d>0?"+":"")+(d*ETY).toFixed(2):pct(d)}</td>`:`<td>${f(a)}</td>`)+(bin?`<td style="${D?(res(r)==="improved"?"color:#2a9d4a":res(r)==="declined"?"color:#d1495b":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
-  return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · worst first"}</span><button data-act="cellclose" title="Close">×</button></div>
+  return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · by flow threshold"}</span><button data-act="cellclose" title="Close">×</button></div>
     <div class="cellt"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
 // ---- flow analysis (uploaded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
@@ -448,13 +447,17 @@ const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"
 const chartsFor=D=>CHART_GROUPS(D).flatMap(g=>g[1]);
 const famOf=k=>k==="joint"?"joint":k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
 const thrKey=e=>e.code+"|"+e.pu;
+// EWRs are listed in increasing flow threshold (= increasing flow regime), then by code; the page data carries each EWR's lowest threshold (META.ewrThr)
+const byThrE=(a,b)=>(a.thr-b.thr)||a.code.localeCompare(b.code,undefined,{numeric:true});
+const rowThr=r=>META.ewrThr?.[META.gauges[r[2]]+"|"+r[3]]??Infinity;
+const byThrR=(a,b)=>{ const x=rowThr(a), y=rowThr(b); return (x===y?0:x<y?-1:1)||a[3].localeCompare(b[3],undefined,{numeric:true}); };
 // differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
 const stemOf=c=>c.replace(/_[^_]+$/,"");
 function thrGroups(list,g){ const rk=new Map(), rn=new Map(); ROWS.forEach(r=>{ if(META.gauges[r[2]]!==g) return; r[5].forEach(x=>{ const n=META.regimes[x], i=REG_ORDER.indexOf(n), v=i<0?99:i; if(!rk.has(r[3])||v<rk.get(r[3])){ rk.set(r[3],v); rn.set(r[3],n); } }); });   // flow regime of each EWR at this gauge, smallest regime first
   list.forEach(e=>{ if(!rk.has(e.code)){ const o=list.find(x=>rk.has(x.code)&&stemOf(x.code)===stemOf(e.code)); if(o){ rk.set(e.code,rk.get(o.code)); rn.set(e.code,rn.get(o.code)); } } });   // an EWR with no result row takes the regime of its stem (BF2_P like BF2_S)
   const m=new Map(); list.forEach(e=>{ const k=[stemOf(e.code),e.thr,e.sm,e.em].join("|"); (m.get(k)||m.set(k,[]).get(k)).push(e); });
   return [...m].map(([k,es])=>({key:"g:"+k,code:es.length>1?stemOf(es[0].code):es[0].code,thr:es[0].thr,sm:es[0].sm,em:es[0].em,codes:es.map(e=>e.code),pu:es[0].pu,pus:es[0].pus,members:es,rank:rk.get(es[0].code)??99,reg:rn.get(es[0].code)||""}))
-    .sort((a,b)=>a.rank-b.rank||a.thr-b.thr||a.code.localeCompare(b.code)); }
+    .sort(byThrE); }
 const TCOLS=["#c0392b","#e67e22","#8e44ad","#16a085","#2c3e50","#d35400","#7f8c8d","#c2185b"];
 function flowPanel(){
   const c=flowCtx();
@@ -546,7 +549,7 @@ async function fillEwrSelect(){
       if(changed){ render(); return; } }
   }
   if($("flowEwr")){
-    $("flowEwr").innerHTML=`<option value="">none</option>`+[...list].sort((a,b)=>/^VF/i.test(b.code)-/^VF/i.test(a.code)).map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
+    $("flowEwr").innerHTML=`<option value="">none</option>`+[...list].sort(byThrE).map(e=>`<option value="${esc(key(e))}"${cur===key(e)?" selected":""}>${lab(e)} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
     $("flowEwr").onchange=ev=>{ const e=list.find(x=>key(x)===ev.target.value); S.flow.ewr=e?key(e):"";
       if(e){ Object.assign(S.flow,{xlim:String(niceUp(e.thr*1.6)),dmax:Math.min(366,Math.max(30,Math.ceil(e.dur*1.25))),sm:e.sm,em:e.em,days:e.consecutive?"consec":"any"}); }   // the parameters follow the EWR; they stay editable
       render(); };
@@ -577,7 +580,7 @@ function volumes(d,c){   // volume (sum of daily flow) of each complete water ye
   const el=$("flowPlot2"), nt=$("flowVolNote"); if(!el) return; if(nt) nt.textContent="";
   if(!d.years||!d.years.length){ el.innerHTML=""; return; }
   const y=d.years, x=y.map(r=>wyMid(r.wy)), G=v=>v/1000, mean=k=>y.reduce((a,r)=>a+r[k],0)/y.length;
-  const tr=c.comp?[{type:"bar",x,y:y.map(r=>G(r.comp-r.base)),customdata:y.map(r=>[wyl(r.wy),G(r.base),G(r.comp)]),marker:{color:"#6b7280"},hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]:,.1f} GL → ${esc(c.cn)} %{customdata[2]:,.1f} GL<br><b>%{y:+,.1f} GL</b><extra></extra>`}]
+  const tr=c.comp?[{type:"bar",x,y:y.map(r=>G(r.comp-r.base)),customdata:y.map(r=>[wyl(r.wy),G(r.base),G(r.comp)]),marker:{color:"#6b7280"},hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]:,.1f} GL → ${esc(c.cn)} %{customdata[2]:,.1f} GL<br>Change: <b>%{y:+,.1f} GL</b><extra></extra>`}]
     :[{type:"bar",x,y:y.map(r=>G(r.base)),customdata:y.map(r=>wyl(r.wy)),marker:{color:"#1f4e8c"},hovertemplate:"<b>%{customdata}</b><br>%{y:,.1f} GL<extra></extra>"}];
   Plotly.newPlot(el,tr,pLay({height:230,bargap:0.15,xaxis:pAx("Water year (July–June)",{type:"date"}),yaxis:pAx(c.comp?"Change in volume (GL)":"Volume (GL)",{zeroline:true,zerolinecolor:"#9aa3b0"}),showlegend:false}),PCFG);
   if(nt){ const b=mean("base"); nt.textContent=c.comp?(()=>{ const m=mean("comp"); return `Annual volume (sum of daily flow), ${c.cn} − ${c.bn}, for the ${y.length} water years complete in both: mean ${fx(G(b))} → ${fx(G(m))} GL a year (${sgn(G(m-b))} GL, ${b?sgn(100*(m-b)/b,1,"%"):"–"}). Grey bars: more or less water is not by itself better or worse.`; })()
@@ -604,7 +607,7 @@ async function drawEwr(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("evPlot")) return;
   const msg=$("evMsg"), tok=++EVTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
   if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
-  const list=[...await ewrsAt(c.gauge)].sort((a,b)=>/^VF/i.test(b.code)-/^VF/i.test(a.code)); if(tok!==EVTOKEN) return;
+  const list=[...await ewrsAt(c.gauge)].sort(byThrE); if(tok!==EVTOKEN) return;
   if(!list.length){ $("evEwr").innerHTML=""; msg.textContent="No single-gauge flow-threshold EWRs at this gauge."; return; }
   if(!list.some(e=>thrKey(e)===S.ev.ewr)){ const fe=list.find(e=>thrKey(e)===S.flow.ewr); S.ev.ewr=thrKey(fe||list[0]); }   // start from the flow chart's EWR when it has one
   const cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map());
@@ -636,7 +639,7 @@ function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment
     tr.push({type:"heatmap",x,y:["Change"],z:[ch],zmin:-1,zmax:1,yaxis:"y2",colorscale:[[0,DNC],[0.34,DNC],[0.34,"#f5f6f8"],[0.66,"#f5f6f8"],[0.66,UPC],[1,UPC]],showscale:false,xgap:1,hoverongaps:false,
       text:[ch.map(v=>v==null?"":v>0?`achieved in ${c.cn} only`:v<0?`achieved in ${c.bn} only`:"no change")],customdata:[lab],hovertemplate:"<b>%{customdata}</b><br>%{text}<extra></extra>"});
     const dv=all.map((w,i)=>P.has(w)&&mb[i]!=null&&mc[i]!=null?mc[i]-mb[i]:null);
-    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]} → ${esc(c.cn)} %{customdata[2]}<br><b>%{y:+.2~f}</b><extra></extra>`});
+    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]} → ${esc(c.cn)} %{customdata[2]}<br>Change: <b>%{y:+.2~f}</b><extra></extra>`});
   } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:"#b8bfca")},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y}<extra></extra>`});
   const lay=pLay({height:D?480:420,bargap:0.1,showlegend:false,xaxis:pAx(ayName(ys),{type:"date",anchor:"y3"}),
     yaxis:{domain:D?[0.78,1]:[0.8,1],showgrid:false,ticks:"",automargin:true,fixedrange:true,autorange:"reversed"},   // base on top
@@ -683,7 +686,7 @@ function evTiming(d,c,e,def,msg){   // in which months the successful events sta
 function evGaps(d,c,e,def,msg){   // gaps between successful events against the maximum inter-event period
   const D=!!c.comp, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, M=d.mrip_days, tr=[], st={};
   ks.forEach(k=>{ const g=d.scenarios[k].gaps, seg=(a,col,name,dash)=>{ if(!a.length) return; const x=[], y=[], cd=[]; a.forEach(z=>{ const t=[z.start,z.end,z.days,z.censored?"length unknown: missing days inside":z.excess?`${z.excess.toLocaleString()} days beyond the maximum`:"",z.boundary?"<br>runs from the start or to the end of the record":""]; x.push(z.start,z.end,null); y.push(z.days/365,z.days/365,null); cd.push(t,t,null); });
-      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.2f} yr)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
+      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.2f} years)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
     const known=g.filter(z=>!z.censored), unk=g.filter(z=>z.censored);
     if(D) seg(known,SCOL[k],nm[k]); else { seg(known.filter(z=>!z.excess),"#9ca3af","within the maximum"); seg(known.filter(z=>z.excess),DNC,"longer than the maximum"); }
     seg(unk,"#9ca3af",`${D?nm[k]+" · ":""}length unknown (missing data)`,"dot");
@@ -715,7 +718,7 @@ async function drawSpells(){
     const B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, keep=D?new Set(d.paired.wy):new Set(B.wy.filter((_,i)=>B.complete[i]));
     const pick=Y=>{ const m=new Map(Y.wy.map((w,i)=>[w,i])); return [...keep].sort((a,b)=>a-b).map(w=>({w,...(i=>({longest:Y.longest[i],below:Y.below[i],n:Y.n[i]}))(m.get(w))})); };
     const pb=pick(B), pc=D?pick(C):null, x=pb.map(r=>wyMid(r.w));
-    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br><b>%{y:+.2~f} days</b><extra></extra>`}]
+    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br>Change: <b>%{y:+.2~f} days</b><extra></extra>`}]
       :[{type:"bar",x,y:pb.map(r=>r.longest),marker:{color:"#1f4e8c"},customdata:pb.map(r=>[wyl(r.w),r.below,r.n]),hovertemplate:"<b>%{customdata[0]}</b><br>longest spell <b>%{y} days</b><br>%{customdata[1]} days below in the year · %{customdata[2]} spells start in it<extra></extra>"}];
     Plotly.newPlot("spPlot",tr,pLay({height:320,bargap:0.1,showlegend:false,xaxis:pAx("Water year (July–June)",{type:"date"}),yaxis:pAx(D?"Change in the longest spell (days)":"Longest spell in the year (days)",{zeroline:true,zerolinecolor:"#9aa3b0"})}),PCFG);
     const sm=(a,f)=>{ const v=a.map(f); return {mean:v.length?v.reduce((s,z)=>s+z,0)/v.length:null,med:med(v),max:v.length?Math.max(...v):null,any:v.filter(z=>z>0).length}; };
@@ -771,7 +774,7 @@ async function drawMonthly(){
     const [zlo,zhi]=fitZ();
     const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
     await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,colorscale:divScale(zlo,zhi),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
-        hovertemplate:"<b>%{z:+.2f} pts</b><br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
+        hovertemplate:"Change: <b>%{z:+.2f} pts</b> of days<br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
       {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category",range:S.mflow.xr||undefined}),yaxis:ax("Flow (ML/day)",{range:S.mflow.yr||undefined}),showlegend:false},{responsive:true,displaylogo:false});
     const mp=$("mflowPlot"); if(mp.removeAllListeners) mp.removeAllListeners("plotly_relayout");
     mp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to the cells in view, and fetch finer flow steps for the zoomed flow range
@@ -788,7 +791,7 @@ const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), o
 let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
-async function drawFlow(){
+async function drawFlow(keepZoom){
   if(S.flow.chart==="joint"){
     const view=performanceView;
     if(view?.gauge) await ewrsAt(view.gauge);
@@ -807,7 +810,8 @@ async function drawFlow(){
     if(!EWRLIST.has(c.gauge)) await fillEwrSelect();
     if(f.chart==="heat"){
       if(f.ewr&&!EWRLIST.has(c.gauge)) await fillEwrSelect();
-      const ew=curEwr(), q=`/api/heatmap?${base}&xlim=${encodeURIComponent(f.xlim)}&dmax=${f.dmax}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
+      if(!keepZoom) f.zoom=null;
+      const zm=f.zoom, ew=curEwr(), q=`/api/heatmap?${base}&xlim=${zm?zm.x[1]:encodeURIComponent(f.xlim)}&dmax=${zm?zm.y[1]:f.dmax}${zm?`&xmin=${zm.x[0]}&dmin=${zm.y[0]}`:""}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
       let d=d0; f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
       const kind=D?f.show:"base", diff=D&&kind==="diff"; let z=d[kind]||d.base;
       // colour range follows the cells in view, snapped to 5% steps (symmetric about 0 for differences)
@@ -816,10 +820,10 @@ async function drawFlow(){
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
       const title=diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
-      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(3);
+      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(2);
         hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${+df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
       // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
-      const shapesFor=()=>{ const cx=ew?Math.round(ew.thr/d.spacing)*d.spacing:0; return ew&&ew.dur>=1&&ew.dur<=d0.durations.length?[
+      const shapesFor=()=>{ const x0=d.xmin||0, cx=ew?x0+Math.round((ew.thr-x0)/d.spacing)*d.spacing:0; return ew&&ew.dur>=d0.durations[0]&&ew.dur<=d0.durations[d0.durations.length-1]?[
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"black",width:1.5},fillcolor:"rgba(0,0,0,0)"}]:[]; };
       // "Maximum call stack size exceeded": draw again on a coarser grid (every 2nd, 4th, ... threshold and duration) until it fits
@@ -827,17 +831,23 @@ async function drawFlow(){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"<b>%{z:+.2f} pts</b>":"<b>%{z:.0f}%</b> of years")+"<br>≥%{x:,} ML/d · %{y} d<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"Change: <b>%{z:+.2f} pts</b> of years":"<b>%{z:.0f}%</b> of years")+"<br>Flow ≥ %{x:,} ML/d for %{y} days<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
-        lay({xaxis:ax("Threshold (ML/day)",{range:[0,d.xlim]}),yaxis:ax("Duration (days)"),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}}));   // the EWR label can be dragged out of the way
+        lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim]}),yaxis:ax("Duration (days)",zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{}),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
         break; }catch(er){ if(!/call stack/i.test(String(er&&er.message))||ck>=16) throw er; ck*=2; d=coarsen(d0,ck); z=d[kind]||d.base; [zmin,zmax]=fitScale(); coarseNote=` Drawn at 1/${ck} of the resolution (the full grid was too large for the browser).`; } }
+      if(!zm) f.full=[d0.xlim,d0.durations.length];
       const hp=$("flowPlot"); if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
+      hp.ondblclick=zm?()=>{ f.zoom=null; drawFlow(true); }:null;   // zoomed: double-click (or the Reset zoom button) goes back to the whole grid
       hp.on("plotly_relayout",ev=>{ if("annotations[0].ax" in ev||"annotations[0].ay" in ev){ const an=hp.layout.annotations[0]; f.lblOff=[an.ax,an.ay]; return; }   // remember where the label was put
         if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to what is in view
+        { const xa=hp.layout.xaxis, ya=hp.layout.yaxis, full=xa.autorange||ya.autorange;   // re-fetch on a grid fine enough for the new view (reset: back to the full grid)
+          const nz=full||(xa.range[0]<=0&&xa.range[1]>=f.full[0]&&ya.range[0]<=.5&&ya.range[1]>=f.full[1]+.5)?null:{x:[Math.max(0,Math.floor(xa.range[0])),Math.min(200000,Math.ceil(xa.range[1]))],y:[Math.max(1,Math.ceil(ya.range[0]+.5)),Math.min(366,Math.floor(ya.range[1]-.5))]};
+          if(nz&&(nz.x[1]-nz.x[0]<2||nz.y[1]-nz.y[0]<1)) return;
+          if(JSON.stringify(nz)!==JSON.stringify(f.zoom||null)){ if(nz||f.zoom){ f.zoom=nz; clearTimeout(f.zt); f.zt=setTimeout(()=>drawFlow(true),120); return; } } }
         const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b],colorscale:[diff?divScale(a,b):scale(BLUES)]},[0]); });
       let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}.`;
-      let tbl=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(3);
+      let tbl=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(2);
         tbl=`<table class="ewrtbl"><tr><th>% of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr><tr><td style="text-align:left"><b>${esc(ew.code)}</b></td>`+
           (D?`<td>${m[0]}%</td><td>${m[1]}%</td><td>${+df>=0?"+":""}${df} pts</td>`:`<td>${m[0]}%</td>`)+`<td>${ew.target!=null?ew.target+"%":"n/a"}</td></tr></table>`; }
       msg.style.whiteSpace="pre-wrap"; msg.textContent=info+coarseNote; if(tbl) msg.insertAdjacentHTML("beforeend",tbl);
@@ -894,7 +904,7 @@ async function drawFlow(){
         const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
         const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=(m.comp-m.base).toFixed(2); return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${+dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
           marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${+dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
-        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"<b>%{y:+.2f} pts</b> of time<br>flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
+        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"Change: <b>%{y:+.2f} pts</b> of time<br>Flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
           lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear",range:xr}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000",range:yr}),showlegend:false,shapes:vl}),cfg);
         msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow). `+(thr.length?`Only days in the EWR timing window (${MONTHS[thr[0].sm-1]}–${MONTHS[thr[0].em-1]}) are used.`:"All days of the year are used; select EWRs to restrict the curve to their timing window.")+markNote();
       }

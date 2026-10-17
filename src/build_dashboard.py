@@ -236,9 +236,25 @@ def build_polygons(gj: dict[str, Any], sdls: list[str]) -> dict[str, Any]:
     return gj
 
 
-def build_meta(lookups: dict[str, Any], ref: pd.DataFrame) -> dict[str, Any]:
+def ewr_thresholds(lookups: dict[str, Any], table: list[list[Any]]) -> dict[str, float]:
+    """Lowest flow threshold (ML/d) of each EWR at each gauge in the table, from py_ewr's parameter sheet, keyed "gauge|code".
+    The page sorts EWRs by it (increasing flow regime). Empty when py_ewr is not installed; EWRs with no threshold sort last."""
+    try:
+        from py_ewr import data_inputs
+
+        sheet = getattr(data_inputs.get_EWR_table, "__wrapped__", data_inputs.get_EWR_table)(None)
+    except Exception:  # noqa: BLE001 - the page still works, just without this ordering
+        return {}
+    thr = pd.to_numeric(sheet["FlowThresholdMin"], errors="coerce")
+    low = thr.groupby([sheet["Gauge"].astype(str), sheet["Code"].astype(str)]).min().dropna()
+    wanted = {(lookups["gids"][r[2]], r[3]) for r in table}
+    return {f"{g}|{c}": float(v) for (g, c), v in sorted(low.items()) if (g, c) in wanted}
+
+
+def build_meta(lookups: dict[str, Any], ref: pd.DataFrame, ewr_thr: dict[str, float] | None = None) -> dict[str, Any]:
     objs = lookups["objs"]
     return {
+        "ewrThr": ewr_thr or {},
         "policies": POLICIES,
         "climates": CLIMATES,
         "pus": lookups["pus"],
@@ -281,7 +297,7 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
         "__ROWS__": table,
         "__RIVERS__": rivers,
         "__CONSTRAINTS__": load_constraints(root),
-        "__META__": build_meta(lookups, ref),
+        "__META__": build_meta(lookups, ref, ewr_thresholds(lookups, table)),
         "__SCENARIOS__": [],
     }
 
