@@ -350,6 +350,14 @@ class TestDurationRatio:
         assert server.vr_years(flow, [2000, 2001], 7, 8, 10, 3, 150) == [2.0, 0.2]  # 300 / 150 -> 2; 30 / 150
         assert server.vr_years(flow, [2000], 7, 8, 10, None, 150) == [None]
 
+    @pytest.mark.parametrize("ystart", [1, 7])
+    def test_volume_accumulation_stays_within_each_assessment_year(self, ystart):
+        boundary = pd.Timestamp(2001, ystart, 1)
+        idx = pd.date_range(boundary - pd.Timedelta(days=2), periods=5)
+        flow = pd.Series([100.0, 100.0, 1.0, 1.0, 1.0], index=idx)
+        # The preceding year has fewer than 3 days; the new year's largest 3-day sum is 3, not 201 across the boundary.
+        assert server.vr_years(flow, [2000, 2001], ystart, ystart, 12 if ystart == 1 else 6, 3, 100) == [None, 0.03]
+
     def test_complete_years_need_every_day_of_the_timing_window(self):
         idx = pd.date_range("2000-07-01", "2003-06-30")
         flow = pd.Series(1.0, index=idx)

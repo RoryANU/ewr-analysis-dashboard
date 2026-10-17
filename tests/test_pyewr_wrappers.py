@@ -372,6 +372,24 @@ class TestEwrEvalAgainstPyEwr:
         server.forget_cached("a")
         assert server.ewr_eval("a", self.G, "BK1") is not ev
 
+    def test_volume_ratios_reach_the_annual_chart_and_match_the_scenario_summary(self, monkeypatch):
+        gauge, code = "418078", "OB1_S"
+        table = server.parameter_sheet()
+        table = table[(table.Gauge == gauge) & (table.Code == code)].copy()
+        monkeypatch.setattr(server, "parameter_sheet", lambda: table)
+        idx = pd.date_range("2000-07-01", "2002-06-30")
+        flow = np.where(idx < "2001-07-01", 1000.0, 5000.0)
+        raw = pd.DataFrame({f"{gauge}_flow": flow}, index=pd.DatetimeIndex(idx, name="Date")).to_csv().encode()
+        pd.DataFrame({gauge: flow}, index=pd.DatetimeIndex(idx, name="Date")).to_csv(server.STORE / "a.csv")
+        ev = server.ewr_eval("a", gauge, code)
+        annual = server.ewr_years({"base": "a", "gauge": gauge, "ewr": code})["scenarios"]["base"]["years"]
+        rows, _ = server.run_scenario(raw, [gauge])
+        # OB1_S needs 10,000 ML over 3 days: 3,000 / 10,000 in 2000 and 15,000 / 10,000 in 2001.
+        assert annual["wy"] == [2000, 2001] and annual["complete"] == [1, 1]
+        assert annual["dr"] == [0.3, 1.5]
+        assert (ev["acc"], ev["vol"]) == (3, 10000.0)
+        assert len(rows) == 1 and rows[0]["dr"] == 0.9
+
     def test_one_clear_event_is_counted_exactly(self):
         # BK1: >= 7,900 ML/d for at least 5 days. One 6-day event in WY2003 (Jul 2002 - Jun 2003).
         idx = pd.date_range("2000-07-01", "2010-06-30")

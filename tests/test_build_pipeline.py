@@ -187,6 +187,12 @@ class TestAggregate:
     def test_values_are_rounded_to_four_places(self, mini_rows):
         assert mini_rows[("PU C", "SDL A", "888888", "OB1")]["fr"] == with_values(i7=0.3333)  # 0.3333333333 -> 0.3333
 
+    def test_mean_event_length_keeps_four_places_per_scenario(self):
+        fr, et = bd.load_results(MINI)
+        fr.loc[fr.EWR == "LF1", "AverageEventLength"] = [1.23456, 2.34567, 9.87654, np.nan]
+        row = bd.aggregate_ewr_rows(fr, et)[("PU A", "SDL A", "409025", "LF1")]
+        assert row["ael"] == with_values(i7=1.7901, i14=9.8765)  # mean(1.23456, 2.34567) = 1.790115
+
     def test_missing_scenarios_stay_none_never_zero(self, mini_rows):
         r = mini_rows[("PU B", "SDL B", "A4260524", "CLLMM1c")]
         assert r["fr"] == with_values(i8=2.0) and r["et"] == blank()
