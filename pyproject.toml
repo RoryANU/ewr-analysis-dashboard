@@ -1,0 +1,16 @@
+[tool.ruff]
+# Target Python version
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+# Select linter rules (e.g., Pyflakes, pycodestyle, Isort, Bugbear)
+select = ["E", "F", "I", "B"]
+ignore = []
+
+# Allow fix behavior by default
+fixable = ["ALL"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
