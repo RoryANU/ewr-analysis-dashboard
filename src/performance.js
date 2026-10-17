@@ -1,7 +1,11 @@
 // Joint views use an explicit ecological target, independent of the exploratory header threshold.
 const JOINT_TARGET = 1, JOINT_EPS = 1e-9;
 const ruleFR = (row, scenario) => scenario == null ? null : row[6][scenario];
-const ruleETP = (row, scenario) => scenario == null ? null : row[7][scenario];
+// ETP is a time proportion: values above 1 (in source data or older saved uploads) mean exceeded for the whole record.
+const ruleETP = (row, scenario) => {
+  const et = scenario == null ? null : row[7][scenario];
+  return Number.isFinite(et) && et > 1 ? 1 : et;
+};
 const ruleCode = row => row[3];
 const rulePU = row => META.pus[row[0]];
 const ruleGauge = row => META.gauges[row[2]];
@@ -42,7 +46,8 @@ function climateSummary(rows, indices) {
   }
   return {resilient, crossings, incomplete, assessed, expected: indices.length};
 }
-function sequenceStats(years, window = 5) {
+const ROLLING_YEARS = 10;
+function sequenceStats(years, window = ROLLING_YEARS) {
   let last = null, prev = null, run = []; const since = [], rolling = [];
   years.wy.forEach((w, i) => {
     if (prev !== null && w !== prev + 1) { last = null; run = []; }
@@ -101,7 +106,7 @@ function performancePanels(view) {
     <h2>Joint frequency & inter-event performance · target FR 1.0</h2>
     <p class="note">Joint counts and plots always use FR ≥ 1.0, independent of the header frequency threshold. Within Tolerance: 0.9 ≤ FR &lt; 1.0 (${tolerance} EWRs); tolerance does not establish ecological sufficiency. MRIP compliance: exceedance time proportion ≤ ${S.ethr.toFixed(3)}.</p>
     <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]} · FR target 1.0</span></div>`).join('')}</div>
-    <p>${q.n}/${view.rows.length} valid paired EWRs · ${view.rows.length-q.n} missing or invalid pairs (FR must be nonnegative; ETP must be 0–1).</p>
+    <p>${q.n}/${view.rows.length} valid paired EWRs · ${view.rows.length-q.n} missing or invalid pairs (FR and ETP must be nonnegative; ETP above 1 is treated as 1).</p>
     <label><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> Lock joint axes (FR 0–2; ETP 0–1)</label><div id="jointPlot"></div>
     <p class="note">MRIP exceedance is a time proportion; ×10 is equivalent years per ten years, not a calendar-year count. Daily-record event-gap diagnostics retain longest gaps.</p>
     <p><b>Unweighted EWR statistics:</b> mean FR ${fmt(mean)} · interpolated 10th percentile FR ${fmt(percentile(vals,.1))} · minimum FR ${fmt(vals[0] ?? null)} · raw meeting target 1.0 ${raw == null ? 'Unavailable' : (100*raw).toFixed(1)+'%'} (${vals.length} observed).</p>
@@ -111,7 +116,7 @@ function performancePanels(view) {
       <p class="note">Joint score uses FR target 1.0 and the MRIP threshold above. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
       <div id="robustnessTable"></div><pre id="robustnessValues" style="white-space:pre-wrap"></pre></details>
     <h2>Hydrological opportunities for recruitment</h2>
-    <p class="note">Annual achievement, time since success and five-year rolling frequency are hydrological opportunities, not modelled recruitment outcomes.</p>
+    <p class="note">Annual achievement, time since success and ${ROLLING_YEARS}-year rolling frequency are hydrological opportunities, not modelled recruitment outcomes.</p>
     <button id="loadSequence" ${view.ctx?.ok ? '' : 'disabled'}>Load annual raster</button> <button id="cancelSequence" hidden>Cancel annual loading</button>
     <div id="sequenceNote">${view.ctx?.ok ? 'Load supported rules on demand.' : 'Select an uploaded flow scenario and a gauge. Bundled summaries do not contain annual records.'}</div>
     <div id="sequenceRaster"></div><div id="sequenceSince"></div><div id="sequenceRolling"></div>
@@ -159,7 +164,7 @@ function robustnessTable(view) {
   }).join('')}</tbody></table></div>`;
 }
 
-// FR may exceed the locked range; ETP outside 0–1 is invalid even in unlocked mode.
+// FR may exceed the locked range; ETP arrives capped at 1 and negative ETP is invalid even in unlocked mode.
 // Omit and count both out-of-range endpoints, and never draw a partial comparison arrow.
 function jointGeometry(rows, index, base, locked) {
   let xmax = locked ? 2 : 1.2;
@@ -270,7 +275,7 @@ async function loadSequences(view) {
     if (!series.length) throw Error('No annual results. '+errors.join('; '));
     await plotSequences(series,active);
     if (!active()) return;
-    note.textContent = `${series.length} rule/scenario rows. Grey = failed, green = achieved, blank = incomplete/unavailable. Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require five consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
+    note.textContent = `${series.length} rule/scenario rows. Grey = failed, green = achieved, blank = incomplete/unavailable. Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
     $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily flow records. '+coverage.join(' | ');
   } catch (error) { if (active()) note.textContent = 'Could not load annual diagnostics: '+error.message; }
   finally {
@@ -288,7 +293,7 @@ async function plotSequences(series, active) {
   const raster = $('sequenceRaster'), since = $('sequenceSince'), rolling = $('sequenceRolling');
   await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map(s => s.name),z:series.map(s => aligned(s,s.years.achieved.map((a,i) => s.years.complete[i] ? (a ? 1 : 0) : null))),zmin:0,zmax:1,colorscale:[[0,'#eee'],[1,'#207a65']],hoverongaps:false,xgap:1,ygap:2,colorbar:{tickvals:[0,1],ticktext:['Failed','Achieved']}}],{height:Math.max(250,series.length*30),margin:{l:230,r:90,t:20,b:40},xaxis:{title:'Assessment start year (windows shown in row labels)',dtick:1}},PCFG);
   if (!active()) return;
-  for (const [el,key,title] of [[since,'since','Years since last successful assessment year'],[rolling,'rolling','Five-year rolling achievement proportion']]) {
+  for (const [el,key,title] of [[since,'since','Years since last successful assessment year'],[rolling,'rolling',`${ROLLING_YEARS}-year rolling achievement proportion`]]) {
     await Plotly.newPlot(el,series.map(s => ({type:'scatter',mode:'lines+markers',name:s.name,x:years,y:aligned(s,s.stats[key]),connectgaps:false})),{height:280,margin:{l:70,r:20,t:20,b:45},showlegend:false,xaxis:{title:'Assessment start year'},yaxis:{title,...(key === 'rolling' ? {range:[0,1]} : {})}},PCFG);
     if (!active()) return;
   }

@@ -40,12 +40,13 @@ test('classification boundaries, invalid values and raw denominator',()=>{
   assert.equal(run('jointSummary([],0).score'),null);
   assert.equal(run('percentile([0,10],.1)'),1);
 });
-test('plot bounds check BOTH endpoints, invalid ETP, negatives and unlocked FR',()=>{
+test('plot bounds check BOTH endpoints, ETP above 1 capped, negatives and unlocked FR',()=>{
   const h=harness(); h.ctx.boundRows=[row('above',[1,3]),row('below',[3,1]),row('etp',[1,1],[1.1,0]),row('negative',[-1,1]),row('ok',[1,1.5])];
+  assert.equal(h.run('ruleETP(boundRows[2],0)'),1); assert.equal(h.run('ruleETP(boundRows[2],1)'),0);
   const locked=plain(h.run('jointGeometry(boundRows,0,1,true)'));
-  assert.equal(locked.omittedCurrent,3); assert.equal(locked.omittedBase,1); assert.equal(locked.arrows.length,1);
+  assert.equal(locked.omittedCurrent,2); assert.equal(locked.omittedBase,1); assert.equal(locked.arrows.length,2);
   const unlocked=plain(h.run('jointGeometry(boundRows,0,1,false)'));
-  assert.equal(unlocked.xmax,3);assert.equal(unlocked.arrows.length,3); assert.equal(unlocked.omittedCurrent,2);
+  assert.equal(unlocked.xmax,3);assert.equal(unlocked.arrows.length,4); assert.equal(unlocked.omittedCurrent,1);
   h.ctx.v=h.view(h.ctx.boundRows);h.run('v.base=1; drawJointPlot(v)');
   assert.match(h.run("$('jointPlot').innerHTML"),/clip-path="url\(#jointClip\)"/);
   assert.doesNotMatch(h.run("$('jointPlot').innerHTML"),/<circle tabindex/);
@@ -77,7 +78,8 @@ test('details are lazy and memoised, routine renders retain context, scale chang
 });
 test('sequence uncertainty across missing years is preserved',()=>{
   const {run}=harness();
-  assert.deepEqual(plain(run('sequenceStats({wy:[2000,2001,2002,2003,2004,2005,2006],complete:[1,1,1,1,1,0,1],achieved:[0,1,0,0,0,0,0]})')),{since:[null,0,1,2,3,null,null],rolling:[null,null,null,null,.2,null,null]});
+  assert.deepEqual(plain(run('sequenceStats({wy:[2000,2001,2002,2003,2004,2005,2006],complete:[1,1,1,1,1,0,1],achieved:[0,1,0,0,0,0,0]},5)')),{since:[null,0,1,2,3,null,null],rolling:[null,null,null,null,.2,null,null]});
+  assert.deepEqual(plain(run('sequenceStats({wy:[1,2,3,4,5,6,7,8,9,10],complete:Array(10).fill(1),achieved:[1,0,0,1,0,0,0,0,0,1]}).rolling')),[null,null,null,null,null,null,null,null,null,.3]);
   assert.equal(run('sequenceStats({wy:[2000,2002],complete:[1,1],achieved:[1,0]}).since[1]'),null);
 });
 test('CSV dialect, numeric validation, size/row bounds, missing values and bounded gaps',()=>{

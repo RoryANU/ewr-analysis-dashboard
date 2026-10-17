@@ -211,14 +211,15 @@ frequency-threshold control is changed. MRIP compliance uses the current exceeda
 threshold (default zero); ETP is a time proportion, not a calendar-year count.
 Differential mode draws base-to-comparison arrows using absolute values. Locked
 scatter axes use FR 0–2 and ETP 0–1. Both out-of-range endpoints are counted; arrows
-require both endpoints inside the plot. Unlocking expands FR only; invalid ETP values
-remain excluded and can be inspected in the exact-values disclosure. Matrix colours
+require both endpoints inside the plot. Unlocking expands FR only. ETP is a time
+proportion, so any ETP above 1 (in the source results or a computed upload) is
+treated as 1, i.e. exceeded for the whole record. Matrix colours
 always use a fixed 0–100% joint-score scale.
 
 `src/performance.js` contains the reusable views and is embedded by the builder.
 The existing `(planning unit, SDL unit, gauge, EWR)` pairing of FR and ETP remains
 unchanged, including the documented averaging of source variants. Only EWRs with
-both finite, nonnegative metrics (ETP ≤ 1) enter joint denominators. Raw EWR mean,
+both finite, nonnegative metrics (ETP capped at 1) enter joint denominators. Raw EWR mean,
 minimum, linearly interpolated 10th percentile, target percentage and coverage accompany
 the existing hierarchical averages. “Severe” means FR below the configurable floor
 (default 0.5), not a new ecological classification. Resilience requires compliance
@@ -231,7 +232,7 @@ At an uploaded gauge, **Load annual raster** evaluates all supported selected ru
 through the existing py_ewr annual endpoint. Rows are grouped by ecological theme;
 assessment windows are labelled because they may differ. Time since success is
 unknown before the first observed success or following incomplete years. Rolling
-frequency requires five consecutive complete assessment years. Dates, missing days,
+frequency requires ten consecutive complete assessment years. Dates, missing days,
 complete assessment years and MRIP limits come from the evaluated daily records.
 Bundled summaries cannot supply these temporal diagnostics. The diagnostic inventory
 includes level, volume and specialised rules even when their detailed annual plots

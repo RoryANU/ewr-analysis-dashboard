@@ -74,6 +74,7 @@ def load_results(root: Path = ROOT) -> tuple[pd.DataFrame, pd.DataFrame]:
         usecols=lambda c: c.strip() in set(KEY + ["EcoObj", "Target", "Policy", "ClimateModel", "ETP", "State"]),
     )
     et.columns = et.columns.str.strip()
+    et["ETP"] = et.ETP.clip(upper=1)  # a time proportion: source values above 1 mean exceeded for the whole record
     return normalise_results(fr), normalise_results(et)
 
 

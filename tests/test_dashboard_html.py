@@ -190,6 +190,7 @@ def expected() -> dict[str, dict[tuple[str, str, str, str], dict[int, float]]]:
     et = pd.read_csv(ROOT / "data/results/etp.csv", dtype={"Gauge": str})
     et.columns = et.columns.str.strip()
     et = et[[*bd.KEY, "Policy", "ClimateModel", "ETP"]]
+    et["ETP"] = et.ETP.clip(upper=1)  # ETP is a time proportion: source values above 1 count as 1
     out: dict[str, dict] = {}
     for name, d, col in (("fr", fr, "FR"), ("et", et, "ETP")):
         d = d.copy()

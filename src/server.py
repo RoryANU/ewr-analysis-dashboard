@@ -273,7 +273,7 @@ def run_scenario(
             etp.append(None)
             continue
         gap_days = gaps.get(k)
-        etp.append(0.0 if gap_days is None else float(np.clip(gap_days - m, 0, None).sum() / d))
+        etp.append(0.0 if gap_days is None else min(1.0, float(np.clip(gap_days - m, 0, None).sum() / d)))  # a time proportion: at most 1
     res["ETP"] = etp
     rows = [
         {
@@ -700,7 +700,7 @@ def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
             }
         )
     days = len(flow) - sum(g["days"] for g in gaps if g["censored"])
-    etp = round(sum(g["excess"] for g in gaps if not g["censored"]) / days, 4) if mrip and days > 0 else None
+    etp = round(min(1.0, sum(g["excess"] for g in gaps if not g["censored"]) / days), 4) if mrip and days > 0 else None
     return gaps, etp
 
 
