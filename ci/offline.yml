@@ -1,0 +1,35 @@
+name: Offline dashboard
+on: [push, pull_request]
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -m 'not slow' -q
+      - run: node tests/test_performance.js
+      - run: python src/build_dashboard.py
+      - run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - run: node tests/test_offline_browser.cjs
+      - run: node tests/test_performance_browser.cjs
+      - name: Build and exercise reference scenarios
+        run: |
+          PYTHONPATH=src python - <<'PY'
+          from embed_scenarios import build_with_scenarios
+          build_with_scenarios([
+              {'path': 'data/example_scenarios/dummy_goulburn_scenario_A.csv', 'name': 'Baseline'},
+              {'path': 'data/example_scenarios/dummy_goulburn_scenario_B_wetter.csv', 'name': 'Wetter'}
+          ], 'reference scenarios.html')
+          PY
+          EWR_OFFLINE_HTML='reference scenarios.html' node tests/test_offline_browser.cjs
+      - run: python src/package_offline.py ewr_analysis_dashboard.html dist/ewr-dashboard.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-dashboard
+          path: dist/ewr-dashboard.zip

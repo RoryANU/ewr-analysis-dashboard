@@ -142,7 +142,7 @@ function robustnessTable(view) {
     const q = summaryFor(view, index), base = view.base == null ? null : summaryFor(view, view.base);
     return `<td tabindex="0" role="button" data-scenario="${index}" aria-label="Inspect exact rule values, target FR 1.0" style="background:${q.score == null ? '#eee' : `hsl(${q.score*130},40%,85%)`}"><b>${q.score == null ? 'Unavailable' : (100*q.score).toFixed(1)+'%'}</b><br>${q.severe} severe<br>${q.n}/${view.rows.length} coverage${base ? '<br>Base: '+(base.score == null ? '—' : (100*base.score).toFixed(1)+'%') : ''}</td>`;
   };
-  if (S.src === 'user') return `<p class="note">Uploaded records have no policy × climate metadata. Climate robustness is not inferred from names.</p><table><tr><th>Uploaded record (climate unspecified)</th><th>Joint score · target FR 1.0</th></tr>${CUSTOM.filter(c => !c.removed).map(c => `<tr><th>${esc(c.name)}</th>${cell(scnIdx(c.P,0))}</tr>`).join('')}</table>`;
+  if (S.src === 'user') return `<p class="note">Prepared records have no policy × climate metadata. Climate robustness is not inferred from names.</p><table><tr><th>Prepared record (climate unspecified)</th><th>Joint score · target FR 1.0</th></tr>${CUSTOM.filter(c => !c.removed).map(c => `<tr><th>${esc(c.name)}</th>${cell(scnIdx(c.P,0))}</tr>`).join('')}</table>`;
   // Custom records are registered explicitly, not identified by a fixed number of built-in policies.
   const customPolicies = new Set(CUSTOM.map(c => c.P));
   const policies = META.policies.map((name,p) => ({name,p})).filter(({p}) => !customPolicies.has(p));
@@ -239,7 +239,7 @@ function drawJointPlot(view) {
 }
 
 async function performanceJSON(url, signal) {
-  const response = await fetch(url, {signal});
+  const response = await DashboardData.request(url, {signal});
   const data = await response.json();
   if (!response.ok || data.error) throw Error(data.error || `Request failed (${response.status})`);
   return data;
