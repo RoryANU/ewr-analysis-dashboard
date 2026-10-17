@@ -253,9 +253,9 @@ def build_meta(lookups: dict[str, Any], ref: pd.DataFrame) -> dict[str, Any]:
 
 def render_html(template_text: str, payload: dict[str, Any]) -> str:
     """Fill the template's `__NAME__` slots with compact JSON, in the order given."""
-    html = template_text.replace("__PERFORMANCE_JS__", (HERE / "performance.js").read_text())
+    html = template_text.replace("__PERFORMANCE_JS__", (HERE / "performance.js").read_text(encoding="utf-8"))
     for tag, val in payload.items():
-        html = html.replace(tag, json.dumps(val, separators=(",", ":")))
+        html = html.replace(tag, json.dumps(val, separators=(",", ":")).replace("<", "\\u003c"))
     return html
 
 

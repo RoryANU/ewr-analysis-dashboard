@@ -445,6 +445,7 @@ def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: 
 
 
 _EWR_CACHE: dict[str, Any] = {}
+_EWR_LOCK = threading.RLock()
 
 
 def parameter_sheet():
@@ -462,22 +463,36 @@ def parameter_sheet():
 def ewr_list(gauge: str) -> list[dict[str, Any]]:
     """EWRs at a gauge that the EWR tool evaluates with flow_handle (consecutive days) or lowflow_handle (non-consecutive days)."""
     import pandas as pd
-    from py_ewr import data_inputs
 
-    if "handler" not in _EWR_CACHE:
-        cfg = data_inputs.get_ewr_calc_config(None)
-        _EWR_CACHE["handler"] = {k: h for h in ("flow_handle", "lowflow_handle") for k in cfg.get(h, [])}
+    validate_diagnostic_gauge(gauge)
+    handlers = diagnostic_handlers()
     t = parameter_sheet()
+    required = {
+        "Gauge",
+        "Code",
+        "PlanningUnitName",
+        "State",
+        "Multigauge",
+        "FlowLevelVolume",
+        "MaxInter-event",
+        "FlowThresholdMin",
+        "Duration",
+        "StartMonth",
+        "EndMonth",
+        "TargetFrequency",
+    }
+    if missing := required - set(t.columns):
+        raise ValueError(f"EWR parameter table missing required columns: {', '.join(sorted(missing))}")
     t = t[t.Gauge.astype(str) == gauge]
     out = []
     mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"), strict=True)}
     for r in t.itertuples():
         multi = isinstance(r.Multigauge, str) and r.Multigauge.strip()
         maxint = mi.get((r.Code, r.PlanningUnitName))
-        h = _EWR_CACHE["handler"].get(f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}")
+        h = handlers.get(f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}")
         num = lambda v: pd.to_numeric(v, errors="coerce")  # noqa: E731
         thr, dur, sm, em, tgt = num(r.FlowThresholdMin), num(r.Duration), num(r.StartMonth), num(r.EndMonth), num(r.TargetFrequency)
-        if h is None or multi or pd.isna(thr) or pd.isna(dur) or pd.isna(sm) or pd.isna(em):
+        if h not in ("flow_handle", "lowflow_handle") or multi or pd.isna(thr) or pd.isna(dur) or pd.isna(sm) or pd.isna(em):
             continue
         out.append(
             {
@@ -505,14 +520,32 @@ def ewr_list(gauge: str) -> list[dict[str, Any]]:
     return list(uniq.values())
 
 
-def diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
-    """All parameter rules, including rules excluded from the detailed flow selector."""
+def validate_diagnostic_gauge(gauge: str) -> None:
+    """Accept bounded station identifiers; unknown well-formed gauges return empty inventories."""
+    if not isinstance(gauge, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", gauge):
+        raise ValueError("gauge must be a station identifier (1–64 letters, digits, underscores or hyphens)")
+
+
+def diagnostic_handlers() -> dict[str, str]:
+    """Cache the complete dispatch map once, including specialised/level/volume handlers."""
     from py_ewr import data_inputs
 
+    with _EWR_LOCK:
+        if "all_handlers" not in _EWR_CACHE:
+            cfg = data_inputs.get_ewr_calc_config(None)
+            _EWR_CACHE["all_handlers"] = {key: handler for handler, keys in cfg.items() for key in keys}
+        return _EWR_CACHE["all_handlers"]
+
+
+def diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
+    """Read all parameter rules directly, without relying on ewr_list's cache side effects."""
+    validate_diagnostic_gauge(gauge)
+    table = parameter_sheet()
+    required = {"Gauge", "Code", "PlanningUnitName", "Multigauge", "FlowLevelVolume"}
+    if missing := required - set(table.columns):
+        raise ValueError(f"EWR parameter table missing required columns: {', '.join(sorted(missing))}")
+    handlers = diagnostic_handlers()
     supported = {(e["code"], pu) for e in ewr_list(gauge) for pu in e["pus"]}
-    table = _EWR_CACHE["table"]
-    cfg = data_inputs.get_ewr_calc_config(None)
-    handlers = {key: handler for handler, keys in cfg.items() for key in keys}
     result = []
     for r in table[table.Gauge.astype(str) == gauge].itertuples():
         multi = isinstance(r.Multigauge, str) and bool(r.Multigauge.strip())
@@ -527,6 +560,37 @@ def diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def diagnostic_payload(gauge: str) -> dict[str, Any]:
+    """Memoise immutable parameter diagnostics per gauge; don't cache arbitrary unknown gauge IDs."""
+    validate_diagnostic_gauge(gauge)
+    with _EWR_LOCK:
+        cache = _EWR_CACHE.setdefault("diagnostics", {})
+        if gauge not in cache:
+            inventory = diagnostic_inventory(gauge)
+            result = {"ewrs": ewr_list(gauge), "inventory": inventory}
+            if inventory:
+                cache[gauge] = result
+            return result
+        return cache[gauge]
+
+
+def record_coverage(flow: Any, complete: list[int]) -> dict[str, Any]:
+    """Count nulls AND absent calendar dates; handle empty records without formatting NaT."""
+    import pandas as pd
+
+    if flow.empty:
+        return {"start": None, "end": None, "missing_days": 0, "complete_years": sum(complete), "years": len(complete)}
+    start, end = flow.index.min(), flow.index.max()
+    daily = flow.reindex(pd.date_range(start, end))
+    return {
+        "start": start.strftime("%Y-%m-%d"),
+        "end": end.strftime("%Y-%m-%d"),
+        "missing_days": int(daily.isna().sum()),
+        "complete_years": sum(complete),
+        "years": len(complete),
+    }
 
 
 _EVAL_CACHE: dict[tuple[str, str, str, str], dict[str, Any]] = {}  # (scenario id, gauge, code, planning unit) -> one EWR evaluated by py_ewr (see ewr_eval)
@@ -720,13 +784,7 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "events": events,
             "gaps": gaps,
             "etp": etp,
-            "coverage": {
-                "start": fdate(flow.index.min()),
-                "end": fdate(flow.index.max()),
-                "missing_days": int(flow.isna().sum()),
-                "complete_years": sum(complete),
-                "years": len(wy),
-            },
+            "coverage": record_coverage(flow, complete),
         }
         out.update({kk: ev[kk] for kk in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})
     if "comp" in out["scenarios"]:
@@ -1088,7 +1146,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if u.path == "/api/interevents":
                     return self._json(interevents(q))
                 if u.path == "/api/ewrs":
-                    return self._json({"ewrs": ewr_list(q.get("gauge", "")), "inventory": diagnostic_inventory(q.get("gauge", ""))})
+                    return self._json(diagnostic_payload(q.get("gauge", "")))
                 if u.path == "/api/ewryears":
                     return self._json(ewr_years(q))
                 if u.path == "/api/spells":

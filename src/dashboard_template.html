@@ -236,9 +236,9 @@ function crumbHtml(){
   return c.join(" ▸ ");
 }
 function render(){
-  ++performanceToken;
   const s=S.sel;
   if(s.type==="none"){
+    disposePerformance();
     const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
     if(S.src==="user"&&!names.length){ $("panel").innerHTML=`<h2>Your data</h2><div class="note">This mode uses only model output you add yourself, and unlocks the flow charts (threshold × duration heat map, hydrograph, flow duration curves). Add a scenario to begin; the SDL units it covers are found from its gauges.</div><div class="row"><button data-act="addscn">＋ Add scenario</button></div>`; return; }
     $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.</div>
@@ -262,7 +262,8 @@ function render(){
     </div>
     ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
 
-  $("panel").innerHTML=h+performancePanels(rows); wireFlow(); drawPerformance(rows);
+  const pv=preparePerformance(rows);
+  $("panel").innerHTML=h; wireFlow(); mountPerformance(pv);
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -533,7 +534,7 @@ function contourLevels(z){
 const niceUp=x=>{ const k=Math.pow(10,Math.max(Math.floor(Math.log10(x))-1,0)); return Math.ceil(x/k)*k; };
 async function fillEwrSelect(){
   const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
-  if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } }
+  if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await inventoryFor(g)).ewrs); }catch(e){ return []; } }
   const list=ewrsFor(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${e.custom?" (custom)":cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
   if(S.flow.gaugeFor!==g){   // the gauge changed: keep the same EWR if this gauge has it (and take its settings), otherwise reset the heat map settings
     const first=S.flow.gaugeFor===undefined; S.flow.gaugeFor=g;
@@ -582,7 +583,7 @@ function volumes(d,c){   // volume (sum of daily flow) of each complete water ye
     :`Annual volume (sum of daily flow) of each of the ${y.length} complete water years: mean ${fx(G(b))} GL a year.`; }
 }
 S.ev={ewr:""}; S.sp={thr:""}; let EVTOKEN=0, SPTOKEN=0, RGTOKEN=0;
-async function ewrsAt(g){ if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } } return EWRLIST.get(g); }
+async function ewrsAt(g){ if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await inventoryFor(g)).ewrs); }catch(e){ return []; } } return EWRLIST.get(g); }
 // water years an EWR's statistics are taken over: one scenario, its complete years; two, the years complete in both
 function keptYears(d,D){ const own=k=>{ const y=d.scenarios[k].years; return new Set(y.wy.filter((_,i)=>y.complete[i])); };
   if(!D) return {base:own("base")}; const p=new Set(d.paired.wy); return {base:p,comp:p}; }
@@ -904,9 +905,10 @@ function guardSame(){   // differential mode: base and comparison cannot be the 
 function refresh(){ guardSame(); if(typeof syncSrc==="function") syncSrc(); if(typeof updateClimDisable==="function") updateClimDisable(); S.sel=singlePU(S.sel); paintMap(); render(); if(typeof pushHash==="function") pushHash(); }
 
 // ---- user scenarios: py_ewr is run by server.py on an uploaded Standard time-series file; the results join the picker as extra policies --
-const isCustom=p=>p>=4;   // the four built-in policies come first
+const isCustom=p=>CUSTOM.some(c=>c.P===p);   // explicit registration, independent of the number of built-in policies
 const PUKEY=new Map(); ROWS.forEach(r=>{ const k=META.pus[r[0]]+"|"+META.gauges[r[2]]+"|"+r[3]; (PUKEY.get(k)||PUKEY.set(k,[]).get(k)).push(r); });   // a planning unit / gauge / EWR can sit in more than one SDL unit
 function addCustom(name,vals,id,flowGauges,fmt){
+  performanceRevision++;
   const P=META.policies.length, key="custom:"+name; META.policies.push(key); POL_L[key]=name;
   ROWS.forEach(r=>{ for(let k=0;k<NC;k++){ r[6].push(null); r[7].push(null); } });
   const matched=[], sdls=new Set(); for(const v of vals){ const rs=PUKEY.get(v[0]+"|"+v[1]+"|"+v[2]); if(!rs) continue; rs.forEach(r=>{ r[6][P*NC]=v[3]; r[7][P*NC]=v[4]; sdls.add(META.sdls[r[1]]); }); matched.push(v); }   // the file's results go onto every SDL unit that uses the gauge
@@ -914,14 +916,14 @@ function addCustom(name,vals,id,flowGauges,fmt){
 }
 function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
 function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt); }catch(e){} }
-function removeCustom(i){ const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
+function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
   if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   persistCustom(); fillPolicyOptions(); renderCustomList(); refresh(); }
 function fillInto(){ const live=CUSTOM.filter(c=>!c.removed), cur=$("scnInto").value;
   $("scnInto").innerHTML=`<option value="">a new scenario</option>`+live.map(c=>`<option value="${esc(c.key)}">existing scenario: ${esc(c.name)}</option>`).join("");
   $("scnInto").value=live.some(c=>c.key===cur)?cur:""; $("scnNameWrap").style.display=$("scnInto").value?"none":""; }
 $("scnInto").onchange=()=>{ $("scnNameWrap").style.display=$("scnInto").value?"none":""; };
-function mergeCustom(c,vals,flowGauges){   // add a second file's results to an existing scenario; the same EWR at the same gauge is replaced
+function mergeCustom(c,vals,flowGauges){ performanceRevision++;   // add a second file's results to an existing scenario; the same EWR at the same gauge is replaced
   const have=new Map(c.vals.map(v=>[v[0]+"|"+v[1]+"|"+v[2],v])), sdls=new Set(c.sdls);
   for(const v of vals){ const k=v[0]+"|"+v[1]+"|"+v[2], rs=PUKEY.get(k); if(!rs) continue; rs.forEach(r=>{ r[6][c.P*NC]=v[3]; r[7][c.P*NC]=v[4]; sdls.add(META.sdls[r[1]]); }); have.set(k,v); }
   c.vals=[...have.values()]; c.sdls=[...sdls]; c.flowGauges=[...new Set([...(c.flowGauges||[]),...flowGauges])]; persistCustom(); return {matched:vals.filter(v=>PUKEY.has(v[0]+"|"+v[1]+"|"+v[2])).length};
@@ -1054,10 +1056,11 @@ $("panel").addEventListener("click",e=>{
 // ---- shareable link: the view (mode, scenarios, metric, thresholds, sort, selection) lives in the URL hash ------------------
 function encodeState(){
   const p=new URLSearchParams(), s=S.sel;
+  p.set("v","2"); p.set("thr",S.thr);
   p.set("src",S.src); p.set("mode",S.mode); p.set("pol",META.policies[S.pol]); p.set("cli",META.climates[S.cli]);
   if(isDiff()){ p.set("bpol",META.policies[S.bpol]); p.set("bcli",META.climates[S.bcli]); }
   p.set("metric",S.metric);
-  if(S.thr!==1.0) p.set("thr",S.thr); if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
+  if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
   if(S.sort!=="default") p.set("sort",S.sort);
   if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
   else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
@@ -1072,7 +1075,7 @@ function applyHash(){
   if(pi(p.get("bpol"))>=0) S.bpol=pi(p.get("bpol")); if(ci(p.get("bcli"))>=0) S.bcli=ci(p.get("bcli"));
   if(["single","diff"].includes(p.get("mode"))) S.mode=p.get("mode");
   if(METRICS.includes(p.get("metric"))) S.metric=p.get("metric");
-  const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",1.0); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
+  const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",p.get("v")==="2"?1.0:0.9); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
   if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort");
   const sel=(p.get("sel")||"").split("~"), sdl=n=>META.sdls.indexOf(n), pu=n=>META.pus.indexOf(n), ga=n=>META.gauges.indexOf(n);
   S.sel={type:"none"};
