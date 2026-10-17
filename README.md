@@ -145,6 +145,52 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [x] Heatmap occasionally throws "Could not draw: Maximum call stack size exceeded"; if this occurs, automatically reduce the date density (coarser x-axis) until the plot renders within stack limits
 - [x] *(Backburner)* Monthly differential FDC heatmap
 
+<!-- VALIDATION_FRAMEWORK_START -->
+## Testing, linting and git hooks
+
+The checks guard the numbers the page shows: the build from `data/` to the embedded JSON, the server's py_ewr wrappers and chart payloads, and the committed HTML itself.
+
+### Set up
+
+```bash
+pip install -r requirements-dev.txt   # runtime packages plus pytest, ruff, mypy, pre-commit
+pre-commit install                    # run the checks on every `git commit`
+```
+
+### Run the tests
+
+```bash
+pytest                    # everything (about 30 s)
+pytest -m "not slow"      # what the pre-commit hook runs (about 12 s)
+pytest -m slow            # only the slow tests: py_ewr over many years of data, and a full rebuild of the HTML
+pytest tests/test_server_numerics.py -k heatmap   # one file / one topic
+```
+
+| File | What it checks |
+|---|---|
+| `test_build_pipeline.py` | each stage of `src/build_dashboard.py` (loading, scenario index, per-EWR means, themes, ROWS table, gauges, polygons, META, HTML slots) against hand-computed values on the small data set in `tests/fixtures/mini/` |
+| `test_dashboard_html.py` | the data embedded in `ewr_analysis_dashboard.html`: index bounds, ordering, units, map geometry, every FR / ETP cell recomputed independently from the CSVs, a stored baseline of the aggregates, and (slow) that rebuilding reproduces the committed page byte for byte |
+| `test_source_data.py` | arithmetic promised by `data/results/*.csv` (FR = Frequency ÷ Target, ETP = L ÷ record days, ...) |
+| `test_server_numerics.py` | exact values for the heat map, duration curves, hydrograph, spells, gaps and runs in `src/server.py`, plus strict-JSON output |
+| `test_pyewr_wrappers.py` | `ewr_list`, `load_frames`, `run_scenario` and `ewr_eval` against py_ewr's parameter table and an independent recomputation; a baseline of the example scenario's results |
+| `test_flow_regime_rules.py`, `test_northern_connectivity.py`, `test_embed_scenarios.py` | the flow-regime rule, the workbook reader and the notebook helper |
+
+Baselines live in `tests/fixtures/snapshots/`. After an *intended* change, regenerate them with `UPDATE_SNAPSHOTS=1 pytest -m "slow or not slow"` and review the diff before committing. If the HTML test says the page is stale, run `python3 src/build_dashboard.py` and commit the result.
+
+A few tests are marked `xfail(strict=True)`: they record known discrepancies (see the pull request that added them). Fixing one makes its test fail until the marker is removed.
+
+### Lint, format and type-check
+
+```bash
+ruff check .             # lint (pyflakes, pycodestyle, isort, bugbear)
+ruff format --check .    # formatting; `ruff format .` rewrites
+mypy                     # type-checks src/ and tests/
+pre-commit run --all-files
+```
+
+The hooks (`.pre-commit-config.yaml`) run syntax and file checks, ruff, mypy and the fast tests. Some hooks fix files in place (ruff, whitespace, end-of-file), so a commit can fail after rewriting them: review the changes, `git add` them and commit again. The tools are configured in `pyproject.toml`; `ruff` is pinned to the same version in `requirements-dev.txt` and the hook, because formatter output changes between releases.
+<!-- VALIDATION_FRAMEWORK_END -->
+
 ## Notes
 
 - The "Your data" mode needs the local server in `src/server.py` (see below); without it the page works in Demo data mode only.

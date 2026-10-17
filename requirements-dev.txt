@@ -1,0 +1,6 @@
+# Development tools: tests, linting, type checking, git hooks.   pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=9.0
+ruff==0.17.1          # keep in step with the rev in .pre-commit-config.yaml (the formatter's output changes between versions)
+mypy>=2.4,<3
+pre-commit>=4.0

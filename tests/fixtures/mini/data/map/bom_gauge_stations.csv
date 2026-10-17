@@ -1,0 +1,6 @@
+station_name,station_no,station_latitude,station_longitude,catchment_name,river_name
+Murray at Yarrawonga,409025,-36.0,146.0,---,Murray
+Tauwitchere,A4260527,-35.6,138.9,---,
+Milang,A4260524,-35.4,138.97,---,
+Offshore error,888888,10.0,146.0,---,
+No coordinates,777777,,,---,

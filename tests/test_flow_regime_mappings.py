@@ -25,9 +25,7 @@ class FlowRegimeMappingsTest(unittest.TestCase):
                 if pair in KNOWN_EXCEPTIONS:
                     observed_exceptions.add(pair)
                     continue
-                mismatches.append(
-                    f"{code!r}/{state!r}: mapped={sorted(actual)!r}, CSV={sorted(expected)!r}"
-                )
+                mismatches.append(f"{code!r}/{state!r}: mapped={sorted(actual)!r}, CSV={sorted(expected)!r}")
 
         # The CSV has gauge-dependent regimes: BF1 is Baseflow at gauges 405201/405202/405203/407205/407224
         # and Fresh at Wimmera gauges 415200/415203/415223/415246. BF2 is Baseflow at 407205/407224
@@ -35,8 +33,7 @@ class FlowRegimeMappingsTest(unittest.TestCase):
         self.assertEqual(
             observed_exceptions,
             KNOWN_EXCEPTIONS,
-            "Known exceptions changed; review and update the exception set:\n"
-            f"expected={sorted(KNOWN_EXCEPTIONS)!r}, observed={sorted(observed_exceptions)!r}",
+            f"Known exceptions changed; review and update the exception set:\nexpected={sorted(KNOWN_EXCEPTIONS)!r}, observed={sorted(observed_exceptions)!r}",
         )
         self.assertEqual(
             mismatches,

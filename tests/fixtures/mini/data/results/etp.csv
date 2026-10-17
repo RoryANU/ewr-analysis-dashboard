@@ -1,0 +1,6 @@
+PlanningUnitName,Gauge,EWR,SWSDLName,ClimateModel,Policy,L,ETP, MRIP_years,State,EcoObj,Target
+PU A,409025,LF1,SDL A,Historical Climate,Pre Basin Plan,9423.4,0.2,1,VIC,V-NF1,Native Fish
+PU A,409025,LF1,SDL A,Historical Climate,Pre Basin Plan,18846.8,0.4,1,VIC,V-NF2,Native Fish
+PU A,409025,BF1,SDL A,Historical Climate,Pre Basin Plan,4711.7,0.1,1,VIC,V-NF3,Native Fish
+PU A,409025,LF1,SDL A,Historical Climate,Basin plan 2024,0,0,1,VIC,V-NF1,Native Fish
+PU E,A4261002,IC2,SDL B,Historical Climate,Pre Basin Plan,23558.5,0.5,1,SA,SA-X1,Waterbirds
