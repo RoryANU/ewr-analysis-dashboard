@@ -7,15 +7,33 @@ An interactive page for exploring environmental water requirement (EWR) results 
 
 It can show a single scenario or the difference between a base and a comparison scenario, with an objective × EWR matrix for each SDL unit, planning unit and gauge.
 
-**To explore the review results, download [`ewr_analysis_dashboard.html`](ewr_analysis_dashboard.html) and open it in a web browser.** To run your own model output through it ("Your data"), either start the local server ([Your data](#your-data-run-your-own-scenarios)) or, without a command line, use the Databricks notebook ([Working from Databricks](#working-from-databricks-no-command-line-no-server)). It is a single self-contained file with all the data embedded. It loads Leaflet, Plotly and the map tiles from the internet, so it needs a connection.
+## Quick start (no technical knowledge needed)
+
+The tool runs on your own computer: you start it, and it opens in your web browser. You can load your own model output (a CSV or other supported file), run the EWR calculations on it, and see the charts update straight away.
+
+1. **Install Python** (once). Download version 3.9 or newer from <https://www.python.org/downloads/>. On Windows, tick **"Add python.exe to PATH"** in the installer.
+2. **Download this project**: on the GitHub page click **Code → Download ZIP**, then unzip it somewhere (your Desktop is fine).
+3. **Start it** by double-clicking:
+   - **Mac:** `start.command` (the first time, right-click it, choose **Open**, then **Open** again to get past the security prompt)
+   - **Windows:** `start.bat`
+   - **Linux:** run `./start.sh` in a terminal (or double-click `start.sh` if your file manager offers "Run")
+4. **Wait for your browser to open.** The first start takes a few minutes: it sets up a private Python environment inside the project folder (`.venv`) and downloads the packages it needs, so it needs internet. Later starts take a few seconds.
+5. **Use it.** Choose **Your data**, then **Add scenario**, pick the data format and choose your file ([details below](#your-data-run-your-own-scenarios)).
+6. **Stop it** by closing the black window (or pressing Ctrl+C in it).
+
+If port 8792 is busy the tool quietly uses the next free one; the address is shown in the window and in your browser. If something goes wrong, the window stays open with a message saying what to do (for example, install Python).
+
+Prefer a command line? From the project folder, `python3 run.py` does the same thing on any system (`py run.py` on Windows). Add `--no-browser` to skip opening the browser, or a port number (`python3 run.py 9000`) to prefer one. The page needs an internet connection to load the map and chart libraries (Leaflet, Plotly) and map tiles.
 
 ## Repository layout
 
 ```
-ewr_analysis_dashboard.html      the built dashboard (open this)
+start.command, start.sh, start.bat   double-click launchers (Mac, Linux, Windows)
+run.py                           the launcher they call: sets up .venv, installs requirements, starts the server, opens the browser
+ewr_analysis_dashboard.html      the built dashboard page (served by the local server)
 src/
   embed_scenarios.py             runs py_ewr on your files and embeds the results in a copy of the page (used by the notebook)
-  server.py                      local server: serves the page and runs py_ewr on your own model output
+  server.py                      local server: serves the page and runs py_ewr on your own model output (python3 src/server.py also works)
   build_dashboard.py             build script: reads data/, fills the template, writes the HTML
   dashboard_template.html        the page itself (markup, styles, JavaScript) with data placeholders
   flow_regime_mappings.py        maps an EWR code to its flow regime when the results do not give one
@@ -33,7 +51,7 @@ data/
   reference/
     objective_reference.csv      ecological objective codes, descriptions and themes
   example_scenarios/             small made-up daily flow files for trying "Your data" (Broken and Goulburn gauges)
-requirements.txt                 Python packages for the build and the server
+requirements.txt                 Python packages for the build and the server (run.py installs them for you)
 ```
 
 ## Rebuild the HTML
@@ -51,14 +69,7 @@ The script prints a short summary (EWR rows, SDL units, planning units and gauge
 
 ## Your data: run your own scenarios
 
-The page cannot run the EWR tool by itself, so "Your data" uses a small server on your own computer. Python 3.9 or later.
-
-```bash
-pip install -r requirements.txt
-python3 src/server.py
-```
-
-Then open <http://localhost:8792/ewr_analysis_dashboard.html> (the page must be opened from this address, not as a file). Choose **Your data**, then **Add scenario**, pick the data format, and choose your file. You do not choose an SDL unit: the file is scanned for every gauge in the review, so one file can cover several SDL units. The scenario name defaults to the file name. The results are FR and ETP per EWR, and they appear as an extra scenario in the pickers (Historical climate only).
+The page cannot run the EWR tool by itself, so "Your data" uses a small server on your own computer. Start it with the [quick start](#quick-start-no-technical-knowledge-needed) above (or `python3 run.py`); it opens the page for you at an address like <http://localhost:8792/> (the page must be opened from that address, not as a file). Choose **Your data**, then **Add scenario**, pick the data format, and choose your file. You do not choose an SDL unit: the file is scanned for every gauge in the review, so one file can cover several SDL units. The scenario name defaults to the file name. The results are FR and ETP per EWR, and they appear as an extra scenario in the pickers (Historical climate only).
 
 - Formats: Standard time-series, Bigmod, FIRM, res.csv (MDBA), Source NSW res.csv, IQQM netCDF and ten-thousand-year runs. A Standard time-series file has a `Date` column and one column per gauge named `<gauge>_flow` or `<gauge>_level`, e.g. `404216_flow`.
 - Try it with the files in `data/example_scenarios/` (`dummy_broken_scenario_A.csv` and `..._B_wetter.csv` for Differential mode).
@@ -80,19 +91,13 @@ If you have an Azure ML compute instance, you can run the server there to get th
 
 2. **Copy your data files** onto the compute. The model output files live on Databricks mounts (`/dbfs/mnt/...`), which are not reachable from Azure ML. Either copy them from the underlying Azure Storage account using `azcopy` / Azure CLI, or download them from Databricks and upload to the compute.
 
-3. **Change the bind address** so Azure ML's port proxy can reach the server (it defaults to `127.0.0.1`, which blocks external access):
+3. **Start the server** listening on all addresses so Azure ML's port proxy can reach it (by default it listens on `127.0.0.1` only, which blocks external access):
 
    ```bash
-   sed -i "s/('127.0.0.1'/('0.0.0.0'/" src/server.py
+   python3 run.py --host=0.0.0.0 --no-browser
    ```
 
-4. **Start the server:**
-
-   ```bash
-   python3 src/server.py
-   ```
-
-5. **Open the dashboard** in your browser at:
+4. **Open the dashboard** in your browser at:
 
    ```
    https://<compute-name>-8792.<region>.instances.azureml.ms/ewr_analysis_dashboard.html
@@ -100,7 +105,6 @@ If you have an Azure ML compute instance, you can run the server there to get th
 
    Find `<compute-name>` under **Compute → Compute instances** in Azure ML Studio. Find `<region>` in your workspace's **Overview → Location** (e.g. `australiaeast`). If you already have JupyterLab or VS Code open from that compute, the browser URL bar contains both values.
 
-6. To revert the bind address change afterwards: `git checkout src/server.py`.
 
 ## Working from Databricks (no command line, no server)
 
@@ -117,7 +121,7 @@ Limits of this route: the flow charts (heat map, hydrograph, flow duration curve
 
 To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install pandas numpy shapely`, then `!python src/build_dashboard.py` from the repository folder, and commit the new `ewr_analysis_dashboard.html`.
 
-If you can run a terminal somewhere (for example a laptop or a Databricks web terminal), the "Your data" section above (`python3 src/server.py`) lets you add scenarios inside the page and use the flow charts.
+If you can run a terminal somewhere (for example a laptop or a Databricks web terminal), the "Your data" section above (`python3 run.py`) lets you add scenarios inside the page and use the flow charts.
 
 ## TODO
 
@@ -147,5 +151,5 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 
 ## Notes
 
-- The "Your data" mode needs the local server in `src/server.py` (see below); without it the page works in Demo data mode only.
+- The "Your data" mode needs the local server (start it with `start.command` / `start.bat` / `python3 run.py`); without it the page works in Demo data mode only.
 - The input data comes from the MDBA's 2026 Basin Plan review outputs and public datasets. Check the original licences before reusing it.

@@ -131,6 +131,18 @@ class MonthlyPairingTest(StoredFlows):
 class EwrWithPyEwrTest(StoredFlows):
     """ewr_years / ewr_gaps on synthetic flows run through py_ewr itself (not a stand-in)."""
 
+    def test_ewr_list_does_not_depend_on_what_ran_before(self):
+        # py_ewr edits its own cached parameter sheet while it runs (blank TargetFrequency becomes 0)
+        g = BK1["gauge"]
+        before = server.ewr_list(g)
+        idx = pd.date_range("2000-07-01", "2004-06-30")
+        self.store("a", idx, np.full(len(idx), 9000.0), gauge=g)
+        for e in before:
+            server.ewr_years({"base": "a", "gauge": g, "ewr": e["code"], "pu": e["pu"]})
+        self.assertEqual(server.ewr_list(g), before)
+        # BF-FD2 has no target frequency: None, not 0
+        self.assertIsNone(next(e for e in before if e["code"] == "BF-FD2")["target"])
+
     def run_bk1(self, flow, idx):
         self.store("a", idx, flow, gauge=BK1["gauge"])
         return server.ewr_years({"base": "a", **BK1})

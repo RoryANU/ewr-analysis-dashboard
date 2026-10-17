@@ -1,6 +1,7 @@
 """Local server for the EWR analysis dashboard: serves the page and runs py_ewr on an uploaded scenario.
 
-    python3 src/server.py [port]        (default 8792, localhost only; then open http://localhost:8792/)
+    python3 src/server.py [port] [--no-browser] [--host=0.0.0.0]   (default 8792, localhost only; if that port is busy the next free one is used,
+                                                   and the dashboard opens in your default browser). Easiest start: python3 run.py
 
 Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/ping                     -> {"ok": true}
@@ -30,12 +31,14 @@ import ipaddress
 import json
 import math
 import re
+import socket
 import sys
 import threading
 import time
 import traceback
 import uuid
 import warnings
+import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlsplit
@@ -48,6 +51,8 @@ JOBS = {}
 STORE = ROOT / ".user_scenarios"
 FLOWS = {}          # scenario id -> flow DataFrame (date index, one column per gauge)
 MAX_BYTES = 400 * 1024 * 1024
+DEFAULT_PORT = 8792
+PAGE = "/ewr_analysis_dashboard.html"
 
 
 def _authority(hostport, default_port=None):
@@ -171,7 +176,7 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
 
     if fmt not in FORMATS:
         raise ValueError(f"unknown data format {fmt!r}")
-    table = data_inputs.get_EWR_table(None)
+    table = parameter_sheet()
     sel = table[table.Gauge.isin(sdl_gauges)]
     partners = set()
     for col in ("Multigauge", "WeirpoolGauge"):
@@ -380,15 +385,25 @@ def achievement_frequencies(flows, index, thresholds, durations, sm, em, consecu
 _EWR_CACHE = {}
 
 
+def parameter_sheet():
+    """The EWR tool's parameter sheet as read from py_ewr, in a private copy. py_ewr's own get_EWR_table() returns one cached
+    table that its ScenarioHandler later edits in place (get_all_successful_interEvents writes 0 into blank TargetFrequency
+    cells), so reading EWR definitions from it would depend on what ran before."""
+    from py_ewr import data_inputs
+    if "table" not in _EWR_CACHE:
+        read = getattr(data_inputs.get_EWR_table, "__wrapped__", data_inputs.get_EWR_table)     # bypass py_ewr's cache
+        _EWR_CACHE["table"] = read(None).copy(deep=True)
+    return _EWR_CACHE["table"]
+
+
 def ewr_list(gauge):
     """EWRs at a gauge that the EWR tool evaluates with flow_handle (consecutive days) or lowflow_handle (non-consecutive days)."""
     import pandas as pd
     from py_ewr import data_inputs
-    if not _EWR_CACHE:
+    if "handler" not in _EWR_CACHE:
         cfg = data_inputs.get_ewr_calc_config(None)
         _EWR_CACHE["handler"] = {k: h for h in ("flow_handle", "lowflow_handle") for k in cfg.get(h, [])}
-        _EWR_CACHE["table"] = data_inputs.get_EWR_table(None)
-    t = _EWR_CACHE["table"]
+    t = parameter_sheet()
     t = t[t.Gauge.astype(str) == gauge]
     out = []
     mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"))}
@@ -431,11 +446,11 @@ def ewr_eval(scn_id, gauge, code, pu=""):
     key = (scn_id, gauge, code, pu)
     if key in _EVAL_CACHE:
         return _EVAL_CACHE[key]
-    table = data_inputs.get_EWR_table(None)
+    table = parameter_sheet()
     sel = table[(table.Gauge.astype(str) == gauge) & (table.Code == code) & ((table.PlanningUnitName == pu) if pu else True)]
     if sel.empty:
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
-    sel = sel.iloc[:1]
+    sel = sel.iloc[:1].copy()                               # py_ewr gets its own copy to change
     pu = sel.PlanningUnitName.iloc[0]
     num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]
     df_F = daily_series(scn_id, gauge).to_frame(gauge)
@@ -838,6 +853,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/":                                       # http://localhost:<port>/ is the dashboard
+            self.path = PAGE
         if u.path == "/api/forget":
             return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
         if u.path == "/api/ping":
@@ -905,8 +922,50 @@ class Handler(SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+def find_free_port(preferred=DEFAULT_PORT, tries=50, host="127.0.0.1"):
+    """The first port from `preferred` up that nothing is listening on; falls back to an OS-chosen port. A port of 0 asks the OS."""
+    if preferred:
+        for port in range(preferred, min(preferred + tries, 65536)):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind((host, port))
+                except OSError:
+                    continue
+                return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
+
+
+def make_server(preferred=DEFAULT_PORT, host="127.0.0.1"):
+    """A ThreadingHTTPServer (localhost only unless `host` says otherwise) at the first free port from `preferred`
+    (retries if another program grabs it first)."""
+    for _ in range(5):
+        try:
+            return ThreadingHTTPServer((host, find_free_port(preferred, host=host)), Handler)
+        except OSError:
+            continue
+    return ThreadingHTTPServer((host, 0), Handler)
+
+
+def main(argv=None):
+    args = list(sys.argv[1:] if argv is None else argv)
+    open_browser = "--no-browser" not in args
+    nums = [a for a in args if a.isdigit()]
+    host = next((a.split("=", 1)[1] for a in args if a.startswith("--host=")), "127.0.0.1")
+    srv = make_server(int(nums[0]) if nums else DEFAULT_PORT, host)
+    port = srv.server_address[1]
+    url = f"http://localhost:{port}{PAGE}"
+    if nums and int(nums[0]) != port:
+        print(f"Port {nums[0]} is busy, using {port} instead.")
+    print(f"EWR analysis tool running at {url}\nLeave this window open while you use it; close it (or press Ctrl+C) to stop.")
+    if open_browser:
+        threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
+
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8792
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"EWR analysis tool on http://localhost:{port}/ewr_analysis_dashboard.html")
-    srv.serve_forever()
+    main()
