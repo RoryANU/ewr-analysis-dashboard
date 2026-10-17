@@ -2,10 +2,12 @@
 
 An interactive page for exploring environmental water requirement (EWR) results from the 2026 Basin Plan review. It averages two metrics for each EWR, up the hierarchy EWR → gauge → planning unit → SDL unit:
 
-- **FR**, the frequency ratio (achieved ÷ target frequency)
-- **ETP**, the MRIP exceedance time proportion
+- **FR**, the frequency ratio (achieved ÷ target frequency). A single scenario's means cap each EWR at 1, so a surplus cannot offset a shortfall elsewhere; differences are in achieved years per century of record
+- **ETP**, the MRIP exceedance time proportion, shown as the **% of record beyond MRIP**
 
-It can show a single scenario or the difference between a base and a comparison scenario, with an objective × EWR matrix for each SDL unit, planning unit and gauge.
+It can show a single scenario or the difference between a base and a comparison scenario, with an objective × EWR matrix for each SDL unit, planning unit and gauge. In Differential mode an EWR that meets its target in both scenarios is counted apart ("met in both") and left out of the means; an EWR counts as changed when it gains or loses at least the change band (default 2 achieved years; 1 year of record beyond MRIP for ETP).
+
+The **More** menu adds the share of EWRs meeting the frequency threshold, failing badly or achieving their MRIP, the **duration ratio** (event length ÷ required duration, capped at 2; for the review results an approximation from the mean event length) and, for your own scenarios, the **worst gap** between successful events ÷ MRIP (the worst EWR sets each cell). Your own scenarios can also be viewed over the **drought windows** (Federation 1895–96 to 1902–03, WWII 1937–38 to 1945–46, Millennium 1996–97 to 2009–10, Tinderbox 2017–18 to 2019–20; defined in `src/drought_windows.py`).
 
 ## Quick start (no technical knowledge needed)
 

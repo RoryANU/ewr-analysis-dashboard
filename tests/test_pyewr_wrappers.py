@@ -122,6 +122,11 @@ class TestRunScenario:
         assert all(set(r) == set(server.VAL_KEYS) | {"sev_b", "eps"} for r in rows)
         assert all(r["ny"] == pytest.approx(9132 / 365.25, abs=0.005) for r in rows)  # 1995-07-01 to 2020-06-30
         assert all(r["ey"] is None or 0 <= r["ey"] <= 25 for r in rows)
+        for r in rows:  # duration ratio, near misses and the drought windows inside 1995-2020: Millennium 14 complete years, Tinderbox 3
+            assert r["dr"] is None or 0 <= r["dr"] <= 2
+            assert r["nm"] is None or 0 <= r["nm"][0] <= r["nm"][1] <= 25
+            assert set(r["win"]) == {"fed", "ww2", "mil", "tin"} and (r["win"]["mil"]["n"], r["win"]["tin"]["n"], r["win"]["fed"]["n"]) == (14, 3, 0)
+            assert r["win"]["fed"] == {"n": 0, "fr": None, "et": None, "sev": None, "dr": None}  # before the record
         assert {r["gauge"] for r in rows} <= set(GOULBURN_GAUGES)
         assert len({(r["pu"], r["gauge"], r["ewr"]) for r in rows}) == len(rows)  # one row per planning unit x gauge x EWR
         for r in rows:
@@ -381,6 +386,8 @@ class TestEwrEvalAgainstPyEwr:
         y = dict(zip(sc["years"]["wy"], sc["years"]["achieved"], strict=False))
         assert sum(y.values()) == 1 and y[2002] == 1
         assert sc["years"]["complete"] == [1] * 10
+        assert dict(zip(sc["years"]["wy"], sc["years"]["dr"], strict=True))[2002] == 1.2  # duration ratio: the 6-day event / 5 days required
+        assert sc["years"]["dr"].count(0.0) == 9  # no event in the other years
         # gaps: record start to the event (2000-07-01 .. 2002-09-09), then event end to record end
         first, second = sc["gaps"][0], sc["gaps"][-1]
         assert math.isfinite(sc["etp"]) and 0 <= sc["etp"] <= 1

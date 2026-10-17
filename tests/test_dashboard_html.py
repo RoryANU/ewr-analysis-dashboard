@@ -104,7 +104,8 @@ class TestRowsAndMeta:
     def test_meta_lookup_lists(self, page):
         m = page["META"]
         assert m["policies"] == bd.POLICIES and m["climates"] == bd.CLIMATES
-        assert set(m) == {"policies", "climates", "pus", "sdls", "gauges", "themes", "regimes", "objs", "objTheme", "objDesc", "ewrThr"}
+        assert set(m) == {"policies", "climates", "pus", "sdls", "gauges", "themes", "regimes", "objs", "objTheme", "objDesc", "ewrThr", "droughts"}
+        assert [(d["k"], d["w0"], d["w1"]) for d in m["droughts"]] == [("fed", 1895, 1902), ("ww2", 1937, 1945), ("mil", 1996, 2009), ("tin", 2017, 2019)]
         for key in ("pus", "sdls", "gauges", "objs", "regimes", "themes"):
             assert m[key] == sorted(m[key]) or key == "themes" or key == "objs"  # sorted lookups (themes: fixed order; objs: by prefix)
             assert len(set(m[key])) == len(m[key]), f"duplicates in {key}"
@@ -127,7 +128,8 @@ class TestRowsAndMeta:
     def test_row_shape_and_index_bounds(self, page):
         m = page["META"]
         for r in page["ROWS"]:
-            assert len(r) == 11 and r[10] is None  # gap severity: uploads only (the results hold the MRIP parameter, not the gaps)
+            assert len(r) == 13 and r[10] is None and r[12] is None  # gap severity and drought windows: uploads only
+            assert len(r[11]) == NS and all(v is None or 0 <= v <= 2 for v in r[11])  # duration ratio (approximation), capped at 2
             pu, sdl, gauge, ewr, objs, regimes, fr, et = r[:8]
             assert 0 <= pu < len(m["pus"]) and 0 <= sdl < len(m["sdls"]) and 0 <= gauge < len(m["gauges"])
             assert isinstance(ewr, str) and ewr

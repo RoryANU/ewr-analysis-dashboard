@@ -1,422 +1,1647 @@
 [
  {
+  "dr": 0.452,
   "eps": 0,
   "et": 0.0,
   "ewr": "BF1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405201",
+  "nm": [
+   11,
+   25
+  ],
   "ny": 25.0,
   "pu": "Reach 2 - Yea River to Sunday Creek",
   "sev": 0.58,
-  "sev_b": 0.58
+  "sev_b": 0.58,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.285,
+    "et": 0.0,
+    "fr": 0.0,
+    "n": 14,
+    "sev": 0.58
+   },
+   "tin": {
+    "dr": 0.471,
+    "et": 0.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 0.45
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.25,
   "eps": 7,
   "et": 0.6697,
   "ewr": "BK1",
   "ey": 8,
   "fr": 0.62,
   "gauge": "405201",
+  "nm": [
+   3,
+   17
+  ],
   "ny": 25.0,
   "pu": "Reach 2 - Yea River to Sunday Creek",
   "sev": 8.38,
-  "sev_b": 8.38
+  "sev_b": 8.38,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.7258,
+    "fr": 0.5714,
+    "n": 14,
+    "sev": 8.38
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 5.71
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.2,
   "eps": 3,
   "et": 0.8437,
   "ewr": "F1",
   "ey": 3,
   "fr": 0.12,
   "gauge": "405201",
+  "nm": [
+   2,
+   21
+  ],
   "ny": 25.0,
   "pu": "Reach 2 - Yea River to Sunday Creek",
   "sev": 14.17,
-  "sev_b": 14.17
+  "sev_b": 14.17,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.859,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 14.17
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 4.87
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 2.0,
   "eps": 6,
   "et": 0.2957,
   "ewr": "F2",
   "ey": 17,
   "fr": 0.68,
   "gauge": "405201",
+  "nm": [
+   2,
+   8
+  ],
   "ny": 25.0,
   "pu": "Reach 2 - Yea River to Sunday Creek",
   "sev": 3.86,
-  "sev_b": 3.86
+  "sev_b": 3.86,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 1.1,
+    "et": 0.4766,
+    "fr": 0.5,
+    "n": 14,
+    "sev": 3.86
+   },
+   "tin": {
+    "dr": 2.0,
+    "et": 0.2199,
+    "fr": 0.6667,
+    "n": 3,
+    "sev": 1.66
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 1.2,
   "eps": 6,
   "et": 0.3834,
   "ewr": "F3",
   "ey": 16,
   "fr": 0.62,
   "gauge": "405201",
+  "nm": [
+   2,
+   9
+  ],
   "ny": 25.0,
   "pu": "Reach 2 - Yea River to Sunday Creek",
   "sev": 4.87,
-  "sev_b": 4.87
+  "sev_b": 4.87,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 1.2,
+    "et": 0.4082,
+    "fr": 0.6429,
+    "n": 14,
+    "sev": 4.87
+   },
+   "tin": {
+    "dr": 0.6,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 4.87
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 3,
   "et": 0.8552,
   "ewr": "OB1",
   "ey": 3,
   "fr": 0.24,
   "gauge": "405201",
+  "nm": [
+   1,
+   22
+  ],
   "ny": 25.0,
   "pu": "Reach 2 - Yea River to Sunday Creek",
   "sev": 8.93,
-  "sev_b": 10.66
+  "sev_b": 10.66,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.8381,
+    "fr": 0.2857,
+    "n": 14,
+    "sev": 10.66
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 10.66
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.4,
   "eps": 0,
   "et": 0.0,
   "ewr": "BF1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405202",
+  "nm": [
+   8,
+   25
+  ],
   "ny": 25.0,
   "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
   "sev": 0.49,
-  "sev_b": 0.49
+  "sev_b": 0.49,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.387,
+    "et": 0.0,
+    "fr": 0.0,
+    "n": 14,
+    "sev": 0.49
+   },
+   "tin": {
+    "dr": 0.488,
+    "et": 0.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 0.3
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 7,
   "et": 0.6393,
   "ewr": "BK1",
   "ey": 8,
   "fr": 0.62,
   "gauge": "405202",
+  "nm": [
+   1,
+   16
+  ],
   "ny": 25.0,
   "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
   "sev": 9.18,
-  "sev_b": 9.18
+  "sev_b": 9.18,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.6671,
+    "fr": 0.7143,
+    "n": 14,
+    "sev": 9.18
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.6186,
+    "fr": 0.6667,
+    "n": 3,
+    "sev": 2.94
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 5,
   "et": 0.7549,
   "ewr": "F1",
   "ey": 5,
   "fr": 0.19,
   "gauge": "405202",
+  "nm": [
+   1,
+   19
+  ],
   "ny": 25.0,
   "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
   "sev": 13.91,
-  "sev_b": 13.91
+  "sev_b": 13.91,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.8445,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 13.91
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.6168,
+    "fr": 0.3333,
+    "n": 3,
+    "sev": 2.93
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 1.4,
   "eps": 6,
   "et": 0.3473,
   "ewr": "F2",
   "ey": 16,
   "fr": 0.64,
   "gauge": "405202",
+  "nm": [
+   2,
+   9
+  ],
   "ny": 25.0,
   "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
   "sev": 3.88,
-  "sev_b": 3.88
+  "sev_b": 3.88,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 1.0,
+    "et": 0.4809,
+    "fr": 0.5,
+    "n": 14,
+    "sev": 3.88
+   },
+   "tin": {
+    "dr": 1.2,
+    "et": 0.0575,
+    "fr": 1.0,
+    "n": 3,
+    "sev": 1.17
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.7,
   "eps": 5,
   "et": 0.4836,
   "ewr": "F3",
   "ey": 12,
   "fr": 0.46,
   "gauge": "405202",
+  "nm": [
+   2,
+   13
+  ],
   "ny": 25.0,
   "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
   "sev": 5.04,
-  "sev_b": 5.04
+  "sev_b": 5.04,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.9,
+    "et": 0.4882,
+    "fr": 0.5,
+    "n": 14,
+    "sev": 5.04
+   },
+   "tin": {
+    "dr": 0.6,
+    "et": 0.5474,
+    "fr": 0.3333,
+    "n": 3,
+    "sev": 2.81
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 5,
   "et": 0.7594,
   "ewr": "OB1",
   "ey": 5,
   "fr": 0.38,
   "gauge": "405202",
+  "nm": [
+   2,
+   19
+  ],
   "ny": 25.0,
   "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
   "sev": 15.93,
-  "sev_b": 15.93
+  "sev_b": 15.93,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.7115,
+    "fr": 0.5714,
+    "n": 14,
+    "sev": 15.93
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.9325,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 3.88
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.436,
   "eps": 0,
   "et": 0.0,
   "ewr": "BF1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405203",
+  "nm": [
+   11,
+   25
+  ],
   "ny": 25.0,
   "pu": "Reach 1 - Lake Eildon to Yea River",
   "sev": 0.87,
-  "sev_b": 0.87
+  "sev_b": 0.87,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.344,
+    "et": 0.0,
+    "fr": 0.0,
+    "n": 14,
+    "sev": 0.87
+   },
+   "tin": {
+    "dr": 0.529,
+    "et": 0.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 0.18
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.25,
   "eps": 4,
   "et": 0.6622,
   "ewr": "BK1",
   "ey": 8,
   "fr": 0.62,
   "gauge": "405203",
+  "nm": [
+   4,
+   17
+  ],
   "ny": 25.0,
   "pu": "Reach 1 - Lake Eildon to Yea River",
   "sev": 14.98,
-  "sev_b": 14.98
+  "sev_b": 14.98,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.9081,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 14.98
+   },
+   "tin": {
+    "dr": 2.0,
+    "et": 0.1971,
+    "fr": 1.3333,
+    "n": 3,
+    "sev": 1.67
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.3,
   "eps": 6,
   "et": 0.6321,
   "ewr": "F1",
   "ey": 9,
   "fr": 0.35,
   "gauge": "405203",
+  "nm": [
+   3,
+   16
+  ],
   "ny": 25.0,
   "pu": "Reach 1 - Lake Eildon to Yea River",
   "sev": 12.96,
-  "sev_b": 12.96
+  "sev_b": 12.96,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.8383,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 12.96
+   },
+   "tin": {
+    "dr": 1.0,
+    "et": 0.281,
+    "fr": 0.6667,
+    "n": 3,
+    "sev": 1.9
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 1.4,
   "eps": 4,
   "et": 0.356,
   "ewr": "F2",
   "ey": 16,
   "fr": 0.64,
   "gauge": "405203",
+  "nm": [
+   2,
+   9
+  ],
   "ny": 25.0,
   "pu": "Reach 1 - Lake Eildon to Yea River",
   "sev": 5.01,
-  "sev_b": 5.01
+  "sev_b": 5.01,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.6,
+    "et": 0.6227,
+    "fr": 0.3571,
+    "n": 14,
+    "sev": 5.01
+   },
+   "tin": {
+    "dr": 1.6,
+    "et": 0.0,
+    "fr": 1.0,
+    "n": 3,
+    "sev": 0.91
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.7,
   "eps": 4,
   "et": 0.4987,
   "ewr": "F3",
   "ey": 12,
   "fr": 0.46,
   "gauge": "405203",
+  "nm": [
+   3,
+   13
+  ],
   "ny": 25.0,
   "pu": "Reach 1 - Lake Eildon to Yea River",
   "sev": 10.85,
-  "sev_b": 10.85
+  "sev_b": 10.85,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.2,
+    "et": 0.7647,
+    "fr": 0.2143,
+    "n": 14,
+    "sev": 10.85
+   },
+   "tin": {
+    "dr": 2.0,
+    "et": 0.167,
+    "fr": 0.6667,
+    "n": 3,
+    "sev": 1.67
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 2,
   "et": 0.8202,
   "ewr": "OB1",
   "ey": 4,
   "fr": 0.3,
   "gauge": "405203",
+  "nm": [
+   3,
+   21
+  ],
   "ny": 25.0,
   "pu": "Reach 1 - Lake Eildon to Yea River",
   "sev": 20.84,
-  "sev_b": 20.84
+  "sev_b": 20.84,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.9083,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 20.84
+   },
+   "tin": {
+    "dr": 1.5,
+    "et": 0.2363,
+    "fr": 1.3333,
+    "n": 3,
+    "sev": 20.84
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.449,
   "eps": null,
   "et": null,
   "ewr": "BF_AllYear",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405232",
+  "nm": [
+   9,
+   25
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": null,
-  "sev_b": null
+  "sev_b": null,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.311,
+    "et": null,
+    "fr": 0.0,
+    "n": 14,
+    "sev": null
+   },
+   "tin": {
+    "dr": 0.436,
+    "et": null,
+    "fr": 0.0,
+    "n": 3,
+    "sev": null
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.118,
   "eps": null,
   "et": null,
   "ewr": "BF_SumAut_1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405232",
+  "nm": [
+   0,
+   25
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": null,
-  "sev_b": null
+  "sev_b": null,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.092,
+    "et": null,
+    "fr": 0.0,
+    "n": 14,
+    "sev": null
+   },
+   "tin": {
+    "dr": 0.092,
+    "et": null,
+    "fr": 0.0,
+    "n": 3,
+    "sev": null
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.151,
   "eps": null,
   "et": null,
   "ewr": "BF_SumAut_2",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405232",
+  "nm": [
+   2,
+   25
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": null,
-  "sev_b": null
+  "sev_b": null,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.119,
+    "et": null,
+    "fr": 0.0,
+    "n": 14,
+    "sev": null
+   },
+   "tin": {
+    "dr": 0.125,
+    "et": null,
+    "fr": 0.0,
+    "n": 3,
+    "sev": null
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 4,
   "et": 0.832,
   "ewr": "F_Autumn1",
   "ey": 3,
   "fr": 0.1714,
   "gauge": "405232",
+  "nm": [
+   0,
+   22
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 12.01,
-  "sev_b": 12.01
+  "sev_b": 12.01,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.8429,
+    "fr": 0.2041,
+    "n": 14,
+    "sev": 12.01
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 7.09
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 3,
   "et": 0.8724,
   "ewr": "F_Autumn2",
   "ey": 2,
   "fr": 0.1143,
   "gauge": "405232",
+  "nm": [
+   1,
+   23
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 2.81,
-  "sev_b": 19.1
+  "sev_b": 19.1,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.8435,
+    "fr": 0.2041,
+    "n": 14,
+    "sev": 19.1
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 19.1
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 2,
   "et": 0.9174,
   "ewr": "F_Autumn3",
   "ey": 1,
   "fr": 0.0571,
   "gauge": "405232",
+  "nm": [
+   0,
+   24
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 19.22,
-  "sev_b": 19.22
+  "sev_b": 19.22,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.9239,
+    "fr": 0.102,
+    "n": 14,
+    "sev": 19.22
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 19.22
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.429,
   "eps": 5,
   "et": 0.6462,
   "ewr": "F_EarlySpring1",
   "ey": 8,
   "fr": 0.32,
   "gauge": "405232",
+  "nm": [
+   3,
+   17
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 12.94,
-  "sev_b": 12.94
+  "sev_b": 12.94,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.286,
+    "et": 0.6485,
+    "fr": 0.3571,
+    "n": 14,
+    "sev": 12.94
+   },
+   "tin": {
+    "dr": 0.429,
+    "et": 0.6505,
+    "fr": 0.3333,
+    "n": 3,
+    "sev": 2.95
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.286,
   "eps": 4,
   "et": 0.794,
   "ewr": "F_EarlySpring2",
   "ey": 4,
   "fr": 0.16,
   "gauge": "405232",
+  "nm": [
+   6,
+   21
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 15.97,
-  "sev_b": 15.97
+  "sev_b": 15.97,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.143,
+    "et": 0.8547,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 15.97
+   },
+   "tin": {
+    "dr": 0.286,
+    "et": 0.9115,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 3.74
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 3,
   "et": 0.6338,
   "ewr": "F_LateSpring1",
   "ey": 2,
   "fr": 0.16,
   "gauge": "405232",
+  "nm": [
+   3,
+   23
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 3.96,
-  "sev_b": 3.96
+  "sev_b": 3.96,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.6368,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 3.96
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 1.0,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 2.53
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 2,
   "et": 0.45,
   "ewr": "F_LateSpring2",
   "ey": 5,
   "fr": 0.4,
   "gauge": "405232",
+  "nm": [
+   3,
+   20
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 3.96,
-  "sev_b": 3.96
+  "sev_b": 3.96,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.6366,
+    "fr": 0.1429,
+    "n": 14,
+    "sev": 3.96
+   },
+   "tin": {
+    "dr": 0.5,
+    "et": 0.0,
+    "fr": 0.6667,
+    "n": 3,
+    "sev": 0.89
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.143,
   "eps": 6,
   "et": 0.713,
   "ewr": "F_Winter",
   "ey": 6,
   "fr": 0.23,
   "gauge": "405232",
+  "nm": [
+   2,
+   18
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 12.0,
-  "sev_b": 12.0
+  "sev_b": 12.0,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.777,
+    "fr": 0.2143,
+    "n": 14,
+    "sev": 12.0
+   },
+   "tin": {
+    "dr": 0.143,
+    "et": 0.9352,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 3.89
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.3,
   "eps": null,
   "et": null,
   "ewr": "OB1-WL",
   "ey": 7,
   "fr": 0.27,
   "gauge": "405232",
+  "nm": [
+   4,
+   17
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": null,
-  "sev_b": null
+  "sev_b": null,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": null,
+    "fr": 0.2857,
+    "n": 14,
+    "sev": null
+   },
+   "tin": {
+    "dr": 0.6,
+    "et": null,
+    "fr": 0.0,
+    "n": 3,
+    "sev": null
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 1.5,
   "eps": null,
   "et": null,
   "ewr": "OB1-WS",
   "ey": 16,
   "fr": 0.62,
   "gauge": "405232",
+  "nm": [
+   0,
+   10
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": null,
-  "sev_b": null
+  "sev_b": null,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": null,
+    "fr": 0.4286,
+    "n": 14,
+    "sev": null
+   },
+   "tin": {
+    "dr": 2.0,
+    "et": null,
+    "fr": 0.6667,
+    "n": 3,
+    "sev": null
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 2,
   "et": 0.4593,
   "ewr": "OB2-WL",
   "ey": 4,
   "fr": 0.2143,
   "gauge": "405232",
+  "nm": [
+   1,
+   20
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 4.58,
-  "sev_b": 4.58
+  "sev_b": 4.58,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.4657,
+    "fr": 0.2041,
+    "n": 14,
+    "sev": 4.58
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.2217,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 1.25
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 1,
   "et": 0.1929,
   "ewr": "OB2-WS",
   "ey": 10,
   "fr": 0.5429,
   "gauge": "405232",
+  "nm": [
+   0,
+   14
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 2.61,
-  "sev_b": 2.61
+  "sev_b": 2.61,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.3446,
+    "fr": 0.5102,
+    "n": 14,
+    "sev": 2.61
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.0,
+    "fr": 0.4762,
+    "n": 3,
+    "sev": 0.66
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 2,
   "et": 0.6687,
   "ewr": "OB3-WL",
   "ey": 2,
   "fr": 0.1143,
   "gauge": "405232",
+  "nm": [
+   3,
+   22
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 5.64,
-  "sev_b": 5.64
+  "sev_b": 5.64,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.6929,
+    "fr": 0.102,
+    "n": 14,
+    "sev": 5.64
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.9051,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 1.93
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  },
  {
+  "dr": 0.0,
   "eps": 2,
   "et": 0.3783,
   "ewr": "OB3-WS",
   "ey": 5,
   "fr": 0.2714,
   "gauge": "405232",
+  "nm": [
+   0,
+   19
+  ],
   "ny": 25.0,
   "pu": "Goulburn river",
   "sev": 3.9,
-  "sev_b": 3.9
+  "sev_b": 3.9,
+  "win": {
+   "fed": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   },
+   "mil": {
+    "dr": 0.0,
+    "et": 0.4657,
+    "fr": 0.2041,
+    "n": 14,
+    "sev": 3.9
+   },
+   "tin": {
+    "dr": 0.0,
+    "et": 0.2245,
+    "fr": 0.0,
+    "n": 3,
+    "sev": 1.25
+   },
+   "ww2": {
+    "dr": null,
+    "et": null,
+    "fr": null,
+    "n": 0,
+    "sev": null
+   }
+  }
  }
 ]

@@ -283,7 +283,8 @@ class TestRowTable:
         # 8: {T, ny, dur, mrip} (no parameters passed: unknown); 9: achieved years per scenario (EventYears, mean over objective repeats)
         none = {"T": None, "dur": None, "mrip": None}
         assert [r[8] for r in table] == [{**none, "ny": ny} for ny in (None, 100.0, 100.0, 100.0, None, None)]
-        assert all(len(r) == 11 and r[10] is None for r in table)  # 10: gap severity, uploads only
+        assert all(len(r) == 13 and r[10] is None and r[12] is None for r in table)  # 10, 12: gap severity and drought windows, uploads only
+        assert all(r[11] == blank() for r in table)  # 11: duration ratio; no parameters passed, so no required duration
         assert [r[9] for r in table] == [
             blank(),
             with_values(i6=50.0, i7=25.5, i14=38.0),
@@ -302,13 +303,17 @@ class TestRowTable:
                 "TargetFrequency": ["70", "10", "5"],
                 "Duration": [5, 9, 9],
                 "MaxInter-event": [3.0, 1.0, 1.0],
+                "FlowLevelVolume": ["F", "F", "F"],
             }
         )
         params = bd.ewr_params(sheet)
-        assert params[("409025", "LF1", "PU A")] == {"T": 70.0, "dur": 5, "mrip": 3.0}  # the first row of a repeated key
+        assert params[("409025", "LF1", "PU A")] == {"T": 70.0, "dur": 5, "mrip": 3.0, "kind": "F"}  # the first row of a repeated key
+        assert bd.dr_approx([4.0, None], {"dur": 2, "kind": "V"}) == [None, None]  # volume and level EWRs: no duration ratio
         table, _ = bd.build_row_table(mini_rows, {o: "Native Fish" for o in bd.objectives_of(mini_rows)}, params)
         lf1 = next(r for r in table if r[3] == "LF1")
         assert lf1[8] == {"T": 70.0, "dur": 5, "mrip": 3.0, "ny": 100.0}
+        # 11: mean event length / required duration, capped at 2: PBP Historical mean(6, 10) / 5 = 1.6; BP2024 12.5 / 5 -> 2; WOD missing
+        assert lf1[11] == with_values(i7=1.6, i14=2.0)
         assert all(r[8]["T"] is None for r in table if r[3] != "LF1")
         assert bd.ewr_params(None) == {}
 
