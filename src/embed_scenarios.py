@@ -8,6 +8,7 @@ No server and no command line are needed, so this works from a Databricks notebo
 The file is scanned for every gauge in the review, so one file can cover several SDL units. The output page opens in "Your data" mode
 with the scenarios already loaded. The flow charts need a server, so they are not available in this page.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -15,16 +16,17 @@ from pathlib import Path
 HERE = Path(__file__).parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
-from server import FORMATS, run_scenario        # the same EWR run as the local server (server.py), imported without starting it
+from server import FORMATS, run_scenario  # noqa: E402  (the same EWR run as the local server (server.py), imported without starting it)
 
 PLACEHOLDER = "const PRELOADED=[];"
 
 
 def resolve_path(path):
-    """A file path as given in a notebook: /Volumes/..., /Workspace/..., /dbfs/... or dbfs:/..., a relative path or ~/...  Raises a clear error if it is not a file."""
+    """A file path as given in a notebook: /Volumes/..., /Workspace/..., /dbfs/... or dbfs:/..., a relative path or ~/...
+    Raises a clear error if it is not a file."""
     p = str(path).strip()
     if p.startswith("dbfs:/"):
-        p = "/dbfs/" + p[len("dbfs:/"):].lstrip("/")
+        p = "/dbfs/" + p[len("dbfs:/") :].lstrip("/")
     f = Path(p).expanduser()
     if not f.is_file():
         near = ", ".join(sorted(x.name for x in f.parent.iterdir())[:8]) if f.parent.is_dir() else "(that folder does not exist)"
@@ -34,6 +36,7 @@ def resolve_path(path):
 
 def review_gauges():
     import pandas as pd
+
     return sorted(pd.read_csv(ROOT / "data/results/frequency_ratio.csv", dtype={"Gauge": str}, usecols=["Gauge"]).Gauge.dropna().unique())
 
 
@@ -59,15 +62,18 @@ def build_with_scenarios(scenarios, out_path, template=None):
             raise ValueError(f"two scenarios are called {name!r}; give each a different name")
         used.add(name)
         vals, stats = run_file(sc["path"], sc.get("format", "Standard time-series"), gauges)
-        print(f"{name}: {len(vals)} EWR results, {stats['gauges_in_file']} gauges found in the file"
-              + (f", could not evaluate {sorted(stats['skipped'])}" if stats.get("skipped") else ""))
+        print(
+            f"{name}: {len(vals)} EWR results, {stats['gauges_in_file']} gauges found in the file"
+            + (f", could not evaluate {sorted(stats['skipped'])}" if stats.get("skipped") else "")
+        )
         out.append({"name": name, "fmt": sc.get("format", "Standard time-series"), "vals": vals})
     html = html.replace(PLACEHOLDER, "const PRELOADED=" + json.dumps(out, separators=(",", ":")).replace("</", "<\\/") + ";")
     out_path = Path(out_path).expanduser()
     try:
         out_path.write_text(html)
-    except OSError:                                                   # a folder that cannot be written (e.g. read-only): fall back to the temp folder
+    except OSError:  # a folder that cannot be written (e.g. read-only): fall back to the temp folder
         import tempfile
+
         out_path = Path(tempfile.gettempdir()) / out_path.name
         out_path.write_text(html)
     print("written", out_path, f"({len(html) // 1024} KB)")

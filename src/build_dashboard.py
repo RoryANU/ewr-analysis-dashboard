@@ -9,18 +9,28 @@ The page averages them (plain mean over EWRs) by SDL unit, planning unit, gauge,
 policy x climate scenario. Nothing is scaled between Pre Basin Plan and Without Development; no likelihood / theme / grade
 logic is included. Gauge positions: BoM Water Data Online station list.
 """
+
 import json
+
 import pandas as pd
-from shapely.geometry import shape, mapping
+from shapely.geometry import mapping, shape
+
 from flow_regime_mappings import regimes_for
 
-HERE = __import__("pathlib").Path(__file__).parent      # src/
-ROOT = HERE.parent                                      # repository root; inputs are in data/, the page is written here
+HERE = __import__("pathlib").Path(__file__).parent  # src/
+ROOT = HERE.parent  # repository root; inputs are in data/, the page is written here
 norm = lambda s: "".join(c for c in s.lower() if c.isalnum())
 
 POLICIES = ["Without Development", "Pre Basin Plan", "Basin plan 2024", "Basin plan full implementation"]
-CLIMATES = ["Historical Climate", "Warmer and Wetter 1.5 C", "Warmer and Drier 1.5 C", "Warmer and Much Drier 1.5 C",
-            "Hotter and Wetter 2.0 C", "Hotter and Drier 2.0 C", "Hotter and Much Drier 2.0 C"]
+CLIMATES = [
+    "Historical Climate",
+    "Warmer and Wetter 1.5 C",
+    "Warmer and Drier 1.5 C",
+    "Warmer and Much Drier 1.5 C",
+    "Hotter and Wetter 2.0 C",
+    "Hotter and Drier 2.0 C",
+    "Hotter and Much Drier 2.0 C",
+]
 NS = len(POLICIES) * len(CLIMATES)
 # The model outputs report the lake-level EWRs under A4260527 (Tauwitchere); the parameter sheet puts them on A4260524 (Milang).
 REKEY = {"A4260527": "A4260524"}
@@ -41,10 +51,14 @@ def detect_variant_conflicts(df, key_columns, value_column):
     return conflicts
 
 
-fr = pd.read_csv(ROOT / "data/results/frequency_ratio.csv", dtype={"Gauge": str},
-                 usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR"])
-et = pd.read_csv(ROOT / "data/results/etp.csv", dtype={"Gauge": str},
-                 usecols=lambda c: c.strip() in set(KEY + ["EcoObj", "Target", "Policy", "ClimateModel", "ETP", "State"]))
+fr = pd.read_csv(
+    ROOT / "data/results/frequency_ratio.csv", dtype={"Gauge": str}, usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR"]
+)
+et = pd.read_csv(
+    ROOT / "data/results/etp.csv",
+    dtype={"Gauge": str},
+    usecols=lambda c: c.strip() in set(KEY + ["EcoObj", "Target", "Policy", "ClimateModel", "ETP", "State"]),
+)
 et.columns = et.columns.str.strip()
 for d in (fr, et):
     d["Gauge"] = d.Gauge.replace(REKEY)
@@ -64,8 +78,11 @@ for metric, data in (("FR", fr), ("ETP", et)):
 
 # one row per (planning unit, SDL unit, gauge, EWR): both files repeat each EWR once per ecological objective
 rows = {}
+
+
 def row(k):
     return rows.setdefault(k, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "state": None})
+
 
 for k, v in fr.groupby(KEY):
     r = row(k)
@@ -80,7 +97,7 @@ for k, v in et.groupby(KEY):
     for s, x in v.groupby("scn").ETP.mean().items():
         r["et"][int(s)] = round(float(x), 4)
 for k, r in rows.items():
-    if not r["rg"]:                                   # ETP-only EWR: use the MDBA pipeline's EWR-code -> flow regime rule
+    if not r["rg"]:  # ETP-only EWR: use the MDBA pipeline's EWR-code -> flow regime rule
         r["rg"] = set(regimes_for(k[3], r["state"]))
     if not r["rg"]:
         r["rg"] = {"Unmapped"}
@@ -102,9 +119,19 @@ for o in objs:
 themes = ["Flows & Connectivity", "Ecosystem Functions", "Waterbirds", "Native Fish", "Native Vegetation", "Other Species", "Unclassified"]
 themes += sorted(set(obj_theme.values()) - set(themes))
 regimes = sorted({g for r in rows.values() for g in r["rg"]})
-ROWS = [[pus.index(k[0]), sdls.index(k[1]), gids.index(k[2]), k[3],
-         sorted(objs.index(o) for o in r["ob"]), sorted(regimes.index(g) for g in r["rg"]), r["fr"], r["et"]]
-        for k, r in sorted(rows.items())]
+ROWS = [
+    [
+        pus.index(k[0]),
+        sdls.index(k[1]),
+        gids.index(k[2]),
+        k[3],
+        sorted(objs.index(o) for o in r["ob"]),
+        sorted(regimes.index(g) for g in r["rg"]),
+        r["fr"],
+        r["et"],
+    ]
+    for k, r in sorted(rows.items())
+]
 print(len(ROWS), "EWR rows;", len(sdls), "SDL units;", len(pus), "planning units;", len(gids), "gauges")
 
 # --- gauges ---------------------------------------------------------------------------------------------------------
@@ -113,8 +140,18 @@ for c in ("station_latitude", "station_longitude"):
     bom[c] = pd.to_numeric(bom[c], errors="coerce")
 bom = bom.dropna(subset=["station_latitude"]).drop_duplicates("station_no").set_index("station_no")
 # constraint sites (data/map/constraint_sites.csv): points drawn on the map; the file is hand-maintained
-CONSTRAINTS = [{"name": r.name, "river": r.river, "lat": float(r.lat), "lon": float(r.lon), "site": "" if pd.isna(r.site) else r.site, "cur": r.current_ml_d, "rel": r.relaxed_ml_d}
-               for r in pd.read_csv(ROOT / "data/map/constraint_sites.csv").itertuples()]
+CONSTRAINTS = [
+    {
+        "name": r.name,
+        "river": r.river,
+        "lat": float(r.lat),
+        "lon": float(r.lon),
+        "site": "" if pd.isna(r.site) else r.site,
+        "cur": r.current_ml_d,
+        "rel": r.relaxed_ml_d,
+    }
+    for r in pd.read_csv(ROOT / "data/map/constraint_sites.csv").itertuples()
+]
 GAUGES, unplotted = [], []
 for gid in gids:
     if gid in bom.index:
@@ -139,18 +176,33 @@ for f in gj["features"]:
     p = f["properties"]
     f["properties"] = {"name": p["SWSDLName"], "id": p["SWSDLID"], "state": p["StateID"], "sdl": by_norm.get(norm(p["SWSDLName"]), -1)}
     f["geometry"] = mapping(shape(f["geometry"]).simplify(0.005, preserve_topology=True))
-print("SDL names in results with no polygon:", [n for n in sdls if norm(n) not in {norm(f['properties']['name']) for f in gj['features']}])
+print("SDL names in results with no polygon:", [n for n in sdls if norm(n) not in {norm(f["properties"]["name"]) for f in gj["features"]}])
 
-META = {"policies": POLICIES, "climates": CLIMATES, "pus": pus, "sdls": sdls, "gauges": gids,
-                              "themes": themes, "regimes": regimes, "objs": objs,
-                              "objTheme": [themes.index(obj_theme[o]) for o in objs],
-                              "objDesc": [ref.at[o, "Objective"] if o in ref.index and isinstance(ref.at[o, "Objective"], str) else "" for o in objs]}
+META = {
+    "policies": POLICIES,
+    "climates": CLIMATES,
+    "pus": pus,
+    "sdls": sdls,
+    "gauges": gids,
+    "themes": themes,
+    "regimes": regimes,
+    "objs": objs,
+    "objTheme": [themes.index(obj_theme[o]) for o in objs],
+    "objDesc": [ref.at[o, "Objective"] if o in ref.index and isinstance(ref.at[o, "Objective"], str) else "" for o in objs],
+}
 
 
 def build(template_text, out_name):
     html = template_text
-    for tag, val in {"__DATA__": gj, "__GAUGES__": GAUGES, "__ROWS__": ROWS,
-                     "__RIVERS__": json.load(open(ROOT / "data/map/rivers.geojson")), "__CONSTRAINTS__": CONSTRAINTS, "__META__": META, "__SCENARIOS__": []}.items():
+    for tag, val in {
+        "__DATA__": gj,
+        "__GAUGES__": GAUGES,
+        "__ROWS__": ROWS,
+        "__RIVERS__": json.load(open(ROOT / "data/map/rivers.geojson")),
+        "__CONSTRAINTS__": CONSTRAINTS,
+        "__META__": META,
+        "__SCENARIOS__": [],
+    }.items():
         html = html.replace(tag, json.dumps(val, separators=(",", ":")))
     open(ROOT / out_name, "w").write(html)
     print(len(html) // 1024, "KB written to", out_name)
