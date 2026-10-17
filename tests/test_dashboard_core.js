@@ -128,3 +128,25 @@ test('cnts: differential changes under one point are unchanged',()=>{
   run("S.mode='diff'");
   assert.deepEqual(plain(run("cnts(ROWS,'fr')")),{up:1,dn:1,same:1,n:3});
 });
+test('differential labels: an FR difference is a ratio difference, a share of EWRs is in points',()=>{
+  const run=harness();
+  run("S.mode='diff'");
+  assert.equal(run("f3(.14,'fr')"),'+0.140');   // not "+14%": FR is a ratio, so its difference is too
+  assert.equal(run("fs2(-.14,'fr')"),'−0.14');
+  assert.equal(run("fs2(.0004,'fr')"),'0.00');   // a change that rounds to zero carries no sign
+  assert.equal(run("fs2(.25,'ach')"),'+25 pts');
+  assert.equal(run("fs2(-.1,'fb')"),'−10 pts');
+  assert.equal(run("fs2(.03,'et')"),'+0.3');
+  run("S.mode='single'");
+  assert.equal(run("fs2(.9,'fr')"),'0.90'); assert.equal(run("fs2(.5,'ach')"),'50%'); assert.equal(run("f3(null,'fr')"),'–');
+});
+test('textOnColour picks the label colour with the higher contrast on its fill',()=>{
+  const ctx=vm.createContext({});
+  vm.runInContext(section('// text drawn on a coloured fill','// ---- map'),ctx);
+  const run=code=>vm.runInContext(code,ctx);
+  assert.equal(run("textOnColour('#ffffff')"),'#111111');
+  assert.equal(run("textOnColour('rgb(33,102,172)')"),'#ffffff');
+  assert.equal(run("textOnColour('#f28e2b')"),'#111111');   // waterbird orange: white text fails here
+  assert.equal(run("textOnColour('#888')"),'#111111');
+  assert.ok(run("contrast('#6b7280','#ffffff')")>=4.5);   // the failed-year grey keeps white text and symbols legible
+});
