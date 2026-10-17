@@ -75,6 +75,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and years in 10 exceeding MRIP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
   <button id="swapBC" title="Swap base and comparison" style="display:none">⇄ Reverse</button>
+  <label id="bandL" style="display:none" title="Differential: an EWR's frequency counts as changed when it gains or loses at least this many achieved years over the record (crossing the target always counts)">Change band ≥ <select id="band"><option>1</option><option selected>2</option><option>3</option><option>5</option></select> achieved years</label>
   <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
   <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion scaled to ten years: how many years in 10 the MRIP is exceeded (lower is better)">Years in 10 exceeding MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button></div></details></span></label>
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
@@ -98,8 +99,9 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script>
 const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__, CONSTRAINTS=__CONSTRAINTS__;
-const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et],...]}]
-// ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28]]
+const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et,ey,ny],...]}] (VALK)
+// ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28], {T, ny, dur, mrip}, achievedYears[28]]
+//   r[8]: target % of years, record years (an upload's own in nyAt[scenario index]), required days, MRIP years; r[9]: EventYears per scenario
 ROWS.forEach(r=>{ const t=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=t.length?t:[META.themes.indexOf("Unclassified")]; });
 const NC=META.climates.length;
 const POL_L={"Without Development":"Without development","Pre Basin Plan":"Pre Basin Plan","Basin plan 2024":"Basin Plan 2024","Basin plan full implementation":"Full implementation"};
@@ -108,7 +110,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const $=id=>document.getElementById(id);
 
 const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
-const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"demo",band:2,flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 
 // ---- values and averages -----------------------------------------------------------------------------------------
@@ -123,32 +125,45 @@ const FR_T=1, MET_OUT=true;   // FR_T: FR at the target frequency. MET_OUT: diff
 // one scenario's value of metric m: FR, ETP (capped at 1), or 1 / 0 for the binary metrics ("ach": FR >= threshold; "fb": FR < floor; "mz": ETP <= threshold, 0 = MRIP never exceeded)
 function valOne(r,m,i){ const raw=(m==="et"||m==="mz"?r[7]:r[6])[i], v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw;
   return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; }
+const nyOf=(r,i)=>r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null, eyOf=(r,i)=>r[9]?r[9][i]??null:null;   // record years; achieved years
+const dYears=r=>{ const c=eyOf(r,scnIdx()), b=eyOf(r,scnIdx(S.bpol,S.bcli)); return c==null||b==null?null:c-b; };   // achieved years, comparison − base
 // differential class of an EWR (base b -> comparison c) and its change d as it enters the means (positive = better); null when either is missing.
 //   met: target met in both (d null, so out of the means; FR surplus c - b in `sur`, tooltips only) · gain: reaches it, d = min(c,1) - b
 //   loss: drops below it, d = c - min(b,1) · below: short in both, d = c - b. ETP: target = at most S.ethr, lower is better (d = b - c). Binary metrics: no class
+// FR also: dyr = the same change in achieved years (capped at T % of the record when the target is crossed) and dy = dyr per century of record
+// (ΔFR × T when the EWR has no achieved-years data, the same quantity); null for met
 function diffClass(r,m){ const c=valOne(r,m,scnIdx()), b=valOne(r,m,scnIdx(S.bpol,S.bcli)); if(c==null||b==null) return null;
   if(isBin(m)) return {cls:null,d:LOWER[m]?b-c:c-b};
   const ok=m==="et"?v=>v<=S.ethr+1e-9:v=>v>=FR_T-1e-9, bo=ok(b), co=ok(c), d=m==="et"?b-c:c-b;
   if(bo&&co) return {cls:"met",d:MET_OUT?null:0,sur:d};
   if(m==="et") return {cls:co?"gain":bo?"loss":"below",d};
-  return co?{cls:"gain",d:Math.min(c,FR_T)-b}:bo?{cls:"loss",d:c-Math.min(b,FR_T)}:{cls:"below",d}; }
-// single scenario: the value at index i; differential: the change from base to comparison (S.pol / S.bpol, not i)
-function val(r,m,i){ if(!isDiff()) return valOne(r,m,i); const k=diffClass(r,m); return k&&k.d; }
+  const k=co?{cls:"gain",d:Math.min(c,FR_T)-b}:bo?{cls:"loss",d:c-Math.min(b,FR_T)}:{cls:"below",d}, i1=scnIdx(), i0=scnIdx(S.bpol,S.bcli), T=r[8]?r[8].T:null;
+  const e1=eyOf(r,i1), e0=eyOf(r,i0), n1=nyOf(r,i1), n0=nyOf(r,i0), cap=(e,n)=>T!=null&&n?Math.min(e,T*n/100):e, ny=n1??n0;
+  k.dyr=e1==null||e0==null?null:co?cap(e1,n1)-e0:bo?e1-cap(e0,n0):e1-e0;
+  k.dy=k.dyr!=null&&ny?k.dyr*100/ny:T!=null?k.d*T:null; return k; }
+const dFR=(r,m)=>{ const k=diffClass(r,m); return k&&k.d; };   // the change in FR units (differential tooltips)
+// single scenario: the value at index i; differential: the change from base to comparison (S.pol / S.bpol, not i): FR in achieved years per century
+function val(r,m,i){ if(!isDiff()) return valOne(r,m,i); const k=diffClass(r,m); return !k?null:m==="fr"?(k.cls==="met"?k.d:k.dy):k.d; }
+// is the change big enough to count as improved (1) / declined (-1)? FR: at least S.band achieved years; ETP: at least 1 year of record beyond MRIP;
+// without the record length (or for the binary metrics): more than 0.01. Crossing the target always counts
+function moved(r,m,k){ if(k.cls==="gain") return 1; if(k.cls==="loss") return -1;
+  const ny=nyOf(r,scnIdx())??nyOf(r,scnIdx(S.bpol,S.bcli)), band=(x,b)=>x>=b-1e-9?1:x<=-b+1e-9?-1:0;
+  return m==="fr"&&k.dyr!=null?band(k.dyr,S.band):m==="et"&&ny?band(k.d*ny,1):k.d>0.01?1:k.d<-0.01?-1:0; }
 const hasRes=(r,m)=>isDiff()?diffClass(r,m)!=null:valOne(r,m,scnIdx())!=null;   // a result in the scenario (both scenarios, differential)
-// per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (|change| under 1 point); gain and loss
+// per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (see moved); gain and loss
 // (crossing the target) always count as improved / declined; met in both is counted apart and, with MET_OUT, not in n
 function cnts(rows,m){ const o={up:0,dn:0,same:0,met:0,gain:0,loss:0,n:0};
   for(const r of rows){ const k=diffClass(r,m); if(!k) continue; if(k.cls==="met"){ o.met++; if(MET_OUT) continue; }
-    o.n++; if(k.cls==="gain"){ o.gain++; o.up++; } else if(k.cls==="loss"){ o.loss++; o.dn++; } else if(k.d>0.01) o.up++; else if(k.d<-0.01) o.dn++; else o.same++; }
+    o.n++; if(k.cls==="gain") o.gain++; if(k.cls==="loss") o.loss++; const g=moved(r,m,k); if(g>0) o.up++; else if(g<0) o.dn++; else o.same++; }
   return o; }
 const allMet=c=>!!c&&c.met>0&&c.n===(MET_OUT?0:c.met);   // every EWR with a result meets the target in both scenarios
 const KEYF={pu:r=>r[0],gauge:r=>r[2]};
 // levels: outer -> inner grouping keys; the mean is taken innermost first, so each level weights its members equally.
 // One scenario: FR enters the mean capped at the target (a surplus cannot offset a shortfall elsewhere); the tables and box plots keep it uncapped
-function agg(rows,levels,m,i){
-  if(!levels.length){ let s=0,n=0; for(const r of rows){ const v=val(r,m,i); if(v!=null){s+=m==="fr"&&!isDiff()?Math.min(v,FR_T):v;n++;} } return {n,mean:n?s/n:null}; }
+function agg(rows,levels,m,i,vf=val){   // vf: the per-EWR value (default val)
+  if(!levels.length){ let s=0,n=0; for(const r of rows){ const v=vf(r,m,i); if(v!=null){s+=m==="fr"&&!isDiff()?Math.min(v,FR_T):v;n++;} } return {n,mean:n?s/n:null}; }
   const g=new Map(); for(const r of rows){ const k=KEYF[levels[0]](r); if(!g.has(k)) g.set(k,[]); g.get(k).push(r); }
-  let s=0,k=0,n=0; for(const rs of g.values()){ const a=agg(rs,levels.slice(1),m,i); if(a.mean!=null){s+=a.mean;k++;n+=a.n;} }
+  let s=0,k=0,n=0; for(const rs of g.values()){ const a=agg(rs,levels.slice(1),m,i,vf); if(a.mean!=null){s+=a.mean;k++;n+=a.n;} }
   return {n,mean:k?s/k:null};
 }
 const LEVELS={sdl:["pu","gauge"],pu:["gauge"],gauge:[]};
@@ -158,7 +173,9 @@ const signed=(t,v)=>(+t===0?"":v>0?"+":v<0?"−":"")+t.replace("-","");   // a v
 const pct=v=>signed(String(Math.abs(Math.round(v*100))),v)+" pts", dfr=m=>isDiff()&&isBin(m);
 const pa=v=>Math.round(v*100)+"%";
 const sg=v=>isDiff()&&v>0?"+":"", num=(v,dp)=>isDiff()?signed(Math.abs(v).toFixed(dp),v):v.toFixed(dp);
-const f3=(v,m)=>v==null?"–":m==="et"?num(v*ETY,2):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="et"?num(v*ETY,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
+const dyc=m=>isDiff()&&m==="fr";   // differential FR is in achieved years per century of record
+const f3=(v,m)=>v==null?"–":m==="et"?num(v*ETY,2):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="et"?num(v*ETY,1):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
+const mn=m=>dyc(m)?"mean change in achieved years per century":MN[m], msn=m=>dyc(m)?"change in achieved yrs/century":MS[m];   // differential FR labels
 
 // ---- selection ---------------------------------------------------------------------------------------------------
 function selRows(){
@@ -174,7 +191,7 @@ const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
 const RYB=[[215,48,39],[252,141,89],[254,224,144],[145,191,219],[69,117,180]], ryb=s=>{ const x=Math.max(0,Math.min(1,s))*(RYB.length-1), i=Math.min(RYB.length-2,Math.floor(x)); return `rgb(${mixc(RYB[i],RYB[i+1],x-i)})`; };
 const ramp=s=>ryb(s);   // 0 worst (red) .. 1 best (blue)
 const MET_FILL="#e5e7eb", metTip=(r,m)=>{ const k=diffClass(r,m); return `meets the target in both scenarios (not in the means)${k&&k.sur!=null?`; surplus ${signed(Math.abs(m==="et"?k.sur*ETY:k.sur).toFixed(2),k.sur)}`:""}`; };   // differential: every EWR meets the target in both scenarios
-const ETP_MAX=0.5, DIV={fr:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25};   // differential: differences of this size (or more) get the full colour
+const ETP_MAX=0.5, DIV={fr:10,et:0.15,ach:0.25,mz:0.25,fb:0.25};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,v/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
@@ -297,14 +314,14 @@ function render(){
   const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
   const bx=k=>s.type==="gauge"&&S.metric===k?boxPlot(rows,k):"";
   const foot=(k,a)=>isDiff()?(c=>`<span style="display:block">${MET_OUT?`Mean over ${a.n} EWRs below target in at least one scenario; ${c.met} met in both excluded`:`Mean over ${a.n} EWRs; ${c.met} met in both count as no change`}</span>`)(cnts(rows,k)):"";   // what the differential mean is taken over   // gauge view, FR or years-in-10 selected: distribution of the EWRs beside the mean
-  let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"mean FR difference":"mean frequency ratio (each EWR capped at 1)"} · ${fr.n} EWRs</span>${foot("fr",fr)}${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
+  let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div${isDiff()?` title="Mean change in FR (ΔFR): ${(d=>d==null?"–":num(d,3))(agg(rows,lv,"fr",i,dFR).mean)} (comparison − base; capped at the target where it is crossed)"`:""}><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"achieved years per century":"mean frequency ratio (each EWR capped at 1)"} · ${fr.n} EWRs</span>${foot("fr",fr)}${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
     ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"improvement in EWRs achieving":"hierarchical % meeting frequency threshold"} · ${ac.n} EWRs</span></div>`:""}
     ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"improvement in EWRs achieving MRIP":"EWRs achieving MRIP"} · ${mz.n} EWRs</span></div>`:""}
     ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"improvement in EWRs failing badly (fewer = +)":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
     ${inFam("et")?`<div class="tile${bx("et")?" wb":""}"><div><b>${f3(et.mean,"et")}</b><span>${isDiff()?"improvement in mean years in 10 exceeding MRIP (fewer = +)":"mean years in 10 exceeding MRIP"} · ${et.n} EWRs</span>${foot("et",et)}${bx("et")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("et")}</div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
     ${isDiff()&&s.type!=="sdl"?(()=>{ const c=cnts(rows,S.metric), p=x=>c.n?Math.round(100*x/c.n):0, bin=isBin(S.metric), tg=S.metric==="et"?"the MRIP target":"target";
       return `<div class="cnts"><b>${MS[S.metric]==="FR"?"Frequency ratio":MS[S.metric][0].toUpperCase()+MS[S.metric].slice(1)}: EWRs changed (comparison vs base)</b><div class="bar"><span style="width:${p(c.up)}%;background:#2166ac"></span><span style="width:${p(c.same)}%;background:#c9ced6"></span><span style="width:${p(c.dn)}%;background:#b2182b"></span></div>
-        <span class="up">▲ ${c.up} improved${bin?"":` (${c.gain} now meet ${tg})`}</span> · <span class="dn">▼ ${c.dn} declined${bin?"":` (${c.loss} drop below ${tg})`}</span> · = ${c.same} unchanged${bin?"":` · met in both: ${c.met} (${MET_OUT?"not in the mean":"in the mean as no change"})`} <span style="color:#6b7280">· ${c.n+(MET_OUT?c.met:0)} EWRs with a result in both scenarios</span></div>`; })():""}
+        <span class="up">▲ ${c.up} improved${bin?"":` (${c.gain} now meet ${tg})`}</span> · <span class="dn">▼ ${c.dn} declined${bin?"":` (${c.loss} drop below ${tg})`}</span> · = ${c.same} unchanged${bin?"":` · met in both: ${c.met} (${MET_OUT?"not in the mean":"in the mean as no change"})`} <span style="color:#6b7280">· ${c.n+(MET_OUT?c.met:0)} EWRs with a result in both scenarios; unchanged = ${S.metric==="fr"?`under ${S.band} achieved year${S.band===1?"":"s"}`:S.metric==="et"?"under 1 year of record beyond MRIP":"no change"}</span></div>`; })():""}
     <div class="mxbar"><b>${s.type==="sdl"?"Matrices":"Matrix"}</b>
       ${s.type==="sdl"?"":themeSeg()}
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
@@ -313,7 +330,7 @@ function render(){
     ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div>${matrixLegend(true)}</details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>${matrixLegend(false)}`}${cellDetail()}${flowPanel()}`;
 
   const pv=preparePerformance(rows);
-  $("panel").innerHTML=h; mountPerformance(pv); wireFlow();
+  $("panel").innerHTML=h; mountPerformance(pv); wireFlow(); loadMcn();
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -413,10 +430,10 @@ function matrixSvg(rows,mxk){
     const cchip=()=>{ const x=CX(CHIPS.length); return `<rect x="${x}" y="${y+2}" width="${CCW}" height="${C-4}" rx="3" fill="#f1f3f6" stroke="#0002"/><text x="${x+CCW/2}" y="${cy+3.5}" text-anchor="middle" style="font-size:10px"><tspan style="fill:#1d5a99">▲${o.cn.up}</tspan> <tspan style="fill:#b3261e;font-weight:${o.cn.dn?700:400}">▼${o.cn.dn}</tspan></text>`; };
     const tip=o.grp?`${o.label}: ${o.objs.map(x=>META.objs[x]).join(", ")}`:`${o.label} (${o.theme}): ${o.desc||"no description"}`;
     const sep=ri>0&&orows[ri-1].theme!==o.theme?`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="#8a8a8a"/>`:"";
-    g+=`<g><title>${esc(tip)}${cnt?"":` — ${MN[m]} ${f3(o.vals[m],m)}${isDiff()?` (▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged)`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+4}">${esc(o.label)}</text></g>`; });
+    g+=`<g><title>${esc(tip)}${cnt?"":` — ${mn(m)} ${f3(o.vals[m],m)}${isDiff()?` (▲${o.cn.up} improved, ▼${o.cn.dn} declined, ${o.cn.same} unchanged)`:""}`}</title><rect x="0" y="${y}" width="${W}" height="${C}" fill="${ri%2?"#f4f4f4":"#fff"}"/>${sep}${cnt?"":CHIPS.map(([k],n)=>chip(CX(n),o.vals[k],k)).join("")+(isDiff()?cchip():"")}<text x="${xL}" y="${cy+4}">${esc(o.label)}</text></g>`; });
   cols.forEach((c,ci)=>{ const x=x0+ci*C+C/2, hit=orows.map((o,ri)=>cell[ci][ri].n>0?ri:-1).filter(r=>r>=0);
     const go=byReg?"":t==="sdl"?` class="colsel" data-act="pu" data-i="${c.key}" data-sdl="${S.sel.i}" style="cursor:pointer"`:t==="pu"?` class="colsel" data-act="gauge" data-i="${c.key}" style="cursor:pointer"`:"";
-    g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+[...c.rows].sort(byThrR).map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${MN[m]} ${f3(c.v,m)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
+    g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+[...c.rows].sort(byThrR).map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${mn(m)} ${f3(c.v,m)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
     if(!cnt&&c.v!=null) g+=`<rect x="${x-6}" y="${D?Math.min(by(c.v),mid):by(c.v)}" width="12" height="${D?Math.abs(by(c.v)-mid)||1:base-by(c.v)}" fill="${colour(c.v,m)}" stroke="#0004"${go}/>`;
     if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid; g+=`<text x="${x}" y="${top-3}" text-anchor="middle" style="font-size:10px;font-weight:600">${fs2(c.v,m)}</text>`; }   // exact change above the bar
     if(!cnt&&c.v==null) g+=D&&allMet(c.cn)?`<text x="${x}" y="${mid+3.5}" text-anchor="middle" style="font-size:11px;fill:#4b5563">✓</text>`:`<text x="${x}" y="${base-3}" text-anchor="middle" style="font-size:10px;fill:#6b7280">n/a</text>`;
@@ -424,9 +441,9 @@ function matrixSvg(rows,mxk){
     if(hit.length>1) g+=`<line x1="${x}" x2="${x}" y1="${my+hit[0]*C+C/2}" y2="${my+hit[hit.length-1]*C+C/2}" stroke="#999" stroke-width="2"/>`;
     orows.forEach((o,ri)=>{ const q=cell[ci][ri], cy=my+ri*C+C/2; if(!q.n){ g+=`<circle cx="${x}" cy="${cy}" r="3.4" fill="#d1d5db"/>`; return; }
       const am=D&&!cnt&&allMet(q.cn), f=t==="sdl"?"#e8edf4":am?MET_FILL:q.v==null?"#fff":colour(q.v,m), masked=D&&q.cn&&((q.cn.dn>0&&q.v!=null&&q.v>=0)||q.cn.loss>0), isSel=S.cell&&S.cell.c===c.id&&S.cell.r===o.id, ring=isSel?`stroke="#1f4e8c" stroke-width="3"`:masked?`stroke="#c0392b" stroke-width="2.2"`:`stroke="#0004"`;   // red ring: net result is not worse, yet some EWRs declined   // SDL view: planning unit x theme cells are plain EWR counts
-      const grouped=c.grp||o.grp||t==="sdl", ttl=esc(c.full)+" · "+esc(o.label)+": "+(t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+(am?", all meet the target in both scenarios (not in the means)":`, mean ${MS[m]} ${f3(q.v,m)}`))+(D&&q.cn&&grouped?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(q.cn.met?`, ${q.cn.met} met in both`:"")+(q.cn.loss?`, ${q.cn.loss} drop below target`:"")+(masked?" (decline hidden by the average)":""):"");
+      const grouped=c.grp||o.grp||t==="sdl", ttl=esc(c.full)+" · "+esc(o.label)+": "+(t==="sdl"?q.n+" EWR → objective mapping"+(q.n>1?"s":""):q.n+" EWR"+(q.n>1?"s":"")+(am?", all meet the target in both scenarios (not in the means)":`, mean ${msn(m)} ${f3(q.v,m)}`))+(D&&q.cn&&grouped?` — ▲${q.cn.up} improved, ▼${q.cn.dn} declined, ${q.cn.same} unchanged`+(q.cn.met?`, ${q.cn.met} met in both`:"")+(q.cn.loss?`, ${q.cn.loss} drop below target`:"")+(masked?" (decline hidden by the average)":""):"");
       g+=`<g data-mx="${mk}" data-ci="${ci}" data-ri="${ri}" style="cursor:pointer"><circle cx="${x}" cy="${cy}" r="${C/2}" fill="transparent"/>`+((grouped&&q.n>1)?`<circle cx="${x}" cy="${cy}" r="${C/2-2}" fill="${f}" ${ring}><title>${ttl}</title></circle><text x="${x}" y="${cy+3.5}" text-anchor="middle" style="font-size:10px;fill:${textOnColour(f)}">${am?"✓":q.n}</text>`   // a count of 1 is not printed: it is drawn as the plain circle used when drilled in
-        :`<circle cx="${x}" cy="${cy}" r="5.4" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+(am?metTip(q.rows[0],m):MS[m]+" "+f3(q.v,m))}</title></circle>`+(am?`<text x="${x}" y="${cy+3}" text-anchor="middle" style="font-size:8px;pointer-events:none">✓</text>`:""))+`</g>`; });
+        :`<circle cx="${x}" cy="${cy}" r="5.4" fill="${f}" stroke="${isSel?"#1f4e8c":masked?"#c0392b":"#222"}" stroke-width="${isSel?3:masked?2.2:1}"><title>${grouped?ttl:esc(c.full)+" → "+esc(o.label)+": "+(am?metTip(q.rows[0],m):msn(m)+" "+f3(q.v,m))}</title></circle>`+(am?`<text x="${x}" y="${cy+3}" text-anchor="middle" style="font-size:8px;pointer-events:none">✓</text>`:""))+`</g>`; });
     g+=`<text transform="translate(${x+3.5},${my-4}) rotate(-90)"${go?go.replace('style="cursor:pointer"','style="cursor:pointer;fill:#1f4e8c"'):""}>${esc(c.show)}</text></g>`; });
   if(t==="gauge") for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++;
     const rg=cols[a].reg, single=b===a&&!cols[a].grp, closed=COLL_REG.has(rg)&&!single, bx=x0+a*C+1, bw=(b-a+1)*C-2;
@@ -447,8 +464,8 @@ function matrixLegend(cnt){
     :m==="et"?[0,1/ETY*10,[0,.5,1],"lower is better; blue = never exceeded"]
     :[0,1,[0,.5,1],m==="fb"?"lower is better (fewer EWRs failing badly)":"higher is better"];
   const at=v=>(v-lo)/(hi-lo)*100, stops=Array.from({length:21},(_,k)=>{ const v=lo+(hi-lo)*k/20; return `${colour(v,m)} ${k*5}%`; }).join(",");
-  const lab=v=>D?(m==="et"?num(v*ETY,1):isBin(m)?pct(v):num(v,2)):m==="et"?(v*ETY).toFixed(0):isBin(m)?pa(v):v.toFixed(1);
-  const name=D?`Change in ${MN[m].replace(/^mean /,"")} (${m==="et"||m==="fb"?"base − comparison":"comparison − base"})`:m==="et"?"Years in 10 exceeding MRIP":MN[m][0].toUpperCase()+MN[m].slice(1);
+  const lab=v=>D?(m==="et"?num(v*ETY,1):isBin(m)?pct(v):m==="fr"?num(v,0):num(v,2)):m==="et"?(v*ETY).toFixed(0):isBin(m)?pa(v):v.toFixed(1);
+  const name=D&&m==="fr"?"Change in achieved years per century (comparison − base)":D?`Change in ${MN[m].replace(/^mean /,"")} (${m==="et"||m==="fb"?"base − comparison":"comparison − base"})`:m==="et"?"Years in 10 exceeding MRIP":MN[m][0].toUpperCase()+MN[m].slice(1);
   const scale=`<div><b>${esc(name)}</b><div class="it"><div><div class="rmp" style="background:linear-gradient(90deg,${stops})"></div><div class="tk">${ticks.map(v=>`<span style="left:${at(v)}%">${lab(v)}</span>`).join("")}</div></div>${!D&&m==="fr"?"<span>1.0+</span>":D?`<span>beyond ±${lab(hi).replace(/^[+−]/,"")}: full colour</span>`:""}</div><span>${better}</span></div>`;
   const rings=`<div><b>Rings</b>${D?`<span class="it">${dot("#fff","#c0392b",2.2)}net change not worse, but some EWRs declined, or some drop below target</span>`:""}<span class="it">${dot("#fff","#1f4e8c",3)}selected cell (details below)</span></div>`;
   const met=D&&!isBin(m)?`<div><b>Met in both</b><span class="it">${dot(MET_FILL,"#0004",1,9,"✓")}every EWR meets the target in both scenarios</span><span>${MET_OUT?"left out of the means and ▲/▼ counts":"in the means as no change"}</span></div>`:"";
@@ -474,14 +491,26 @@ function cellDetail(){
   const good=d=>d==null?"":(d>0.01?"color:#1d5a99":d<-0.01?"color:#b3261e":"");   // blue = better, red = worse, as on the matrix
   const head=["EWR",t!=="gauge"?"Gauge":"",t==="sdl"?"Planning unit":"","Objectives"].filter(Boolean);
   const CLS={met:"met in both",gain:"now meets target",loss:"drops below target",below:"below target in both"};   // differential classes (diffClass)
-  if(!cnt) head.push(...(D?[`${FAMN[fam]} base`,`${FAMN[fam]} comparison`,"improvement"]:[FAMN[fam]]), ...(D&&!bin?["class"]:[]), ...(bin?["result"]:[]));
+  const yrs=D&&!bin&&fam==="fr", mcn=yrs&&shown.some(r=>mcnKey(r));   // FR: the change in achieved years; two uploads with flows: McNemar's test on the paired years
+  if(!cnt) head.push(...(D?[`${FAMN[fam]} base`,`${FAMN[fam]} comparison`,"improvement"]:[FAMN[fam]]), ...(yrs?["Δ achieved years"]:[]), ...(D&&!bin?["class"]:[]), ...(mcn?[`<span title="Exact McNemar test on the water years complete in both scenarios: could the years achieved in one scenario only (gained vs lost) be a 50:50 split?">p (McNemar)</span>`]:[]), ...(bin?["result"]:[]));
   const body=shown.map(r=>{ const a=arr(r)[k1], b=arr(r)[k0], k=D&&!bin?diffClass(r,fam):null, d=k?k.d:a==null||b==null?null:LOWER[fam==="fr"?"fr":"et"]?b-a:a-b, objs=r[4].filter(x=>set.has(x)).map(x=>META.objs[x]).join(", ");   // improvement: the change that enters the means (FR capped at the target when it is crossed)
-    const imp=k&&k.cls==="met"?`<td style="color:#6b7280" title="Met in both scenarios: not in the means. Surplus ${f3(k.sur,fam)}">(${f3(k.sur,fam)})</td>`:`<td style="${good(d)}">${f3(d,fam)}</td>`;
+    const fi=v=>v==null?"–":fam==="fr"?num(v,3):f3(v,fam);   // FR: the change in FR itself (the matrix shows achieved years per century)
+    const imp=k&&k.cls==="met"?`<td style="color:#6b7280" title="Met in both scenarios: not in the means. Surplus ${fi(k.sur)}">(${fi(k.sur)})</td>`:`<td style="${good(d)}">${fi(d)}</td>`;
     return `<tr><td>${esc(r[3])}</td>${t!=="gauge"?`<td>${esc(META.gauges[r[2]])}</td>`:""}${t==="sdl"?`<td>${esc(META.pus[r[0]])}</td>`:""}<td>${esc(objs)}</td>`+
-      (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td>${imp}`:`<td>${f(a)}</td>`)+(k?`<td>${CLS[k.cls]}</td>`:D&&!bin?"<td>–</td>":"")+(bin?`<td style="${D?(res(r)==="improved"?"color:#1d5a99":res(r)==="declined"?"color:#b3261e":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
+      (cnt?"":(D?`<td>${f(b)}</td><td>${f(a)}</td>${imp}`:`<td>${f(a)}</td>`)+(yrs?`<td title="${k&&k.dyr!=null?`achieved years ${eyOf(r,k0)} → ${eyOf(r,k1)}${k.cls==="gain"||k.cls==="loss"?"; capped at the target where it is crossed":""}`:"no achieved-years data"}">${k&&k.dyr!=null?num(k.dyr,1):"–"}</td>`:"")+(k?`<td>${CLS[k.cls]}</td>`:D&&!bin?"<td>–</td>":"")+(mcn?mcnTd(r):"")+(bin?`<td style="${D?(res(r)==="improved"?"color:#1d5a99":res(r)==="declined"?"color:#b3261e":""):""}">${res(r)}</td>`:""))+`</tr>`; }).join("");
   return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · by flow threshold"}</span><button data-act="cellclose" title="Close">×</button></div>
     <div class="cellt"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
+// McNemar p for an EWR of two uploaded scenarios (server: ewr_years -> paired.p_mcnemar), fetched after the table is drawn
+const MCN=new Map();   // key -> p, null (no year differs) or "err"
+const mcnKey=r=>{ if(!isDiff()) return null; const b=customOf(S.bpol), c=customOf(S.pol), g=META.gauges[r[2]];
+  return b&&c&&b.flowGauges.includes(g)&&c.flowGauges.includes(g)?JSON.stringify([b.id,c.id,g,r[3],META.pus[r[0]]]):null; };
+const mcnFmt=p=>p==="err"?"–":p==null?"–":p<0.001?"<0.001":p.toFixed(3);
+const mcnTd=r=>{ const k=mcnKey(r); return !k?"<td>–</td>":`<td data-mcn="${esc(k)}">${MCN.has(k)?mcnFmt(MCN.get(k)):"…"}</td>`; };
+async function loadMcn(){ for(const td of document.querySelectorAll("td[data-mcn]")){ const k=td.dataset.mcn; if(MCN.has(k)) continue; const [b,c,g,e,pu]=JSON.parse(k);
+    try{ const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(b)}&comp=${encodeURIComponent(c)}&gauge=${encodeURIComponent(g)}&ewr=${encodeURIComponent(e)}&pu=${encodeURIComponent(pu)}`); MCN.set(k,d.paired?d.paired.p_mcnemar??null:null); }
+    catch(er){ MCN.set(k,"err"); }
+    document.querySelectorAll("td[data-mcn]").forEach(x=>{ if(x.dataset.mcn===k) x.textContent=mcnFmt(MCN.get(k)); }); } }
 // ---- flow analysis (uploaded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
 // colour scales as in the reference plots (plotly express RdBu: red = negative, blue = positive; Blues for absolute values)
 const RDBU=["rgb(103,0,31)","rgb(178,24,43)","rgb(214,96,77)","rgb(244,165,130)","rgb(253,219,199)","rgb(247,247,247)","rgb(209,229,240)","rgb(146,197,222)","rgb(67,147,195)","rgb(33,102,172)","rgb(5,48,97)"];
@@ -861,7 +890,7 @@ const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKe
 const sameWin=(grp,keys)=>{ const on=keys.map(k=>grp.find(e=>e.key===k)).filter(Boolean), w=on[0]; return w?on.filter(e=>e.sm===w.sm&&e.em===w.em):[]; };   // only EWRs sharing the first one's timing window stay selected
 const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), on=sameWin(g,S.flow.thr); S.flow.thr=on.map(e=>e.key); return on; };
 let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
-const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
+const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); MCN.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 const heatCols=()=>{ const w=($("flowPlot")&&$("flowPlot").clientWidth)||600; return Math.max(60,Math.min(1200,Math.round((w-150)/3/20)*20)); };   // ~3 px per heat-map column, bucketed so small drags don't refetch
 const r0=v=>v==null||!isFinite(v)?"–":Math.round(v).toLocaleString(), r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: whole flows, one-decimal percentages
@@ -997,17 +1026,19 @@ function refresh(){ guardSame(); if(typeof syncSrc==="function") syncSrc(); if(t
 
 // ---- user scenarios: py_ewr is run by server.py on an uploaded Standard time-series file; the results join the picker as extra policies --
 const isCustom=p=>CUSTOM.some(c=>c.P===p);   // explicit registration, independent of the number of built-in policies
+const VALK=["pu","gauge","ewr","fr","et","ey","ny"];   // a run_scenario row as stored in a scenario's vals (server.VAL_KEYS)
+function putVals(r,P,v){ const i=P*NC; r[6][i]=v[3]??null; r[7][i]=v[4]??null; if(r[9]) r[9][i]=v[5]??null; if(r[8]) (r[8].nyAt??={})[i]=v[6]??null; }   // one upload's results into its scenario column; [] clears it
 const PUKEY=new Map(); ROWS.forEach(r=>{ const k=META.pus[r[0]]+"|"+META.gauges[r[2]]+"|"+r[3]; (PUKEY.get(k)||PUKEY.set(k,[]).get(k)).push(r); });   // a planning unit / gauge / EWR can sit in more than one SDL unit
 function addCustom(name,vals,id,flowGauges,fmt){
   performanceRevision++;
   const P=META.policies.length, key="custom:"+name; META.policies.push(key); POL_L[key]=name;
-  ROWS.forEach(r=>{ for(let k=0;k<NC;k++){ r[6].push(null); r[7].push(null); } });
-  const matched=[], sdls=new Set(); for(const v of vals){ const rs=PUKEY.get(v[0]+"|"+v[1]+"|"+v[2]); if(!rs) continue; rs.forEach(r=>{ r[6][P*NC]=v[3]; r[7][P*NC]=v[4]; sdls.add(META.sdls[r[1]]); }); matched.push(v); }   // the file's results go onto every SDL unit that uses the gauge
+  ROWS.forEach(r=>{ for(let k=0;k<NC;k++){ r[6].push(null); r[7].push(null); if(r[9]) r[9].push(null); } });
+  const matched=[], sdls=new Set(); for(const v of vals){ const rs=PUKEY.get(v[0]+"|"+v[1]+"|"+v[2]); if(!rs) continue; rs.forEach(r=>{ putVals(r,P,v); sdls.add(META.sdls[r[1]]); }); matched.push(v); }   // the file's results go onto every SDL unit that uses the gauge
   CUSTOM.push({key,name,sdls:[...sdls],P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],fmt:fmt||"Standard time-series"}); persistCustom(); return {P,matched:matched.length};
 }
 function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
 function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt); }catch(e){} }
-function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
+function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>putVals(r,c.P,[]));
   if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   persistCustom(); fillPolicyOptions(); renderCustomList(); refresh(); }
 function fillInto(){ const live=CUSTOM.filter(c=>!c.removed), cur=$("scnInto").value;
@@ -1016,7 +1047,7 @@ function fillInto(){ const live=CUSTOM.filter(c=>!c.removed), cur=$("scnInto").v
 $("scnInto").onchange=()=>{ $("scnNameWrap").style.display=$("scnInto").value?"none":""; };
 function mergeCustom(c,vals,flowGauges){ performanceRevision++;   // add a second file's results to an existing scenario; the same EWR at the same gauge is replaced
   const have=new Map(c.vals.map(v=>[v[0]+"|"+v[1]+"|"+v[2],v])), sdls=new Set(c.sdls);
-  for(const v of vals){ const k=v[0]+"|"+v[1]+"|"+v[2], rs=PUKEY.get(k); if(!rs) continue; rs.forEach(r=>{ r[6][c.P*NC]=v[3]; r[7][c.P*NC]=v[4]; sdls.add(META.sdls[r[1]]); }); have.set(k,v); }
+  for(const v of vals){ const k=v[0]+"|"+v[1]+"|"+v[2], rs=PUKEY.get(k); if(!rs) continue; rs.forEach(r=>{ putVals(r,c.P,v); sdls.add(META.sdls[r[1]]); }); have.set(k,v); }
   c.vals=[...have.values()]; c.sdls=[...sdls]; c.flowGauges=[...new Set([...(c.flowGauges||[]),...flowGauges])]; persistCustom(); return {matched:vals.filter(v=>PUKEY.has(v[0]+"|"+v[1]+"|"+v[2])).length};
 }
 function renderCustomList(){ fillInto(); const live=CUSTOM.map((c,i)=>[c,i]).filter(([c])=>!c.removed);
@@ -1060,7 +1091,7 @@ $("scnRun").onclick=async()=>{
       const q=await (await fetch("/api/job?id="+j.job,{cache:"no-store"})).json();
       if(q.status==="running"){ setStatus(`Running the EWR tool … ${Math.round(q.elapsed)} s`); continue; }
       if(q.status==="error") throw new Error(q.message||"run failed");
-      const vals=q.rows.map(x=>[x.pu,x.gauge,x.ewr,x.fr,x.et]), st=q.stats||{}, sk=Object.keys(st.skipped||{});
+      const vals=q.rows.map(x=>VALK.map(k=>x[k]??null)), st=q.stats||{}, sk=Object.keys(st.skipped||{});
       flowsChanged(); let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[]); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt);
       fillPolicyOptions(); renderCustomList();
       S.pol=res.P; S.cli=0; $("pol").value=S.pol; $("cli").value=0;
@@ -1116,7 +1147,7 @@ $("bpol").innerHTML=$("pol").innerHTML; $("bcli").innerHTML=$("cli").innerHTML; 
 $("bpol").onchange=e=>{ S.bpol=+e.target.value; refresh(); }; $("bcli").onchange=e=>{ S.bcli=+e.target.value; refresh(); };
 $("swapBC").onclick=()=>{ [S.pol,S.bpol]=[S.bpol,S.pol]; [S.cli,S.bcli]=[S.bcli,S.cli]; $("pol").value=S.pol; $("bpol").value=S.bpol; $("cli").value=S.cli; $("bcli").value=S.bcli; refresh(); };
 function setMode(md){ S.mode=md; $("modeS").classList.toggle("on",md==="single"); $("modeD").classList.toggle("on",md==="diff");
-  $("baseL").style.display=md==="diff"?"":"none"; $("swapBC").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
+  $("baseL").style.display=$("bandL").style.display=md==="diff"?"":"none"; $("swapBC").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
 $("modeS").onclick=()=>setMode("single"); $("modeD").onclick=()=>setMode("diff");
 const MORE={ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved"};
 function syncMore(){ const k=S.metric, on=k in MORE; $("mMore").classList.toggle("on",on); $("mMoreS").textContent=on?MORE[k]:"More"; $("mMore").open=false; }
@@ -1125,6 +1156,7 @@ function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m=
 $("mAC").onclick=()=>setMetric("ach"); $("mFB").onclick=()=>setMetric("fb");
 $("fbthr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.fbthr=v; refresh(); } }; $("mMZ").onclick=()=>setMetric("mz");
 $("ethr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.ethr=v/ETY; refresh(); } };
+$("band").onchange=e=>{ S.band=+e.target.value; refresh(); };
 $("thr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.thr=v; refresh(); } };
 $("mFR").onclick=()=>setMetric("fr"); $("mET").onclick=()=>setMetric("et");
 map.on("click",()=>select({type:"none"}));
@@ -1159,7 +1191,7 @@ function encodeState(){
   if(isDiff()){ p.set("bpol",META.policies[S.bpol]); p.set("bcli",META.climates[S.bcli]); }
   p.set("metric",S.metric);
   if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
-  if(S.sort!=="default") p.set("sort",S.sort);
+  if(S.sort!=="default") p.set("sort",S.sort); if(S.band!==2) p.set("band",S.band);
   if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
   else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
   else if(s.type==="gauge") p.set("sel","gauge~"+META.gauges[s.i]+"~"+(s.sdl!=null?META.sdls[s.sdl]:"")+"~"+(s.pu!=null?META.pus[s.pu]:""));
@@ -1174,7 +1206,7 @@ function applyHash(){
   if(["single","diff"].includes(p.get("mode"))) S.mode=p.get("mode");
   if(METRICS.includes(p.get("metric"))) S.metric=p.get("metric");
   const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",p.get("v")==="2"?1.0:0.9); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
-  if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort");
+  if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort"); S.band=[1,2,3,5].includes(+p.get("band"))?+p.get("band"):2;
   const sel=(p.get("sel")||"").split("~"), sdl=n=>META.sdls.indexOf(n), pu=n=>META.pus.indexOf(n), ga=n=>META.gauges.indexOf(n);
   S.sel={type:"none"};
   if(sel[0]==="sdl"&&sdl(sel[1])>=0) S.sel={type:"sdl",i:sdl(sel[1])};
@@ -1186,7 +1218,7 @@ function syncUI(){   // bring the header controls in line with the state
   syncSrc();
   $("pol").value=S.pol; $("cli").value=S.cli; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
   $("modeS").classList.toggle("on",S.mode==="single"); $("modeD").classList.toggle("on",S.mode==="diff");
-  $("baseL").style.display=$("swapBC").style.display=S.mode==="diff"?"":"none"; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
+  $("baseL").style.display=$("swapBC").style.display=$("bandL").style.display=S.mode==="diff"?"":"none"; $("band").value=S.band; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
   for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
   $("thrL").style.display=S.metric==="ach"?"":"none"; $("fbL").style.display=S.metric==="fb"?"":"none"; $("ethrL").style.display=S.metric==="mz"?"":"none";
   $("thr").value=S.thr; $("fbthr").value=S.fbthr; $("ethr").value=+(S.ethr*ETY).toFixed(2);

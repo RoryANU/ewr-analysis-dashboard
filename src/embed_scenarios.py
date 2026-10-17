@@ -16,7 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
-from server import FORMATS, run_scenario  # noqa: E402  (the same EWR run as the local server (server.py), imported without starting it)
+from server import FORMATS, VAL_KEYS, run_scenario  # noqa: E402  (the same EWR run as the local server (server.py), imported without starting it)
 
 PLACEHOLDER = "const PRELOADED=[];"
 REKEY = {"A4260527": "A4260524"}  # same re-keying as build_dashboard.py (not imported: importing it runs the build)
@@ -53,7 +53,7 @@ def run_file(path, fmt="Standard time-series", gauges=None):
         raise ValueError(f"format must be one of {FORMATS}")
     f = resolve_path(path)
     rows, stats = run_scenario(f.read_bytes(), gauges or review_gauges(), None, fmt, f.name)
-    return [[r["pu"], r["gauge"], r["ewr"], r["fr"], r["et"]] for r in rows], stats
+    return [[r.get(k) for k in VAL_KEYS] for r in rows], stats
 
 
 def build_with_scenarios(scenarios, out_path, template=None):

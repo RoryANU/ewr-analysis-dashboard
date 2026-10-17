@@ -66,7 +66,9 @@ def scenario_index(policy: str, climate: str) -> int:
 def load_results(root: Path = ROOT) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read the FR and ETP result files, normalising gauge ids, themes and the scenario index (column `scn`)."""
     fr = pd.read_csv(
-        root / "data/results/frequency_ratio.csv", dtype={"Gauge": str}, usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR"]
+        root / "data/results/frequency_ratio.csv",
+        dtype={"Gauge": str},
+        usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR", "EventYears", "TotalDays"],
     )
     et = pd.read_csv(
         root / "data/results/etp.csv",
@@ -101,11 +103,13 @@ def report_variant_conflicts(fr: pd.DataFrame, et: pd.DataFrame) -> None:
 
 def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, str, str, str], dict[str, Any]]:
     """One row per (planning unit, SDL unit, gauge, EWR): both files repeat each EWR once per ecological objective, so the
-    metric is the plain mean over those repeats for each scenario (rounded to 4 places); None where a scenario has no result."""
+    metric is the plain mean over those repeats for each scenario (rounded to 4 places); None where a scenario has no result.
+    Also per EWR: the achieved years (EventYears, same mean, 2 places) per scenario and the record length in years (`ny`, TotalDays / 365.25).
+    """
     rows: dict[tuple[str, str, str, str], dict[str, Any]] = {}
 
     def row(k: tuple[str, str, str, str]) -> dict[str, Any]:
-        return rows.setdefault(k, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "state": None})
+        return rows.setdefault(k, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "ey": [None] * NS, "ny": None, "state": None})
 
     for k, v in fr.groupby(KEY):
         r = row(k)
@@ -113,6 +117,10 @@ def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, st
         r["rg"] |= set(v.FlowRegime.dropna())
         for s, x in v.groupby("scn").FR.mean().items():
             r["fr"][int(s)] = round(float(x), 4)
+        for s, x in v.groupby("scn").EventYears.mean().dropna().items():
+            r["ey"][int(s)] = round(float(x), 2)
+        days = v.TotalDays.dropna()
+        r["ny"] = round(float(days.mean()) / 365.25, 2) if len(days) else None
     for k, v in et.groupby(KEY):
         r = row(k)
         r["ob"] |= set(v.EcoObj.dropna())
@@ -148,8 +156,13 @@ def objectives_of(rows: dict[tuple[str, str, str, str], dict[str, Any]]) -> list
     return sorted({o for r in rows.values() for o in r["ob"]}, key=lambda o: (o.split("-")[0], o))
 
 
-def build_row_table(rows: dict[tuple[str, str, str, str], dict[str, Any]], obj_theme: dict[str, str]) -> tuple[list[list[Any]], dict[str, Any]]:
-    """The compact ROWS table the page reads, and the lookup lists (pus, sdls, gids, objs, themes, regimes, objTheme) its indices refer to."""
+def build_row_table(
+    rows: dict[tuple[str, str, str, str], dict[str, Any]], obj_theme: dict[str, str], params: dict[tuple[str, str, str], dict[str, Any]] | None = None
+) -> tuple[list[list[Any]], dict[str, Any]]:
+    """The compact ROWS table the page reads, and the lookup lists (pus, sdls, gids, objs, themes, regimes, objTheme) its indices refer to.
+    Columns 0-7 are fixed (the page and performance.js index them); 8 = {T, ny, dur, mrip}: target % of years, record years, required days and
+    MRIP years (from `params`, keyed (gauge, code, planning unit); None when unknown); 9 = achieved years (EventYears) per scenario."""
+    params = params or {}
     pus = sorted({k[0] for k in rows})
     sdls = sorted({k[1] for k in rows})
     gids = sorted({k[2] for k in rows})
@@ -167,6 +180,8 @@ def build_row_table(rows: dict[tuple[str, str, str, str], dict[str, Any]], obj_t
             sorted(regimes.index(g) for g in r["rg"]),
             r["fr"],
             r["et"],
+            {**{"T": None, "dur": None, "mrip": None}, **params.get((k[2], k[3], k[0]), {}), "ny": r.get("ny")},
+            r.get("ey", [None] * NS),
         ]
         for k, r in sorted(rows.items())
     ]
@@ -236,14 +251,39 @@ def build_polygons(gj: dict[str, Any], sdls: list[str]) -> dict[str, Any]:
     return gj
 
 
-def ewr_thresholds(lookups: dict[str, Any], table: list[list[Any]]) -> dict[str, float]:
-    """Lowest flow threshold (ML/d) of each EWR at each gauge in the table, from py_ewr's parameter sheet, keyed "gauge|code".
-    The page sorts EWRs by it (increasing flow regime). Empty when py_ewr is not installed; EWRs with no threshold sort last."""
+def parameter_sheet() -> pd.DataFrame | None:
+    """py_ewr's EWR parameter sheet (a fresh read, not its shared cached copy), or None when py_ewr is not installed."""
     try:
         from py_ewr import data_inputs
 
-        sheet = getattr(data_inputs.get_EWR_table, "__wrapped__", data_inputs.get_EWR_table)(None)
-    except Exception:  # noqa: BLE001 - the page still works, just without this ordering
+        return getattr(data_inputs.get_EWR_table, "__wrapped__", data_inputs.get_EWR_table)(None)
+    except Exception:  # noqa: BLE001 - the page still works without the parameters
+        return None
+
+
+def ewr_params(sheet: pd.DataFrame | None) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """Per (gauge, code, planning unit): target frequency (% of years), required duration (days) and maximum inter-event period (years),
+    from the parameter sheet (the first row where a key repeats); empty without a sheet."""
+    if sheet is None:
+        return {}
+    num = lambda c: pd.to_numeric(sheet[c], errors="coerce") if c in sheet else pd.Series(float("nan"), index=sheet.index)  # noqa: E731
+    d = pd.DataFrame({"g": sheet.Gauge.astype(str), "c": sheet.Code.astype(str), "pu": sheet.PlanningUnitName.astype(str)})
+    d["T"], d["dur"], d["mrip"] = num("TargetFrequency"), num("Duration"), num("MaxInter-event")
+    out: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for r in d.drop_duplicates(["g", "c", "pu"]).itertuples():
+        out[(r.g, r.c, r.pu)] = {
+            "T": None if pd.isna(r.T) else float(r.T),
+            "dur": None if pd.isna(r.dur) else int(r.dur),
+            "mrip": None if pd.isna(r.mrip) else round(float(r.mrip), 4),
+        }
+    return out
+
+
+def ewr_thresholds(lookups: dict[str, Any], table: list[list[Any]], sheet: pd.DataFrame | None = None) -> dict[str, float]:
+    """Lowest flow threshold (ML/d) of each EWR at each gauge in the table, from py_ewr's parameter sheet, keyed "gauge|code".
+    The page sorts EWRs by it (increasing flow regime). Empty when py_ewr is not installed; EWRs with no threshold sort last."""
+    sheet = parameter_sheet() if sheet is None else sheet
+    if sheet is None:
         return {}
     thr = pd.to_numeric(sheet["FlowThresholdMin"], errors="coerce")
     low = thr.groupby([sheet["Gauge"].astype(str), sheet["Code"].astype(str)]).min().dropna()
@@ -282,7 +322,8 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
     report_variant_conflicts(fr, et)
     rows = aggregate_ewr_rows(fr, et)
     ref = pd.read_csv(root / "data/reference/objective_reference.csv", dtype=str).drop_duplicates("EcoObj").set_index("EcoObj")
-    table, lookups = build_row_table(rows, objective_themes(fr, et, objectives_of(rows), ref))
+    sheet = parameter_sheet()
+    table, lookups = build_row_table(rows, objective_themes(fr, et, objectives_of(rows), ref), ewr_params(sheet))
     print(len(table), "EWR rows;", len(lookups["sdls"]), "SDL units;", len(lookups["pus"]), "planning units;", len(lookups["gids"]), "gauges")
     gauges, unplotted = build_gauges(lookups["gids"], load_gauge_stations(root))
     print(len(gauges), "gauges plotted; unplotted (in tables only):", unplotted)
@@ -297,7 +338,7 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
         "__ROWS__": table,
         "__RIVERS__": rivers,
         "__CONSTRAINTS__": load_constraints(root),
-        "__META__": build_meta(lookups, ref, ewr_thresholds(lookups, table)),
+        "__META__": build_meta(lookups, ref, ewr_thresholds(lookups, table, sheet)),
         "__SCENARIOS__": [],
     }
 

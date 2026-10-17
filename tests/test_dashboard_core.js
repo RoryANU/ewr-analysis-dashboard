@@ -10,8 +10,10 @@ function section(from,to) {
   return template.slice(template.indexOf(from),template.indexOf(to));
 }
 const core = section('// ---- values and averages','// ---- colours');
-// ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[P*NC], etp[P*NC]]; two policies x two climates
-const row = (pu,sdl,gauge,code,fr,et=fr.map(()=>0)) => [pu,sdl,gauge,code,[],[],fr,et];
+// ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[P*NC], etp[P*NC], {T, ny}, achievedYears[P*NC]]; two policies x two climates.
+// By default a 100-year record and a 100% target, with achieved years consistent with FR (EY = FR x T x ny / 100), so a change in achieved
+// years per century is 100 x the change in FR
+const row = (pu,sdl,gauge,code,fr,et=fr.map(()=>0),meta={T:100,ny:100}) => [pu,sdl,gauge,code,[],[],fr,et,meta,fr.map(v=>v==null?null:v*meta.T*meta.ny/100)];
 const plain = value => JSON.parse(JSON.stringify(value));
 function harness(rows=[]) {
   const ctx = vm.createContext({});
@@ -19,7 +21,7 @@ function harness(rows=[]) {
   vm.runInContext(`
     const META={climates:['c0','c1'],policies:['Pre Basin Plan','Basin plan full implementation']};
     const NC=META.climates.length;
-    const S={thr:1.0,ethr:0,fbthr:0.5,mode:'single',pol:1,cli:0,bpol:0,bcli:0,metric:'fr',sel:{type:'none'}};
+    const S={thr:1.0,ethr:0,fbthr:0.5,band:2,mode:'single',pol:1,cli:0,bpol:0,bcli:0,metric:'fr',sel:{type:'none'}};
   `,ctx);
   vm.runInContext(core,ctx);
   return code => vm.runInContext(code,ctx);
@@ -54,7 +56,7 @@ test('val: differential mode reports improvement from base to comparison for eve
   // index = policy*NC + climate: base (0,0) -> 0, comparison (1,0) -> 2
   const run=harness([row(0,0,0,'A',[.6,0,.9,0],[.4,0,.1,0])]);
   run("S.mode='diff'");
-  near(run("val(ROWS[0],'fr')"),.3);   // higher FR is better: comparison - base
+  near(run("val(ROWS[0],'fr')"),30);   // higher FR is better: comparison - base, in achieved years per century (.3 x a 100% target)
   near(run("val(ROWS[0],'et')"),.3);   // lower ETP is better: base - comparison
   run('S.thr=.8'); assert.equal(run("val(ROWS[0],'ach')"),1);   // 0 -> 1
   run('S.fbthr=.7'); assert.equal(run("val(ROWS[0],'fb')"),1);   // failed badly -> not: base 1 - comparison 0
@@ -95,7 +97,7 @@ test('agg: binary and differential metrics aggregate through the same hierarchy'
   const run=harness(rows);
   // ach at thr 1 (comparison, index 2): PU 0 (gauge 0) -> 1, PU 1 (gauge 1) -> 0; SDL .5
   near(run("agg(ROWS,['pu','gauge'],'ach',2)").mean,.5);
-  // differential FR: PU 0 = +.5 (B meets the target in both, so it is left out), PU 1 = -.5 -> SDL 0
+  // differential FR (achieved years per century): PU 0 = +50 (B meets the target in both, so it is left out), PU 1 = -50 -> SDL 0
   run("S.mode='diff'"); near(run("agg(ROWS,['pu','gauge'],'fr')").mean,0);
   assert.equal(run("agg(ROWS,['pu','gauge'],'fr')").n,2);
 });
@@ -151,7 +153,8 @@ test('diffClass: ETP is met at or below the MRIP threshold in both; lower is bet
 test('agg and cnts: met in both is out of the mean and of n; crossings count as improved / declined',()=>{
   const run=harness([row(0,0,0,'A',[3,0,1.5,0]),row(0,0,0,'B',[1.2,0,.8,0]),row(0,0,0,'C',[.6,0,1.4,0]),row(0,0,0,'D',[.3,0,.5,0])]);
   run("S.mode='diff'");
-  const a=plain(run("agg(ROWS,[],'fr')")); assert.equal(a.n,3); near(a.mean,(-.2+.4+.2)/3);
+  const a=plain(run("agg(ROWS,[],'fr')")); assert.equal(a.n,3); near(a.mean,(-20+40+20)/3);
+  near(run("agg(ROWS,[],'fr',0,dFR).mean"),(-.2+.4+.2)/3);   // the same changes in FR units (tooltips)
   assert.deepEqual(plain(run("agg(ROWS.slice(0,1),[],'fr')")),{n:0,mean:null});
   assert.deepEqual(plain(run("cnts(ROWS,'fr')")),{up:2,dn:1,same:0,met:1,gain:1,loss:1,n:3});
   // a crossing smaller than the 1-point band is still a gain
@@ -159,18 +162,42 @@ test('agg and cnts: met in both is out of the mean and of n; crossings count as 
   assert.deepEqual(plain(g("cnts(ROWS,'fr')")),{up:1,dn:0,same:0,met:0,gain:1,loss:0,n:1});
   assert.equal(run("allMet(cnts(ROWS.slice(0,1),'fr'))"),true); assert.equal(run("allMet(cnts(ROWS,'fr'))"),false);
 });
+test('event-year band: a 1-year change is unchanged at K = 2 whatever the target',()=>{
+  // T = 5%: 2 -> 3 achieved years of 100 (FR .4 -> .6); T = 100%: 50 -> 51 (FR .5 -> .51); neither crosses the target
+  const run=harness([row(0,0,0,'A',[.4,0,.6,0],undefined,{T:5,ny:100}),row(0,0,0,'B',[.5,0,.51,0],undefined,{T:100,ny:100})]);
+  run("S.mode='diff'");
+  near(run("dYears(ROWS[0])"),1); near(run("dYears(ROWS[1])"),1);
+  assert.deepEqual(plain(run("cnts(ROWS,'fr')")),{up:0,dn:0,same:2,met:0,gain:0,loss:0,n:2});
+  run('S.band=1'); assert.equal(run("cnts(ROWS,'fr').up"),2);
+  // the colour and mean: years per century of record (here 1 year of 100)
+  near(run("val(ROWS[0],'fr')"),1); near(run("val(ROWS[1],'fr')"),1);
+});
+test('event-year band: crossings are capped at T % of the record, and ny scales to years per century',()=>{
+  // T 50%, 129-year record: target = 64.5 years. 60 -> 80 achieved years crosses it: capped change 4.5 years, 3.49 per century
+  const run=harness([row(0,0,0,'A',[60/64.5,0,80/64.5,0],undefined,{T:50,ny:129})]);
+  run("S.mode='diff'");
+  const k=plain(run("diffClass(ROWS[0],'fr')")); assert.equal(k.cls,'gain'); near(k.dyr,4.5); near(k.dy,4.5*100/129);
+  // no achieved-years data: the change per century is ΔFR x T
+  const legacy=harness([[0,0,0,'L',[],[],[.5,0,.6,0],[0,0,0,0],{T:40,ny:null}]]); legacy("S.mode='diff'");
+  near(legacy("val(ROWS[0],'fr')"),4); assert.equal(legacy("cnts(ROWS,'fr').up"),1);   // no years to band on: more than 0.01 FR counts
+});
+test('ETP band: a change counts when it moves at least one year of record beyond MRIP',()=>{
+  const run=harness([row(0,0,0,'A',[1,0,1,0],[.30,0,.295,0]),row(0,0,0,'B',[1,0,1,0],[.30,0,.28,0])]);   // 100 years: 0.5 and 2 years
+  run("S.mode='diff'");
+  assert.deepEqual(plain(run("cnts(ROWS,'et')")),{up:1,dn:0,same:1,met:0,gain:0,loss:0,n:2});
+});
 test('agg: one scenario caps FR at the target in the mean, the per-EWR value is uncapped',()=>{
   const run=harness([row(0,0,0,'A',[.2,0,0,0]),row(0,0,0,'B',[1.8,0,0,0])]);
   near(run("agg(ROWS,[],'fr',0).mean"),.6);
   assert.equal(run("val(ROWS[1],'fr',0)"),1.8);
   near(run("agg(ROWS,[],'et',0).mean"),0);   // ETP is not capped beyond its own 0-1 range
 });
-test('differential labels: an FR difference is a ratio difference, a share of EWRs is in points',()=>{
+test('differential labels: FR in achieved years per century, a share of EWRs in points',()=>{
   const run=harness();
   run("S.mode='diff'");
-  assert.equal(run("f3(.14,'fr')"),'+0.140');   // not "+14%": FR is a ratio, so its difference is too
-  assert.equal(run("fs2(-.14,'fr')"),'−0.14');
-  assert.equal(run("fs2(.0004,'fr')"),'0.00');   // a change that rounds to zero carries no sign
+  assert.equal(run("f3(3.14,'fr')"),'+3.1');   // achieved years per century of record
+  assert.equal(run("fs2(-3.14,'fr')"),'−3.1');
+  assert.equal(run("fs2(.04,'fr')"),'0.0');   // a change that rounds to zero carries no sign
   assert.equal(run("fs2(.25,'ach')"),'+25 pts');
   assert.equal(run("fs2(-.1,'fb')"),'−10 pts');
   assert.equal(run("fs2(.03,'et')"),'+0.3');

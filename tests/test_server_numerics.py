@@ -291,6 +291,16 @@ def gap_ev(flow: pd.Series, inter_rows: list[tuple[str, str]], mrip: int, succes
     return {"flow": flow, "mrip_days": mrip, "inter": inter, "succ": succ}
 
 
+class TestMcNemar:
+    def test_exact_two_sided_p_by_hand(self):
+        # 8 gained, 2 lost: P(X <= 2), X ~ Bin(10, 1/2) = (1 + 10 + 45) / 1024 = 56 / 1024; two-sided: 112 / 1024 = 0.109375
+        assert server.mcnemar_p(8, 2) == 0.1094
+        assert server.mcnemar_p(2, 8) == 0.1094  # symmetric
+        assert server.mcnemar_p(6, 0) == round(2 / 64, 4)  # 0.03125
+        assert server.mcnemar_p(3, 3) == 1.0  # capped at 1
+        assert server.mcnemar_p(0, 0) is None  # no year differs: nothing to test
+
+
 class TestEwrGaps:
     IDX = pd.date_range("2000-01-01", "2000-12-31")  # 366 days
 

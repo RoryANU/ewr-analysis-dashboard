@@ -143,6 +143,10 @@ FORMATS = [
 ]
 
 
+# a run_scenario row as the page stores it (an uploaded or embedded scenario's `vals`): these keys, in this order (VALK in the page)
+VAL_KEYS = ("pu", "gauge", "ewr", "fr", "et", "ey", "ny")
+
+
 def load_frames(fmt: str, path: str, sub: str = "") -> tuple[Any, Any]:
     """The reading step of ScenarioHandler.process_scenarios for one model_format: file -> (flow frame, level frame),
     one column per gauge number (py_ewr's own cleaners and node-matching tables do the work)."""
@@ -282,6 +286,8 @@ def run_scenario(
             "ewr": r.Code,
             "fr": None if pd.isna(r.FR) else round(float(r.FR), 4),
             "et": None if r.ETP is None or pd.isna(r.ETP) else round(float(r.ETP), 4),
+            "ey": None if pd.isna(pd.to_numeric(r.EventYears, errors="coerce")) else int(r.EventYears),  # achieved years
+            "ny": round(float(r.TotalDays) / 365.25, 2) if pd.to_numeric(r.TotalDays, errors="coerce") > 0 else None,  # record length in years
         }
         for r in res.itertuples()
     ]
@@ -805,7 +811,17 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "pct_base": round(100 * sum(pb) / n, 3) if n else None,
             "pct_comp": round(100 * sum(pc) / n, 3) if n else None,
         }
+        out["paired"]["p_mcnemar"] = mcnemar_p(out["paired"]["gained"], out["paired"]["lost"])
     return out
+
+
+def mcnemar_p(gained: int, lost: int) -> float | None:
+    """Exact two-sided McNemar p-value for paired yes/no years: under no change the discordant years (achieved in one scenario only) split
+    50:50, so p = min(1, 2 * P(X <= min(gained, lost))) with X ~ Binomial(gained + lost, 1/2). None when no year differs."""
+    n = gained + lost
+    if n == 0:
+        return None
+    return round(min(1.0, 2 * sum(math.comb(n, k) for k in range(min(gained, lost) + 1)) / 2**n), 4)
 
 
 def _feb29(w: int) -> bool:

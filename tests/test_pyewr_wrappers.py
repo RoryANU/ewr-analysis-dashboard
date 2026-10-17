@@ -119,7 +119,9 @@ class TestRunScenario:
     def test_row_structure_and_value_ranges(self, goulburn_run):
         rows, stats = goulburn_run
         assert len(rows) == stats["ewr_rows"] == 35
-        assert all(set(r) == {"pu", "gauge", "ewr", "fr", "et"} for r in rows)
+        assert all(set(r) == set(server.VAL_KEYS) for r in rows)
+        assert all(r["ny"] == pytest.approx(9132 / 365.25, abs=0.005) for r in rows)  # 1995-07-01 to 2020-06-30
+        assert all(r["ey"] is None or 0 <= r["ey"] <= 25 for r in rows)
         assert {r["gauge"] for r in rows} <= set(GOULBURN_GAUGES)
         assert len({(r["pu"], r["gauge"], r["ewr"]) for r in rows}) == len(rows)  # one row per planning unit x gauge x EWR
         for r in rows:

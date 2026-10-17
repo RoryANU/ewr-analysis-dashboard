@@ -129,11 +129,11 @@ class TestRunFile:
 
         def fake(body, gauges, scn_id, fmt, name):
             seen.update(body=body, gauges=gauges, scn_id=scn_id, fmt=fmt, name=name)
-            return [{"pu": "P", "gauge": "1", "ewr": "E", "fr": 0.1, "et": None}], {"s": 1}
+            return [{"pu": "P", "gauge": "1", "ewr": "E", "fr": 0.1, "et": None, "ey": 3, "ny": 25.0}], {"s": 1}
 
         monkeypatch.setattr(em, "run_scenario", fake)
         rows, stats = em.run_file(str(f), "Standard time-series", gauges=["1"])
-        assert rows == [["P", "1", "E", 0.1, None]] and stats == {"s": 1}
+        assert rows == [["P", "1", "E", 0.1, None, 3, 25.0]] and stats == {"s": 1}  # in server.VAL_KEYS order (the page's VALK)
         assert seen == {"body": b"data", "gauges": ["1"], "scn_id": None, "fmt": "Standard time-series", "name": "a.csv"}
 
     def test_review_gauges_are_the_distinct_sorted_gauges_of_the_results(self):
@@ -151,3 +151,14 @@ class TestRunFile:
 
 def test_committed_page_has_exactly_one_embedded_scenarios_slot():
     assert (ROOT / "ewr_analysis_dashboard.html").read_text().count(em.PLACEHOLDER) == 1
+
+
+def test_the_page_stores_upload_rows_in_the_servers_key_order():
+    """The page's VALK (how it reads a scenario's vals) is server.VAL_KEYS: a new field has to be added to both."""
+    import re
+
+    import server
+
+    text = (Path(__file__).resolve().parents[1] / "src/dashboard_template.html").read_text()
+    valk = re.search(r"const VALK=(\[[^\]]*\])", text)
+    assert valk and json.loads(valk.group(1)) == list(server.VAL_KEYS)
