@@ -11,7 +11,7 @@ by specificity:
 https://github.com/MDBAuth/EWR_analysis_pipeline
 """
 
-flow_mappings = {
+flow_mappings: dict[str, dict[str, str | list[str]]] = {
     "QLD": {
         "BBR1_a": ["Overbank", "Wetland inundation"],
         "BBR1_b": ["Overbank", "Wetland inundation"],
@@ -101,7 +101,7 @@ flow_mappings = {
 }
 
 
-def regimes_for(code, state):
+def regimes_for(code: str, state: str) -> list[str]:
     """Pipeline flow regimes (list of names) for an EWR code in a state; [] when the pipeline gives none."""
     matches = ((key, val) for key, val in flow_mappings.get(state, {}).items() if key in code)
     match = max(matches, key=lambda item: len(item[0]), default=None)

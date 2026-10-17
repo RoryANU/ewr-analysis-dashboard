@@ -7,6 +7,7 @@ exactly as py_ewr's own cleaners do. Site names are mapped to gauges with data/r
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from py_ewr import data_inputs
@@ -60,7 +61,7 @@ def unpack_northern_connectivity(excel_file: str, sheet_name: str = "River flows
     parsed = parsed[valid]
 
     # Walk the columns, starting a new scenario each time a scenario label appears
-    scenarios = {}
+    scenarios: dict[str, dict[str, Any]] = {}
     current = None
     for col in range(1, raw.shape[1]):
         label = raw.iat[scenario_row, col]
@@ -77,7 +78,7 @@ def unpack_northern_connectivity(excel_file: str, sheet_name: str = "River flows
     return {name: pd.DataFrame(cols, index=pd.DatetimeIndex(parsed.values, name="Date")) for name, cols in scenarios.items()}
 
 
-def cleaner_northern_connectivity(input_df: pd.DataFrame, ewr_table_path: str = None) -> tuple:
+def cleaner_northern_connectivity(input_df: pd.DataFrame, ewr_table_path: str | None = None) -> tuple:
     """Ingests one scenario from the northern connectivity workbook, maps site names to gauge numbers
     and allocates them to flow/level dataframes. Sites without a gauge mapping or without EWRs are skipped.
 

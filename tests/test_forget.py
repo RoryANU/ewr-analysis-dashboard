@@ -12,6 +12,10 @@ import server  # noqa: E402
 
 
 class ForgetEndpointTest(unittest.TestCase):
+    httpd: server.ThreadingHTTPServer
+    port: int
+    thread: threading.Thread
+
     @classmethod
     def setUpClass(cls):
         cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
@@ -30,10 +34,15 @@ class ForgetEndpointTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         old_store, old_flows = server.STORE, server.FLOWS.copy()
         self.addCleanup(setattr, server, "STORE", old_store)
-        self.addCleanup(lambda: (server.FLOWS.clear(), server.FLOWS.update(old_flows)))
+        self.addCleanup(self._restore_flows, old_flows)
         server.STORE = Path(self.tmp.name)
         server.FLOWS.clear()
         self.host = f"127.0.0.1:{self.port}"
+
+    @staticmethod
+    def _restore_flows(old_flows):
+        server.FLOWS.clear()
+        server.FLOWS.update(old_flows)
 
     def request(self, method, path, headers=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port)

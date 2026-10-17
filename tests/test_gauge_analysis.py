@@ -209,7 +209,7 @@ class RegimeTest(StoredFlows):
         f[30:35] = 600
         self.store("a", idx, f, gauge="416001")
         out = server.regimes({"base": "a", "gauge": "416001"})
-        lowest = {}
+        lowest: dict[str, float] = {}
         from flow_regime_mappings import regimes_for
 
         for e in server.ewr_list("416001"):

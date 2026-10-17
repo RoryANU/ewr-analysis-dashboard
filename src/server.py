@@ -40,19 +40,20 @@ import uuid
 import warnings
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent  # repository root: the page is served from here; py_ewr comes from pip (pip install -r requirements.txt)
 warnings.filterwarnings("ignore")
 
-JOBS = {}
+JOBS: dict[str, dict[str, Any]] = {}
 STORE = ROOT / ".user_scenarios"
-FLOWS = {}  # scenario id -> flow DataFrame (date index, one column per gauge)
+FLOWS: dict[str, Any] = {}  # scenario id -> flow DataFrame (date index, one column per gauge)
 MAX_BYTES = 400 * 1024 * 1024
 
 
-def _authority(hostport, default_port=None):
+def _authority(hostport: str | None, default_port: int | None = None) -> tuple[str, int | None] | None:
     """Parse and normalize a Host-style authority into (host, port), or return None if invalid."""
     if not hostport:
         return None
@@ -74,7 +75,7 @@ def _authority(hostport, default_port=None):
     return host, port
 
 
-def _loopback_host(host):
+def _loopback_host(host: str) -> bool:
     if host == "localhost":
         return True
     try:
@@ -83,7 +84,7 @@ def _loopback_host(host):
         return False
 
 
-def _state_change_allowed(origin, host, server_address):
+def _state_change_allowed(origin: str | None, host: str | None, server_address: tuple[Any, ...]) -> bool:
     """Allow absent Origin; otherwise require same authority, including loopback aliases."""
     bind_host, server_port = server_address[0], server_address[1]
     try:
@@ -134,7 +135,7 @@ FORMATS = [
 ]
 
 
-def load_frames(fmt, path, sub=""):
+def load_frames(fmt: str, path: str, sub: str = "") -> tuple[Any, Any]:
     """The reading step of ScenarioHandler.process_scenarios for one model_format: file -> (flow frame, level frame),
     one column per gauge number (py_ewr's own cleaners and node-matching tables do the work)."""
     import pandas as pd
@@ -173,7 +174,15 @@ def load_frames(fmt, path, sub=""):
     return df_F, df_L
 
 
-def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series", filename="", sub="", merge=False):
+def run_scenario(
+    csv_bytes: bytes,
+    sdl_gauges: list[str],
+    scn_id: str | None = None,
+    fmt: str = "Standard time-series",
+    filename: str = "",
+    sub: str = "",
+    merge: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats)."""
     import tempfile
 
@@ -241,13 +250,13 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
         inter["interEventLength"] = pd.to_numeric(inter["interEventLength"], errors="coerce")
         for k, g in inter.groupby(["Gauge", "PlanningUnit", "Code"]):
             gaps[k] = g.interEventLength.dropna().to_numpy()
-    etp = []
+    etp: list[float | None] = []
     for k, m, d in zip(zip(res.Gauge, res.PlanningUnit, res.Code), mrip, days):
         if not (m > 0 and d > 0):
             etp.append(None)
             continue
-        e = gaps.get(k)
-        etp.append(0.0 if e is None else float(np.clip(e - m, 0, None).sum() / d))
+        gap_days = gaps.get(k)
+        etp.append(0.0 if gap_days is None else float(np.clip(gap_days - m, 0, None).sum() / d))
     res["ETP"] = etp
     rows = [
         {
@@ -271,7 +280,16 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
     return rows, stats
 
 
-def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filename="", sub="", merge=False):
+def worker(
+    job_id: str,
+    body: bytes,
+    gauges: list[str],
+    scn_id: str | None = None,
+    fmt: str = "Standard time-series",
+    filename: str = "",
+    sub: str = "",
+    merge: bool = False,
+) -> None:
     job = JOBS[job_id]
     try:
         job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge)
@@ -283,7 +301,7 @@ def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filena
 
 
 # ---- flow analysis on stored scenario flows -------------------------------------------------------------------------------
-def load_flows(scn_id):
+def load_flows(scn_id: str | None) -> Any:
     import pandas as pd
 
     scn_id = re.sub(r"[^A-Za-z0-9_-]", "", scn_id or "")
@@ -303,14 +321,14 @@ def load_flows(scn_id):
     return FLOWS[scn_id]
 
 
-def forget_cached(scn_id):
+def forget_cached(scn_id: str) -> None:
     """Drop everything computed from a scenario's stored flows (after it is replaced, merged or deleted)."""
     FLOWS.pop(scn_id, None)
     for k in [k for k in _EVAL_CACHE if k[0] == scn_id]:
         _EVAL_CACHE.pop(k, None)
 
 
-def daily_series(scn_id, gauge):
+def daily_series(scn_id: str, gauge: str) -> Any:
     """A gauge's flows on every calendar day from its first to its last observed day; days with no flow stay NaN (never filled)."""
     import pandas as pd
 
@@ -321,21 +339,21 @@ def daily_series(scn_id, gauge):
     return s.reindex(pd.date_range(s.index[0], s.index[-1]))
 
 
-def gauge_series(scn_id, gauge):
+def gauge_series(scn_id: str, gauge: str) -> Any:
     df = load_flows(scn_id)
     if gauge not in df.columns:
         raise ValueError(f"gauge {gauge} has no flow series in this scenario")
     return df[gauge]
 
 
-def nice_ceiling(x):
+def nice_ceiling(x: float) -> int:
     if not x or x <= 0:
         return 100
     k = 10 ** max(int(math.floor(math.log10(x))) - 1, 0)
     return int(math.ceil(x / k) * k)
 
 
-def _json_safe(obj):
+def _json_safe(obj: Any) -> Any:
     """Recursively replace non-finite floats (NaN, +-inf) with None so the response is strict JSON (null in the browser)."""
     if isinstance(obj, float):
         return obj if math.isfinite(obj) else None
@@ -346,7 +364,7 @@ def _json_safe(obj):
     return obj
 
 
-def _window_days(wy_label, sm, em):
+def _window_days(wy_label: int, sm: int, em: int) -> int:
     """Calendar days of the timing window (months sm..em, may wrap the year end) inside water year `wy_label` (1 Jul - 30 Jun)."""
     import pandas as pd
 
@@ -354,7 +372,7 @@ def _window_days(wy_label, sm, em):
     return int(((m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)).sum())
 
 
-def achievement_frequencies(flows, index, thresholds, durations, sm, em, consecutive=False):
+def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: Any, sm: int, em: int, consecutive: bool = False) -> tuple[Any, int]:
     """% of water years in which each threshold is exceeded for at least `duration` days within the timing window.
     flows: (days, scenarios). Same result as the numba reference (non-consecutive days): the d-th largest in-window flow of a year
     is the highest threshold that is exceeded on d days of that year.  consecutive=True requires the d days to be consecutive (the
@@ -409,10 +427,10 @@ def achievement_frequencies(flows, index, thresholds, durations, sm, em, consecu
     return out, n_counted
 
 
-_EWR_CACHE = {}
+_EWR_CACHE: dict[str, Any] = {}
 
 
-def ewr_list(gauge):
+def ewr_list(gauge: str) -> list[dict[str, Any]]:
     """EWRs at a gauge that the EWR tool evaluates with flow_handle (consecutive days) or lowflow_handle (non-consecutive days)."""
     import pandas as pd
     from py_ewr import data_inputs
@@ -427,6 +445,7 @@ def ewr_list(gauge):
     mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"))}
     for r in t.itertuples():
         multi = isinstance(r.Multigauge, str) and r.Multigauge.strip()
+        maxint = mi.get((r.Code, r.PlanningUnitName))
         h = _EWR_CACHE["handler"].get(f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}")
         num = lambda v: pd.to_numeric(v, errors="coerce")
         thr, dur, sm, em, tgt = num(r.FlowThresholdMin), num(r.Duration), num(r.StartMonth), num(r.EndMonth), num(r.TargetFrequency)
@@ -444,11 +463,11 @@ def ewr_list(gauge):
                 "sm": int(sm),
                 "em": int(em),
                 "target": None if pd.isna(tgt) else float(tgt),
-                "maxint": 0.0 if pd.isna(mi.get((r.Code, r.PlanningUnitName))) else float(mi.get((r.Code, r.PlanningUnitName))),
+                "maxint": 0.0 if maxint is None or pd.isna(maxint) else float(maxint),
             }
         )
     # the same EWR is often defined in several planning units with identical settings: list it once
-    uniq = {}
+    uniq: dict[tuple[Any, ...], dict[str, Any]] = {}
     for e in sorted(out, key=lambda e: (e["code"], e["pu"])):
         k = (e["code"], e["thr"], e["dur"], e["sm"], e["em"], e["target"], e["maxint"], e["handler"])
         if k in uniq:
@@ -458,15 +477,15 @@ def ewr_list(gauge):
     return list(uniq.values())
 
 
-_EVAL_CACHE = {}  # (scenario id, gauge, code, planning unit) -> one EWR evaluated by py_ewr (see ewr_eval)
+_EVAL_CACHE: dict[tuple[str, str, str, str], dict[str, Any]] = {}  # (scenario id, gauge, code, planning unit) -> one EWR evaluated by py_ewr (see ewr_eval)
 
 
-def _water_year(d):
+def _water_year(d: Any) -> int:
     """py_ewr's water year label: the calendar year it starts in (1 Jul Y - 30 Jun Y+1)."""
     return d.year if d.month >= 7 else d.year - 1
 
 
-def ewr_eval(scn_id, gauge, code, pu=""):
+def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]:
     """py_ewr on one EWR at one gauge of a stored scenario: its yearly statistics, every threshold event, the successful events and
     the gaps between successful events, exactly as py_ewr computes them (calc_sorter + ScenarioHandler). Missing days stay
     missing (py_ewr counts them per year in missingDays); nothing is filled in."""
@@ -530,7 +549,7 @@ def ewr_eval(scn_id, gauge, code, pu=""):
     return out
 
 
-def ewr_gaps(ev):
+def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
     """py_ewr's gaps between successful events (including the gaps from the start of the record to the first event and from the
     last event to the end, as py_ewr counts them), each with the days beyond the maximum inter-event period. Two corrections to
     what py_ewr returns:
@@ -569,7 +588,7 @@ def ewr_gaps(ev):
     return gaps, etp
 
 
-def interevents(q):
+def interevents(q: dict[str, str]) -> dict[str, Any]:
     """Gaps between successful events of one EWR (py_ewr successful inter-events) that exceed its maximum inter-event period."""
     ev = ewr_eval(q["scn"], q["gauge"], q["ewr"], q.get("pu", ""))
     if not ev["mrip_days"]:
@@ -584,7 +603,7 @@ def interevents(q):
     }
 
 
-def ewr_years(q):
+def ewr_years(q: dict[str, str]) -> dict[str, Any]:
     """One EWR, year by year and event by event, for one scenario or a base / comparison pair (py_ewr's own results throughout).
     years:  py_ewr's yearly statistics; a water year is complete when py_ewr reports no missing days and a full year of days.
     events: every threshold event py_ewr found (ok = it is one of py_ewr's successful events, i.e. at least MinSpell days long), with
@@ -597,7 +616,7 @@ def ewr_years(q):
     gauge, code, pu = q["gauge"], q["ewr"], q.get("pu", "")
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
     fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
-    out = {"code": code, "gauge": gauge, "scenarios": {}}
+    out: dict[str, Any] = {"code": code, "gauge": gauge, "scenarios": {}}
     for k, sid in ids:
         ev = ewr_eval(sid, gauge, code, pu)
         y, flow = ev["years"], ev["flow"]
@@ -667,14 +686,14 @@ def ewr_years(q):
     return out
 
 
-def _feb29(w):
+def _feb29(w: int) -> bool:
     """True when water year w (1 Jul w - 30 Jun w+1) holds a 29 February."""
     import calendar
 
     return calendar.isleap(w + 1)
 
 
-def _runs_by_year(s, hit):
+def _runs_by_year(s: Any, hit: Any) -> tuple[dict[str, list[Any]], list[dict[str, Any]]]:
     """Runs of consecutive days where `hit` is true in the daily series `s` (missing days are never hits and break a run; a run
     beside a missing day or the record's ends is `censored`: its true length is unknown). Per water year (1 Jul - 30 Jun,
     labelled by its first calendar year as in py_ewr): the days that are hits, the longest run inside that year (a run crossing
@@ -706,10 +725,10 @@ def _runs_by_year(s, hit):
             }
         )
         i = j + 1
-    starts = {}
+    starts: dict[int, int] = {}
     for r in runs:
         starts[r["wy"]] = starts.get(r["wy"], 0) + 1
-    years = {"wy": [], "days": [], "longest": [], "n": [], "complete": []}
+    years: dict[str, list[Any]] = {"wy": [], "days": [], "longest": [], "n": [], "complete": []}
     for w in np.unique(wy):
         m = wy == w
         comp = bool(m.sum() == (366 if _feb29(int(w)) else 365) and not miss[m].any())
@@ -725,7 +744,7 @@ def _runs_by_year(s, hit):
     return years, runs
 
 
-def _pair_years(out):
+def _pair_years(out: dict[str, Any]) -> dict[str, Any]:
     """Two scenarios: the water years complete in both."""
     if "comp" in out["scenarios"]:
         b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
@@ -735,12 +754,12 @@ def _pair_years(out):
     return out
 
 
-def spells(q):
+def spells(q: dict[str, str]) -> dict[str, Any]:
     """Low-flow spells: runs of consecutive days with flow below `thr` ML/d (see _runs_by_year); with two scenarios they are compared
     over the water years complete in both."""
     gauge, thr = q["gauge"], float(q["thr"])
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
-    out = {"gauge": gauge, "thr": thr, "scenarios": {}}
+    out: dict[str, Any] = {"gauge": gauge, "thr": thr, "scenarios": {}}
     for k, sid in ids:
         s = daily_series(sid, gauge)
         years, runs = _runs_by_year(s, s.to_numpy(dtype=float) < thr)
@@ -754,7 +773,7 @@ def spells(q):
     return _pair_years(out)
 
 
-def regimes(q):
+def regimes(q: dict[str, str]) -> dict[str, Any]:
     """Flow regime components at a gauge (baseflow, freshes, bankfull, overbank, ...). Each regime's threshold comes from the EWR
     tool's parameter sheet: the lowest flow threshold among the gauge's flow EWRs in that regime, with EWR codes assigned to regimes
     by the MDBA pipeline mapping (flow_regime_mappings). For each threshold and complete water year (whole year, not each EWR's
@@ -762,7 +781,7 @@ def regimes(q):
     from flow_regime_mappings import regimes_for
 
     gauge = q["gauge"]
-    by = {}
+    by: dict[str, list[dict[str, Any]]] = {}
     for e in ewr_list(gauge):
         for rg in regimes_for(e["code"], e.get("state") or ""):
             if rg != "excluded":
@@ -773,7 +792,7 @@ def regimes(q):
         comps.append({"regime": rg, "thr": thr, "codes": sorted({e["code"] for e in es}), "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
     comps.sort(key=lambda c: c["thr"])
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
-    out = {"gauge": gauge, "regimes": comps, "scenarios": {}}
+    out: dict[str, Any] = {"gauge": gauge, "regimes": comps, "scenarios": {}}
     for k, sid in ids:
         s = daily_series(sid, gauge)
         v = s.to_numpy(dtype=float)
@@ -785,7 +804,7 @@ def regimes(q):
     return _pair_years(out)
 
 
-def heatmap(q):
+def heatmap(q: dict[str, str]) -> dict[str, Any]:
     import numpy as np
     import pandas as pd
 
@@ -824,7 +843,7 @@ def heatmap(q):
     return out
 
 
-def exceed_pct(sorted_vals, x):
+def exceed_pct(sorted_vals: Any, x: Any) -> Any:
     """% of days the flow is equal to or above x (sorted_vals ascending)."""
     import numpy as np
 
@@ -832,7 +851,7 @@ def exceed_pct(sorted_vals, x):
     return 100.0 * (n - np.searchsorted(sorted_vals, x, side="left")) / n
 
 
-def _paired(q, gauge):
+def _paired(q: dict[str, str], gauge: str) -> dict[str, Any]:
     """The flows the duration curves are built from: one scenario's observed days, or for two scenarios only the days on which
     BOTH have a flow, so a difference never mixes in a difference in coverage."""
     import pandas as pd
@@ -846,7 +865,7 @@ def _paired(q, gauge):
     return {k: v.dropna() for k, v in ser.items()}
 
 
-def curves(q):
+def curves(q: dict[str, str]) -> dict[str, Any]:
     """kind: hydro (daily flow and water-year volumes, one or two scenarios, on shared dates) | fdc (flow duration curve, one or two scenarios) |
     dfdc (differential flow duration curve: change in % of time flow >= x, comparison - base).
     thr (comma-separated flows): % of time exceeded at each, for each scenario."""
@@ -862,18 +881,18 @@ def curves(q):
         df = pd.concat({k: daily_series(q[k], gauge) for k in ("base", "comp") if q.get(k)}, axis=1, join="inner" if q.get("comp") else "outer")
         if df.empty:
             raise ValueError("the scenarios share no dates at this gauge")
-        out = {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in df.index]}
+        out: dict[str, Any] = {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in df.index]}
         for k in df.columns:
             out[k] = [None if np.isnan(v) else round(float(v), 2) for v in df[k].to_numpy(dtype=float)]
         out["flow"] = out["base"]
         wy = np.array([_water_year(d) for d in df.index])
         full = df.notna().all(axis=1).to_numpy()
-        years = []
+        year_volumes: list[dict[str, Any]] = []
         for w in np.unique(wy):
             m = wy == w
             if m.sum() == (366 if _feb29(int(w)) else 365) and full[m].all():
-                years.append({"wy": int(w), **{k: round(float(df[k].to_numpy()[m].sum()), 1) for k in df.columns}})
-        out["years"] = years
+                year_volumes.append({"wy": int(w), **{k: round(float(df[k].to_numpy()[m].sum()), 1) for k in df.columns}})
+        out["years"] = year_volumes
         out["missing_days"] = int((~full).sum())
         return out
     if kind == "mdfdc":
@@ -912,7 +931,7 @@ def curves(q):
         return {"kind": "mdfdc", "months": order, "flows": np.round(flows, 2).tolist(), "diff": z(diff), "base": z(base), "comp": z(comp), "ymax": ymax}
     sm, em = int(q.get("sm") or 0), int(q.get("em") or 0)  # optional timing window (months, may wrap the year end): only days in it are used
 
-    def windowed(series):
+    def windowed(series: Any) -> Any:
         series = series.dropna()
         if not (1 <= sm <= 12 and 1 <= em <= 12):
             return series
@@ -926,12 +945,12 @@ def curves(q):
     marks = [{"thr": t, **{k: round(float(exceed_pct(v, t)), 3) for k, v in vals.items()}} for t in thrs]
     if kind == "fdc":
         p = np.linspace(0, 100, 401)
-        out = {"kind": "fdc", "p": np.round(p, 2).tolist(), "marks": marks}
+        fdc: dict[str, Any] = {"kind": "fdc", "p": np.round(p, 2).tolist(), "marks": marks}
         for k, v in vals.items():
-            out[k] = np.round(np.percentile(v, 100 - p), 2).tolist()  # flow equalled or exceeded p% of the time
+            fdc[k] = np.round(np.percentile(v, 100 - p), 2).tolist()  # flow equalled or exceeded p% of the time
         if "comp" in vals:
-            out["diff"] = np.round(np.array(out["comp"]) - np.array(out["base"]), 2).tolist()
-        return out
+            fdc["diff"] = np.round(np.array(fdc["comp"]) - np.array(fdc["base"]), 2).tolist()
+        return fdc
     if kind == "dfdc":
         if "comp" not in vals:
             raise ValueError("the differential flow duration curve needs two scenarios")
@@ -954,10 +973,10 @@ def curves(q):
 
 
 class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *a, **k):
+    def __init__(self, *a: Any, **k: Any) -> None:
         super().__init__(*a, directory=str(ROOT), **k)
 
-    def _json(self, obj, code=200, headers=None):
+    def _json(self, obj: Any, code: int = 200, headers: dict[str, str] | None = None) -> None:
         data = json.dumps(_json_safe(obj), allow_nan=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -968,7 +987,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         u = urlparse(self.path)
         if u.path == "/api/forget":
             return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
@@ -1001,10 +1020,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": f"{type(e).__name__}: {e}"}, 400)
         return super().do_GET()
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         u = urlparse(self.path)
         if u.path == "/api/forget":
-            if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
+            if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address)):
                 return self._json({"message": "origin or host not allowed"}, 403)
             sid = re.sub(r"[^A-Za-z0-9_-]", "", parse_qs(u.query).get("id", [""])[0])
             forget_cached(sid)
@@ -1012,7 +1031,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True})
         if u.path != "/api/run":
             return self._json({"message": "not found"}, 404)
-        if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
+        if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address)):
             return self._json({"message": "origin or host not allowed"}, 403)
         n = int(self.headers.get("Content-Length") or 0)
         if not 0 < n <= MAX_BYTES:
@@ -1039,12 +1058,12 @@ class Handler(SimpleHTTPRequestHandler):
         ).start()
         self._json({"job": jid})
 
-    def end_headers(self):
+    def end_headers(self) -> None:
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
-    def log_message(self, fmt, *args):
+    def log_message(self, fmt: str, *args: Any) -> None:
         if "/api/job" not in str(args[0] if args else ""):
             super().log_message(fmt, *args)
 
