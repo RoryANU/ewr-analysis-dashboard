@@ -94,7 +94,14 @@ class TestTemplateAndBuild:
     @pytest.mark.slow
     def test_rebuilding_from_data_reproduces_the_committed_page_byte_for_byte(self):
         built = bd.render_html(TEMPLATE_PATH.read_text(), bd.build_payload())
-        assert built == HTML_PATH.read_text(), "ewr_analysis_dashboard.html is stale: run `python3 src/build_dashboard.py` and commit the result"
+
+        # Build provenance changes on each build; compare all other bytes.
+        def stable(s):
+            return re.sub(r'"built_at":"[^"]+"', '"built_at":"BUILD_TIME"', s)
+
+        assert stable(built) == stable(HTML_PATH.read_text()), (
+            "ewr_analysis_dashboard.html is stale: run `python3 src/build_dashboard.py` and commit the result"
+        )
 
 
 # ---------------------------------------------------------------------------------------------------------------------

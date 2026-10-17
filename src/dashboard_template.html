@@ -70,7 +70,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its years in 10 exceeding MRIP is at or below this value, otherwise 0">MRIP achieved when years in 10 exceeding MRIP ≤ <input id="ethr" type="number" min="0" max="10" step="0.1" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Frequency threshold (target = 1.0) ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="1.0" style="width:56px;font:inherit;padding:2px 4px"></label>
-  <button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
+  <span id="centralNotice">Scenarios are prepared centrally</span><button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
   <button id="share" class="ghost" title="Copy a link to this exact view">🔗 <span id="shareT"></span></button>
 </div>
 <dialog id="scnDlg"><button id="scnClose" class="ghost" title="Close" aria-label="Close">×</button><h3>Add your own scenario</h3>
@@ -86,6 +86,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 <div id="main"><div id="map"></div><div id="divider" title="Drag to resize the panel (double-click to reset)"></div><div id="panel"></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<!-- OFFLINE_DATA -->
 <script>
 const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__, CONSTRAINTS=__CONSTRAINTS__;
 const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et],...]}]
@@ -152,11 +153,8 @@ function colour(v,m){ if(v==null) return "#bbb";
 
 // ---- map (same look as the original SDL map) ---------------------------------------------------------------------
 const colours={NSW:"#4e79a7",VIC:"#59a14f",QLD:"#e15759",SA:"#f28e2b",ACT:"#b07aa1"};
-const map=L.map("map").fitBounds([[-39,138],[-24.5,153]]);
-const ESRI="Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors | SDL units: MDBA (CC BY 4.0) | Rivers: HydroSHEDS | Gauges: BoM";
-const gray=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,attribution:ESRI}).addTo(map);
-map.createPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,pane:"labels"}).addTo(map);
+const map=L.map("map",{preferCanvas:true}).fitBounds([[-39,138],[-24.5,153]]);
+map.attributionControl.addAttribution("SDL units: MDBA (CC BY 4.0) | Rivers: HydroSHEDS | Gauges: BoM");
 const activeSdl=i=>i>=0&&(S.src!=="user"||CUSTOM.some(c=>!c.removed&&c.sdls.includes(META.sdls[i])));   // demo: every SDL unit in the review; your data: units you have added a scenario for
 const inReview=f=>activeSdl(f.properties.sdl);
 const clickable=f=>!(f.properties.state==="SA"&&!inReview(f));   // other SA units are drawn but not interactive
@@ -240,7 +238,7 @@ function render(){
   if(s.type==="none"){
     disposePerformance();
     const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
-    if(S.src==="user"&&!names.length){ $("panel").innerHTML=`<h2>Your data</h2><div class="note">This mode uses only model output you add yourself, and unlocks the flow charts (threshold × duration heat map, hydrograph, flow duration curves). Add a scenario to begin; the SDL units it covers are found from its gauges.</div><div class="row"><button data-act="addscn">＋ Add scenario</button></div>`; return; }
+    if(S.src==="user"&&!names.length){ $("panel").innerHTML=`<h2>Your data</h2><div class="note">Scenarios are prepared centrally. Ask your analyst for an HTML file with your scenarios and daily flows embedded.</div>`; return; }
     $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.</div>
       <table><tbody>${names.map(([n,i])=>`<tr class="click" data-act="sdl" data-i="${i}"><td>${esc(n)}</td></tr>`).join("")}</tbody></table>`;
     return;
@@ -412,7 +410,7 @@ function cellDetail(){
   return `<div class="cellp"><div class="cellh"><b>${esc(c.full)} · ${esc(o.label)}</b><span>${rs.length} EWR${rs.length===1?"":"s"}${rs.length>shown.length?` (first ${shown.length})`:""}${cnt?"":" · by flow threshold"}</span><button data-act="cellclose" title="Close">×</button></div>
     <div class="cellt"><table><thead><tr>${head.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></div>`;
 }
-// ---- flow analysis (uploaded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
+// ---- flow analysis (embedded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
 // colour scales as in the reference plots (plotly express RdBu: red = negative, blue = positive; Blues for absolute values)
 const RDBU=["rgb(103,0,31)","rgb(178,24,43)","rgb(214,96,77)","rgb(244,165,130)","rgb(253,219,199)","rgb(247,247,247)","rgb(209,229,240)","rgb(146,197,222)","rgb(67,147,195)","rgb(33,102,172)","rgb(5,48,97)"];
 const BLUES=["rgb(247,251,255)","rgb(222,235,247)","rgb(198,219,239)","rgb(158,202,225)","rgb(107,174,214)","rgb(66,146,198)","rgb(33,113,181)","rgb(8,81,156)","rgb(8,48,107)"];
@@ -433,11 +431,11 @@ const customOf=P=>CUSTOM.find(c=>c.P===P&&!c.removed&&c.id);
 function flowCtx(){
   if(S.src!=="user"||S.sel.type!=="gauge"||!CUSTOM.some(c=>!c.removed)) return null;
   const g=META.gauges[S.sel.i], comp=customOf(S.pol), base=customOf(S.bpol);
-  const need=isDiff()?"In Differential mode both the Base and the Comparison must be uploaded scenarios.":"Select one of your uploaded scenarios.";
+  const need=isDiff()?"In Differential mode both the Base and the Comparison must be embedded scenarios.":"Select one of your embedded scenarios.";
   const has=c=>c&&c.flowGauges.includes(g);
   if(isDiff()){ if(has(comp)&&has(base)) return {ok:true,gauge:g,base:base.id,comp:comp.id,bn:base.name,cn:comp.name}; }
   else if(has(comp)) return {ok:true,gauge:g,base:comp.id,comp:null,bn:comp.name};
-  return {ok:false,msg:"Flow charts need uploaded flows for this gauge. "+need};
+  return {ok:false,msg:"Flow charts need embedded flows for this gauge. "+need};
 }
 const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
 // every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
@@ -563,7 +561,7 @@ async function fillEwrSelect(){
     pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); lock(); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
   }
 }
-// ---- annual volumes, EWR performance by water year, low-flow spells (uploaded scenarios) ------------------------------------
+// ---- annual volumes, EWR performance by water year, low-flow spells (embedded scenarios) ------------------------------------
 const SCOL={base:"#4b5563",comp:"#eb6834"}, UPC="rgb(33,102,172)", DNC="rgb(178,24,43)";   // scenario identity: base grey, comparison orange; a change: blue better, red worse
 const wyl=w=>`${w}–${String((w+1)%100).padStart(2,"0")}`, wyMid=w=>`${w+1}-01-01`;   // water year 1 Jul w – 30 Jun w+1 (py_ewr labels it w), drawn on a date axis at its middle
 const fmtML=v=>v==null?"–":Math.abs(v)>=1000?(v/1000).toLocaleString(undefined,{maximumFractionDigits:Math.abs(v)>=1e5?0:1})+" GL":Math.round(v).toLocaleString()+" ML";
@@ -759,7 +757,7 @@ async function drawRegimes(){   // flow regime components: thresholds from the E
     msg.textContent=`Each flow regime's threshold is the lowest flow threshold among this gauge's EWRs in that regime (the EWR tool's parameter sheet; EWR codes are assigned to regimes as in the MDBA pipeline). Days and events are counted over the whole water year, not each EWR's timing window or duration, so this describes the flow regime, not EWR achievement. An event is a run of consecutive days at or above the threshold. `+(D?`Over the ${keep.size} water years complete in both (${c.bn} → ${c.cn}).`:`Over the ${keep.size} complete water years.`);
   }catch(er){ if(tok===RGTOKEN) msg.textContent="Could not draw: "+er.message; }
 }
-// ---- monthly differential flow duration (differential mode, uploaded scenarios) ----------------------------------------------
+// ---- monthly differential flow duration (differential mode, embedded scenarios) ----------------------------------------------
 S.mflow={xlim:"",yr:null,xr:null}; let MTOKEN=0, MTIMER=0;
 async function drawMonthly(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("mflowPlot")) return;
@@ -790,7 +788,7 @@ const sameWin=(grp,keys)=>{ const on=keys.map(k=>grp.find(e=>e.key===k)).filter(
 const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), on=sameWin(g,S.flow.thr); S.flow.thr=on.map(e=>e.key); return on; };
 let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
-async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
+async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await DashboardData.request(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 async function drawFlow(keepZoom){
   if(S.flow.chart==="joint"){
     const view=performanceView;
@@ -931,13 +929,13 @@ function addCustom(name,vals,id,flowGauges,fmt){
   const matched=[], sdls=new Set(); for(const v of vals){ const rs=PUKEY.get(v[0]+"|"+v[1]+"|"+v[2]); if(!rs) continue; rs.forEach(r=>{ r[6][P*NC]=v[3]; r[7][P*NC]=v[4]; sdls.add(META.sdls[r[1]]); }); matched.push(v); }   // the file's results go onto every SDL unit that uses the gauge
   CUSTOM.push({key,name,sdls:[...sdls],P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],fmt:fmt||"Standard time-series"}); persistCustom(); return {P,matched:matched.length};
 }
-function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
+function persistCustom(){ if(!DashboardData.capabilities.canUpload)return; try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
 function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt); }catch(e){} }
-function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
+function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) DashboardData.request("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
   if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   persistCustom(); fillPolicyOptions(); renderCustomList(); refresh(); }
 function fillInto(){ const live=CUSTOM.filter(c=>!c.removed), cur=$("scnInto").value;
-  $("scnInto").innerHTML=`<option value="">a new scenario</option>`+live.map(c=>`<option value="${esc(c.key)}">existing scenario: ${esc(c.name)}</option>`).join("");
+  $("scnInto").replaceChildren(new Option("a new scenario",""),...live.map(c=>new Option("existing scenario: "+c.name,c.key)));
   $("scnInto").value=live.some(c=>c.key===cur)?cur:""; $("scnNameWrap").style.display=$("scnInto").value?"none":""; }
 $("scnInto").onchange=()=>{ $("scnNameWrap").style.display=$("scnInto").value?"none":""; };
 function mergeCustom(c,vals,flowGauges){ performanceRevision++;   // add a second file's results to an existing scenario; the same EWR at the same gauge is replaced
@@ -946,7 +944,11 @@ function mergeCustom(c,vals,flowGauges){ performanceRevision++;   // add a secon
   c.vals=[...have.values()]; c.sdls=[...sdls]; c.flowGauges=[...new Set([...(c.flowGauges||[]),...flowGauges])]; persistCustom(); return {matched:vals.filter(v=>PUKEY.has(v[0]+"|"+v[1]+"|"+v[2])).length};
 }
 function renderCustomList(){ fillInto(); const live=CUSTOM.map((c,i)=>[c,i]).filter(([c])=>!c.removed);
-  $("scnList").innerHTML=live.length?`<b style="font-size:12px">Your scenarios</b>`+live.map(([c,i])=>`<div><span>${esc(c.name)} · ${c.sdls.length} SDL unit${c.sdls.length===1?"":"s"} · ${esc(c.fmt)} · ${c.vals.length} EWRs</span><button class="ghost" data-rm="${i}" title="Remove">remove</button></div>`).join(""):""; }
+  $("scnList").replaceChildren();
+  for(const [c,i] of live){const row=document.createElement("div"),text=document.createElement("span"),button=document.createElement("button");
+    text.textContent=`${c.name} · ${c.sdls.length} SDL units · ${c.fmt} · ${c.vals.length} EWRs`;
+    button.textContent="remove";button.className="ghost";button.dataset.rm=i;row.append(text,button);$("scnList").append(row);}
+}
 const FORMATS={
   "Standard time-series":{hint:"CSV. First column Date (YYYY-MM-DD or DD/MM/YYYY), then one column per gauge named <gauge>_flow or <gauge>_level, e.g. 409025_flow.",tpl:true,flows:true,accept:".csv,.txt,text/csv"},
   "Bigmod - MDBA":{hint:"Bigmod formatted output file (MDBA). Columns are matched to gauges through the EWR tool's Bigmod node list.",accept:".csv,.txt,text/csv"},
@@ -960,10 +962,11 @@ function syncFormat(){ const f=FORMATS[$("scnFmt").value]; $("scnFmtHint").textC
 $("scnFmt").innerHTML=Object.keys(FORMATS).map(k=>`<option>${esc(k)}</option>`).join(""); $("scnFmt").onchange=syncFormat; syncFormat();
 const allGauges=[...new Set(ROWS.map(r=>META.gauges[r[2]]))];
 function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=cls||""; }
-async function serverUp(){ try{ const r=await fetch("/api/ping",{cache:"no-store"}); return r.ok; }catch(e){ return false; } }
+async function serverUp(){ return DashboardData.capabilities.canUpload; }
 $("addScn").onclick=async()=>{
+  if(!DashboardData.capabilities.canUpload)return;
   renderCustomList(); setStatus(""); $("scnRun").disabled=false; $("scnDlg").showModal();
-  if(!(await serverUp())) setStatus("The analysis server is not running, so scenarios can't be run. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
+  if(!(await serverUp())) setStatus("Scenarios are prepared centrally. Ask your analyst for a new offline build.","err");
 };
 $("scnClose").onclick=()=>$("scnDlg").close();
 $("scnList").onclick=e=>{ const b=e.target.closest("[data-rm]"); if(b) removeCustom(+b.dataset.rm); };
@@ -977,13 +980,13 @@ $("scnRun").onclick=async()=>{
   if(!name) return setStatus("Give the scenario a name.","err");
   if(!into&&CUSTOM.some(c=>!c.removed&&c.name===name)) return setStatus("A scenario with that name already exists; choose another name.","err");
   if(!file) return setStatus("Choose a "+fmt+" file.","err");
-  if(!(await serverUp())) return setStatus("The analysis server is not running. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
+  if(!(await serverUp())) return setStatus("Scenarios are prepared centrally. Ask your analyst for a new offline build.","err");
   $("scnRun").disabled=true; setStatus("Uploading "+file.name+" …");
   try{
-    const scnId=into&&into.id?into.id:"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv",...(into?{"X-Merge":"1"}:{}),"X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Subscenario":$("scnSub").value.trim(),"X-Filename":file.name},body:file}), j=await r.json();
+    const scnId=into&&into.id?into.id:"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await DashboardData.request("/api/run",{method:"POST",headers:{"Content-Type":"text/csv",...(into?{"X-Merge":"1"}:{}),"X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Subscenario":$("scnSub").value.trim(),"X-Filename":file.name},body:file}), j=await r.json();
     if(!j.job) throw new Error(j.message||"upload failed");
     for(;;){ await new Promise(res=>setTimeout(res,1000));
-      const q=await (await fetch("/api/job?id="+j.job,{cache:"no-store"})).json();
+      const q=await (await DashboardData.request("/api/job?id="+j.job,{cache:"no-store"})).json();
       if(q.status==="running"){ setStatus(`Running the EWR tool … ${Math.round(q.elapsed)} s`); continue; }
       if(q.status==="error") throw new Error(q.message||"run failed");
       const vals=q.rows.map(x=>[x.pu,x.gauge,x.ewr,x.fr,x.et]), st=q.stats||{}, sk=Object.keys(st.skipped||{});
@@ -999,7 +1002,7 @@ $("scnRun").onclick=async()=>{
 function updateClimDisable(){ if(isCustom(S.pol)&&S.cli!==0){ S.cli=0; $("cli").value=0; } if(isCustom(S.bpol)&&S.bcli!==0){ S.bcli=0; $("bcli").value=0; }
   $("cli").disabled=isCustom(S.pol); $("bcli").disabled=isCustom(S.bpol); }
 function syncSrc(){ $("srcD").classList.toggle("on",S.src==="demo"); $("srcU").classList.toggle("on",S.src==="user");
-  $("addScn").style.display=S.src==="user"?"":"none"; $("cli").style.display=$("bcli").style.display=S.src==="user"?"none":""; }
+  $("addScn").style.display=S.src==="user"&&DashboardData.capabilities.canUpload?"":"none"; $("cli").style.display=$("bcli").style.display=S.src==="user"?"none":""; }
 function setSrc(src){ S.src=src; S.cell=null;
   if(src==="demo"){ S.pol=META.policies.indexOf("Basin plan full implementation"); S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   else { const u=CUSTOM.filter(c=>!c.removed).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } S.cli=0; S.bcli=0; }
@@ -1024,8 +1027,7 @@ const policyChoices=()=>S.src==="user"?CUSTOM.filter(c=>!c.removed).map(c=>c.P):
 function fillPolicyOptions(){
   const ch=policyChoices();
   if(ch.length){ if(!ch.includes(S.pol)) S.pol=ch[ch.length-1]; if(!ch.includes(S.bpol)) S.bpol=ch[0]; }
-  const html=ch.map(i=>`<option value="${i}">${esc(POL_L[META.policies[i]])}</option>`).join("");
-  $("pol").innerHTML=html; $("bpol").innerHTML=html; $("pol").value=S.pol; $("bpol").value=S.bpol; }
+  for(const id of ["pol","bpol"]){ $(id).replaceChildren(...ch.map(i=>{const o=document.createElement("option");o.value=i;o.textContent=POL_L[META.policies[i]];return o;})); } $("pol").value=S.pol; $("bpol").value=S.bpol; }
 fillPolicyOptions();
 $("cli").innerHTML=META.climates.map((c,i)=>`<option value="${i}">${esc(CLI_L[c])}</option>`).join("");
 $("pol").value=S.pol;
@@ -1115,10 +1117,12 @@ $("share").onclick=()=>{ pushHash(); const done=()=>{ $("shareT").textContent="c
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(done,()=>prompt("Copy this link",location.href)); else prompt("Copy this link",location.href); };
 window.addEventListener("hashchange",()=>{ if(location.hash.slice(1)!==encodeState()){ applyHash(); refresh(); } });
 __PERFORMANCE_JS__
-restoreCustom();
-for(const c of PRELOADED) if(!CUSTOM.some(x=>!x.removed&&x.name===c.name)) addCustom(c.name,c.vals,null,[],c.fmt||"Standard time-series");
+if(DashboardData.capabilities.canUpload) restoreCustom();
+for(const c of PRELOADED) if(!CUSTOM.some(x=>!x.removed&&x.name===c.name)) addCustom(c.name,c.vals,c.id,c.flowGauges||[],c.fmt||"Standard time-series");
 fillPolicyOptions();
 if(PRELOADED.length&&!location.hash.slice(1)){ S.src="user"; const c=CUSTOM.find(x=>!x.removed&&x.name===PRELOADED[0].name); if(c) S.pol=c.P; fillPolicyOptions(); syncUI(); }   // a page with embedded scenarios opens in Your data
 applyHash();
 refresh();
-</script></body></html>
+</script><footer id="buildProvenance" style="position:fixed;bottom:0;left:0;right:0;background:#fff;font-size:10px;padding:2px 8px;z-index:1000"></footer>
+<script>document.getElementById("buildProvenance").textContent="Offline build · py_ewr "+DashboardData.metadata.py_ewr+" · Parameters SHA-256 "+DashboardData.metadata.parameter_sha256+" · Built "+DashboardData.metadata.built_at;</script>
+</body></html>

@@ -14,7 +14,8 @@ function harness() {
   vm.runInContext(embedded,ctx);
   vm.runInContext(`
     const S={ethr:0,fbthr:.5,thr:1,pol:0,cli:0,bpol:1,bcli:0,src:'demo',mode:'single',sel:{type:'gauge',i:0}};
-    const NC=META.climates.length,CUSTOM=[],PCFG={},FLOWGEN=0;
+    const NC=META.climates.length,CUSTOM=[],PCFG={},FLOWGEN=0,LOWER={et:1,fb:1};
+    const DashboardData={request:(...args)=>fetch(...args)};
     const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c,isDiff=()=>S.mode==='diff';
     const flowCtx=()=>({ok:true,base:'test',gauge:META.gauges[0],bn:'Test record'});
@@ -159,7 +160,7 @@ test('oversized files are rejected before reading; stale CSV after selection cha
   d.resolve('date,stage_m\n2000-01-01,1');await work;assert.equal(h.run('plotCalls.length'),0);
 });
 test('generated script syntax and real-data largest-gauge timings',()=>{
-  for(const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
+  for(const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)){if(!match[0].startsWith('<script type="application/json"'))new vm.Script(match[1]);}
   const h=harness();const result=h.run(`(()=>{
     const groups=new Map();for(const r of ROWS){if(!groups.has(r[2]))groups.set(r[2],[]);groups.get(r[2]).push(r);}
     const rows=[...groups.values()].reduce((a,b)=>a.length>b.length?a:b,[]);
@@ -219,5 +220,5 @@ test('existing metric tiles cap ETP from legacy saved uploads consistently',()=>
   assert.equal(h.run("val(legacy,'et',0)"),1);
   assert.equal(h.run("S.ethr=1;val(legacy,'mz',0)"),1);
   h.run("S.mode='diff'; S.bpol=0; S.bcli=1");
-  assert.equal(h.run("val(legacy,'et')"),.5);
+  assert.equal(h.run("val(legacy,'et')"),-.5);
 });

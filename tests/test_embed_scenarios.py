@@ -90,7 +90,7 @@ class TestBuildWithScenarios:
         f.write_text("x")
         html = em.build_with_scenarios([{"path": str(f), "name": "</script><b>"}], tmp_path / "o.html", template)
         assert html.count("</script>") == 1  # only the template's own closing tag
-        assert "<\\/script>" in html
+        assert "\\u003c/script>" in html
 
     def test_duplicate_names_are_rejected_before_any_run(self, tmp_path, template, fake_run):
         f = tmp_path / "a.csv"

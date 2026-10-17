@@ -1,0 +1,27 @@
+[
+  {
+    "file": "leaflet-1.9.4.js",
+    "source": "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js",
+    "sha256": "db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a"
+  },
+  {
+    "file": "leaflet-1.9.4.css",
+    "source": "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css",
+    "sha256": "a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6"
+  },
+  {
+    "file": "plotly-2.27.0.min.js",
+    "source": "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js",
+    "sha256": "7f4930eba8f8541dbec28dca5bd5f787f8eef1cde0369ac9657b70bed230b3e0"
+  },
+  {
+    "file": "Leaflet-LICENSE",
+    "source": "https://github.com/Leaflet/Leaflet/blob/v1.9.4/LICENSE",
+    "sha256": "53e8dc25862014e4324741ca18fbe3611e11d42ef69f59f86ea8c5389647d4cb"
+  },
+  {
+    "file": "Plotly-LICENSE",
+    "source": "https://github.com/plotly/plotly.js/blob/v2.27.0/LICENSE",
+    "sha256": "67a26cf80f03ff388f26945dfc1f6caed1a0746ff43871190339b3aee49b94bb"
+  }
+]

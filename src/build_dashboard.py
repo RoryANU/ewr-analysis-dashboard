@@ -273,7 +273,9 @@ def render_html(template_text: str, payload: dict[str, Any]) -> str:
     html = template_text.replace("__PERFORMANCE_JS__", (HERE / "performance.js").read_text(encoding="utf-8"))
     for tag, val in payload.items():
         html = html.replace(tag, json.dumps(val, separators=(",", ":")).replace("<", "\\u003c"))
-    return html
+    from offline_build import inventory, package_html
+
+    return package_html(html, inventory(payload["__META__"]["gauges"])) if "<!-- OFFLINE_DATA -->" in html else html
 
 
 def build_payload(root: Path = ROOT) -> dict[str, Any]:

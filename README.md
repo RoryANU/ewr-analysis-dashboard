@@ -1,3 +1,5 @@
+> **Laptop release:** the dashboard is now a self-contained offline HTML file. Scenarios are prepared centrally; uploads and server calls are disabled in the generated page. See [OFFLINE.md](OFFLINE.md) for building, ZIP distribution and managed-laptop acceptance. Python/launcher instructions below describe the retained analyst/reference tooling, not laptop installation.
+
 # EWR analysis dashboard
 
 An interactive page for exploring environmental water requirement (EWR) results from the 2026 Basin Plan review. It averages two metrics for each EWR, up the hierarchy EWR → gauge → planning unit → SDL unit:
