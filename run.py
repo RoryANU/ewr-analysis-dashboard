@@ -56,9 +56,28 @@ def check_python(version=None):
         )
 
 
+def interpreter_works(py):
+    try:
+        return (
+            subprocess.call(
+                [str(py), "-c", "import sys"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            == 0
+        )
+    except OSError:
+        return False
+
+
 def ensure_venv(venv_dir=VENV):
     py = venv_python(venv_dir)
     if py.exists():
+        if not interpreter_works(py):
+            raise LaunchError(
+                f"The Python environment in {venv_dir} does not work (it may have been copied from another computer "
+                "or its Python was uninstalled).\nDelete the folder named .venv and start again; it is rebuilt automatically."
+            )
         return py
     print(
         "First start: setting up a private Python environment (one-off, about a minute)..."
@@ -116,6 +135,13 @@ def main(argv=None):
         return subprocess.call([str(py), str(ROOT / "src" / "server.py"), *args])
     except KeyboardInterrupt:
         return 0
+    except OSError as e:
+        print(
+            f"\nCannot start the EWR tool:\nCould not run the Python environment ({e}).\n"
+            "Delete the folder named .venv and start again.",
+            file=sys.stderr,
+        )
+        return 1
 
 
 if __name__ == "__main__":

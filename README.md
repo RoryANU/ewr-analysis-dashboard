@@ -97,10 +97,12 @@ If you have an Azure ML compute instance, you can run the server there to get th
    python3 run.py --host=0.0.0.0 --no-browser
    ```
 
+   Because this makes the tool reachable by other computers, it prints an address ending in `?token=...`. A random access token is required for every page and API request, so use that exact address and do not share it. Without `--host` (the default) the server only accepts connections from your own computer and needs no token. The tool serves only the dashboard page (never repository files or the stored uploads in `.user_scenarios/`) and has no other login: for anything beyond a private compute instance, put it behind an authenticated proxy.
+
 4. **Open the dashboard** in your browser at:
 
    ```
-   https://<compute-name>-8792.<region>.instances.azureml.ms/ewr_analysis_dashboard.html
+   https://<compute-name>-8792.<region>.instances.azureml.ms/ewr_analysis_dashboard.html?token=<the token printed at start-up>
    ```
 
    Find `<compute-name>` under **Compute → Compute instances** in Azure ML Studio. Find `<region>` in your workspace's **Overview → Location** (e.g. `australiaeast`). If you already have JupyterLab or VS Code open from that compute, the browser URL bar contains both values.

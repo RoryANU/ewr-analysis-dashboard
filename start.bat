@@ -18,8 +18,10 @@ if not defined PYCMD (
 )
 
 %PYCMD% run.py %*
-if errorlevel 1 (
+set "STATUS=%errorlevel%"
+if not "%STATUS%"=="0" (
   echo.
   echo The tool stopped with a problem ^(see above^).
   pause
 )
+exit /b %STATUS%

@@ -26,11 +26,13 @@ For each EWR in the uploaded scenario the job returns the two metrics the tool u
     ETP = L / TotalDays, where L = sum over the gaps between successful events of max(0, gap days - MRIP days)
           and MRIP days = MaxInterEventYears x 365       (py_ewr successful inter-events)
 """
+import hmac
 import io
 import ipaddress
 import json
 import math
 import re
+import secrets
 import socket
 import sys
 import threading
@@ -39,6 +41,7 @@ import traceback
 import uuid
 import warnings
 import webbrowser
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlsplit
@@ -840,6 +843,21 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(ROOT), **k)
 
+    def _authorized(self):
+        """On a localhost-only server anyone on this computer may connect (no token). When bound to other addresses the server has
+        a random token that every request must present: header X-Token, cookie ewr_token, or ?token= (which sets the cookie)."""
+        token = getattr(self.server, "token", None)
+        if not token:
+            return True
+        cookies = {k: v.value for k, v in SimpleCookie(self.headers.get("Cookie", "")).items()}
+        given = [self.headers.get("X-Token"), cookies.get("ewr_token"), parse_qs(urlparse(self.path).query).get("token", [None])[0]]
+        ok = [bool(g) and hmac.compare_digest(g.encode(), token.encode()) for g in given]
+        self._set_cookie = ok[2]                                # opened from the printed address: remember the token for the page's API calls
+        return any(ok)
+
+    def _deny(self):
+        self._json({"message": "access token required: use the address printed when the server started"}, 401)
+
     def _json(self, obj, code=200, headers=None):
         data = json.dumps(_json_safe(obj), allow_nan=False).encode()
         self.send_response(code)
@@ -853,8 +871,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
-        if u.path == "/":                                       # http://localhost:<port>/ is the dashboard
-            self.path = PAGE
+        if not self._authorized():
+            return self._deny()
         if u.path == "/api/forget":
             return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
         if u.path == "/api/ping":
@@ -884,10 +902,18 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 return self._json({"error": f"{type(e).__name__}: {e}"}, 400)
-        return super().do_GET()
+        if u.path in ("/", PAGE):                               # the only file served: no directory listings, no repository files, no stored uploads
+            self.path = PAGE
+            return super().do_GET()
+        return self._json({"message": "not found"}, 404)
+
+    def do_HEAD(self):
+        self.send_error(405)
 
     def do_POST(self):
         u = urlparse(self.path)
+        if not self._authorized():
+            return self._deny()
         if u.path == "/api/forget":
             if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
                 return self._json({"message": "origin or host not allowed"}, 403)
@@ -915,6 +941,8 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-cache")
+            if getattr(self, "_set_cookie", False):
+                self.send_header("Set-Cookie", f"ewr_token={self.server.token}; Path=/; HttpOnly; SameSite=Strict")
         super().end_headers()
 
     def log_message(self, fmt, *args):
@@ -956,6 +984,10 @@ def main(argv=None):
     srv = make_server(int(nums[0]) if nums else DEFAULT_PORT, host)
     port = srv.server_address[1]
     url = f"http://localhost:{port}{PAGE}"
+    if not _loopback_host(host):                                # reachable from other computers: require a random access token
+        srv.token = secrets.token_urlsafe(16)
+        url += f"?token={srv.token}"
+        print(f"Listening on {host}: anyone with this address can use the tool and see uploaded data. Do not share the link.")
     if nums and int(nums[0]) != port:
         print(f"Port {nums[0]} is busy, using {port} instead.")
     print(f"EWR analysis tool running at {url}\nLeave this window open while you use it; close it (or press Ctrl+C) to stop.")

@@ -59,6 +59,27 @@ class PortSelectionTest(unittest.TestCase):
         self.assertEqual(srv.server_address[0], "127.0.0.1")  # localhost only
 
 
+class PortRaceTest(unittest.TestCase):
+    def test_make_server_retries_when_the_probed_port_is_taken_before_bind(self):
+        busy = listening(0)
+        self.addCleanup(busy.close)
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        free = probe.getsockname()[1]
+        probe.close()
+        answers = iter(
+            [busy.getsockname()[1], free]
+        )  # the probe said "free" for a port that is in fact taken
+        old = server.find_free_port
+        self.addCleanup(setattr, server, "find_free_port", old)
+        server.find_free_port = lambda preferred, tries=50, host="127.0.0.1": next(
+            answers
+        )
+        srv = server.make_server(8792)
+        self.addCleanup(srv.server_close)
+        self.assertEqual(srv.server_address[1], free)
+
+
 class MainTest(unittest.TestCase):
     def run_main(self, argv):
         opened, made = [], []
@@ -133,7 +154,60 @@ class LauncherTest(unittest.TestCase):
             self.assertTrue(run.needs_install(venv, req))
 
 
-class EndpointTest(unittest.TestCase):
+class StaticAccessMixin:
+    """Only the dashboard page is served; nothing else in the repository, no directory listings, no stored uploads."""
+
+    def hdr(self, extra=None):
+        return {**self.base_headers, **(extra or {})}
+
+    def test_repository_files_and_uploads_cannot_be_retrieved_or_listed(self):
+        store = ROOT / ".user_scenarios"
+        store.mkdir(exist_ok=True)
+        secret = store / "secret_test.csv"
+        secret.write_text("Date,1_flow\n2000-01-01,1\n")
+        self.addCleanup(secret.unlink)
+        for path in [
+            "/.user_scenarios/secret_test.csv",
+            "/.user_scenarios/",
+            "/.user_scenarios",
+            "/src/server.py",
+            "/src/",
+            "/README.md",
+            "/run.py",
+            "/.git/config",
+            "/.gitignore",
+            "/data/",
+            "/data/results/etp.csv",
+            "/tests/",
+            "/",
+            "/..%2f..%2fetc/passwd",
+            "/%2e%2e/%2e%2e/etc/passwd",
+            "/../../etc/passwd",
+            "//etc/passwd",
+            "/ewr_analysis_dashboard.html/../run.py",
+            "/ewr_analysis_dashboard.html/",
+            "/ewr_analysis_dashboard.html.bak",
+        ]:
+            status, body = self.request("GET", path, headers=self.hdr())
+            if path == "/":
+                self.assertEqual(status, 200)
+                continue
+            self.assertIn(status, (301, 400, 404), path)
+            self.assertNotIn(b"secret_test", body, path)
+            self.assertNotIn(b"Index of", body, path)
+            self.assertNotIn(b"ThreadingHTTPServer", body, path)
+        self.assertEqual(
+            self.request("GET", "/ewr_analysis_dashboard.html", headers=self.hdr())[0],
+            200,
+        )
+        self.assertEqual(
+            self.request("HEAD", "/src/server.py", headers=self.hdr())[0], 405
+        )
+
+
+class EndpointTest(StaticAccessMixin, unittest.TestCase):
+    base_headers = {}
+
     @classmethod
     def setUpClass(cls):
         cls.httpd = server.make_server(server.DEFAULT_PORT)
@@ -203,6 +277,76 @@ class EndpointTest(unittest.TestCase):
             status, body = self.request("GET", "/api/ewrs?gauge=404216")
             self.assertEqual(status, 200)
             self.assertGreater(len(json.loads(body)["ewrs"]), 0)
+
+
+class TokenServerTest(StaticAccessMixin, unittest.TestCase):
+    """A server bound beyond localhost needs the random access token on every request."""
+
+    base_headers = {}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.httpd = server.make_server(server.DEFAULT_PORT)
+        cls.httpd.token = "tok-123456"
+        cls.port = cls.httpd.server_address[1]
+        cls.base_headers = {"X-Token": cls.httpd.token}
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        cls.thread.join()
+
+    request = EndpointTest.request
+
+    def test_requests_without_or_with_wrong_token_are_refused(self):
+        for path in [
+            "/",
+            "/ewr_analysis_dashboard.html",
+            "/api/ping",
+            "/api/ewrs?gauge=404216",
+            "/src/server.py",
+        ]:
+            self.assertEqual(self.request("GET", path)[0], 401, path)
+            self.assertEqual(
+                self.request("GET", path, headers={"X-Token": "wrong"})[0], 401, path
+            )
+        self.assertEqual(
+            self.request("POST", "/api/run", b"x", {"X-Gauges": "1"})[0], 401
+        )
+        self.assertEqual(self.request("POST", "/api/forget?id=a")[0], 401)
+
+    def test_query_token_serves_page_and_sets_cookie_used_by_api(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("GET", "/?token=tok-123456")
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        self.assertEqual(r.status, 200)
+        cookie = r.getheader("Set-Cookie")
+        self.assertIn("ewr_token=tok-123456", cookie)
+        self.assertIn("HttpOnly", cookie)
+        status, _ = self.request(
+            "GET", "/api/ping", headers={"Cookie": "ewr_token=tok-123456"}
+        )
+        self.assertEqual(status, 200)
+
+
+class VenvCheckTest(unittest.TestCase):
+    def test_broken_interpreter_is_detected_with_guidance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            py = run.venv_python(tmp)
+            py.parent.mkdir(parents=True, exist_ok=True)
+            py.write_text("#!/bin/sh\nexit 3\n")
+            py.chmod(0o755)
+            self.assertFalse(run.interpreter_works(py))
+            with self.assertRaises(run.LaunchError) as cm:
+                run.ensure_venv(tmp)
+            self.assertIn(".venv", str(cm.exception))
+        self.assertFalse(run.interpreter_works(Path("/no/such/python")))
+        self.assertTrue(run.interpreter_works(sys.executable))
 
 
 if __name__ == "__main__":
