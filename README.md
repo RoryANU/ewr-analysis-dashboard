@@ -201,3 +201,78 @@ The hooks (`.pre-commit-config.yaml`) run syntax and file checks, ruff, mypy and
 
 - The "Your data" mode needs the local server (start it with `start.command` / `start.bat` / `python3 run.py`); without it the page works in Demo data mode only.
 - The input data comes from the MDBA's 2026 Basin Plan review outputs and public datasets. Check the original licences before reusing it.
+
+### Joint performance and climate robustness
+
+Selecting an SDL unit, planning unit or gauge now adds a joint FR–MRIP view and
+policy-by-climate matrix. Frequency target compliance is FR ≥ 1.0; 0.9 ≤ FR < 1.0
+is explicitly a tolerance band. The joint views always use 1.0, even if the existing
+frequency-threshold control is changed. MRIP compliance uses the current exceedance
+threshold (default zero); ETP is a time proportion, not a calendar-year count.
+Differential mode draws base-to-comparison arrows using absolute values. Locked
+scatter axes use FR 0–2 and ETP 0–1. Both out-of-range endpoints are counted; arrows
+require both endpoints inside the plot. Unlocking expands FR only. ETP is a time
+proportion, so any ETP above 1 (in the source results or a computed upload) is
+treated as 1, i.e. exceeded for the whole record. Matrix colours
+always use a fixed 0–100% joint-score scale.
+
+`src/performance.js` contains the reusable views and is embedded by the builder.
+The existing `(planning unit, SDL unit, gauge, EWR)` pairing of FR and ETP remains
+unchanged, including the documented averaging of source variants. Only EWRs with
+both finite, nonnegative metrics (ETP capped at 1) enter joint denominators. Raw EWR mean,
+minimum, linearly interpolated 10th percentile, target percentage and coverage accompany
+the existing hierarchical averages. “Severe” means FR below the configurable floor
+(default 0.5), not a new ecological classification. Resilience requires compliance
+in every expected climate. Threshold crossings also require complete climate coverage
+and identify compliant/noncompliant climates; they do not imply a causal tipping point.
+The matrix separately reports incomplete rules and assessed/expected climate counts. Uploaded records lack climate
+metadata and therefore receive a record comparison, not inferred climate robustness.
+
+At an uploaded gauge, **Load annual raster** evaluates all supported selected rules
+through the existing py_ewr annual endpoint, using each selected planning unit even
+when the event selector groups equivalent definitions. Rows are grouped by ecological theme;
+assessment windows are labelled because they may differ. Time since success is
+unknown before the first observed success or following incomplete years. Rolling
+frequency requires ten consecutive complete assessment years. Dates, missing days,
+complete assessment years and MRIP limits come from the evaluated daily records.
+Bundled summaries cannot supply these temporal diagnostics. The diagnostic inventory
+includes level, volume and specialised rules even when their detailed annual plots
+are unsupported. Existing event-gap plots retain longest-gap diagnostics.
+
+Optional observation charts accept a CSV up to **2 MiB / 20,000 observations**, with
+quoted fields supported, `date` (ISO YYYY-MM-DD), and at least one of `stage_m`, `temperature_c`, `dissolved_oxygen_mg_l`. Blank measurements stay
+missing; duplicates, malformed quoting, invalid dates and non-decimal values are
+rejected. Whitespace-only measurements, hexadecimal and exponent notation are not
+accepted; use empty fields for missing values. Gaps add one separator per interval,
+never one row per absent day. Stage changes use adjacent
+daily observations only. Uploaded observations apply to the current selection and
+are not saved or used to infer ecological safety. No observations are fabricated.
+
+Versioned share links (`v=2`) always encode the frequency threshold. Existing
+unversioned links without `thr` retain the old 0.9 default; opening a fresh page uses
+1.0. Explicit thresholds are preserved. Unversioned links produced by the rejected
+PR #4 cannot be distinguished from older links, so they follow the legacy rule;
+choose 1.0 and copy the link again if needed.
+
+Routine sorting, matrix expansion and scatter-scale changes retain the performance
+panel and its in-flight work. New selections cancel stale annual requests. Annual
+loading uses at most four concurrent requests, offers cancellation and restores its
+controls on failure. Each chart render owns a separate DOM node, so a delayed render
+cannot overwrite a newer upload or retry. Inventory requests and server parameter metadata are cached;
+failed requests can be retried. Matrix contents and exact rule strings are built on
+opening/interaction and memoised for the current selection.
+
+Run `node --test tests/test_performance.js` for calculations, link compatibility,
+async failures/cancellation/stale responses, CSV limits and largest-gauge timings.
+`pytest tests/test_performance_backend.py` uses controlled parameter/annual fixtures
+and real HTTP handlers for schema, coverage, caching and safe JSON embedding tests.
+Rebuild with `python src/build_dashboard.py`.
+
+An optional real-browser check is available as
+`node tests/test_performance_browser.cjs` with Playwright installed. It uses an
+isolated headless browser and temporary local HTTP server, the generated dashboard,
+and controlled diagnostic responses. Set `EWR_BROWSER_EXECUTABLE` to an installed
+Chromium/Chrome binary if Playwright browsers are not installed. The existing CDN
+chart libraries must be reachable. It checks lazy matrix contents, retained DOM,
+request counts/concurrency, annual and observation charts, and browser errors.
+Set `EWR_REVIEW_SCREENSHOT` to select the screenshot path (default `/tmp/ewr-review.png`).

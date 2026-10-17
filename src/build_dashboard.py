@@ -74,6 +74,7 @@ def load_results(root: Path = ROOT) -> tuple[pd.DataFrame, pd.DataFrame]:
         usecols=lambda c: c.strip() in set(KEY + ["EcoObj", "Target", "Policy", "ClimateModel", "ETP", "State"]),
     )
     et.columns = et.columns.str.strip()
+    et["ETP"] = et.ETP.clip(upper=1)  # a time proportion: source values above 1 mean exceeded for the whole record
     return normalise_results(fr), normalise_results(et)
 
 
@@ -253,9 +254,9 @@ def build_meta(lookups: dict[str, Any], ref: pd.DataFrame) -> dict[str, Any]:
 
 def render_html(template_text: str, payload: dict[str, Any]) -> str:
     """Fill the template's `__NAME__` slots with compact JSON, in the order given."""
-    html = template_text
+    html = template_text.replace("__PERFORMANCE_JS__", (HERE / "performance.js").read_text(encoding="utf-8"))
     for tag, val in payload.items():
-        html = html.replace(tag, json.dumps(val, separators=(",", ":")))
+        html = html.replace(tag, json.dumps(val, separators=(",", ":")).replace("<", "\\u003c"))
     return html
 
 
