@@ -57,6 +57,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .tabs{display:inline-flex}.tabs button{border-radius:0}.tabs button:first-child{border-radius:6px 0 0 6px}.tabs button:last-child{border-radius:0 6px 6px 0}
 .tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 @media(max-width:800px){#divider{display:none}#main{flex-direction:column}#panel{width:100%;max-width:none;height:55%;border-left:0;border-top:1px solid var(--line)}}
+.performance{border-top:2px solid var(--line);margin-top:18px;padding-top:12px}.performance h2{margin-top:18px!important}.performance details{margin:10px 0}.performance summary{cursor:pointer;font-weight:600}.performance footer{border-top:1px solid var(--line);padding-top:10px}.performance svg circle:focus{stroke:#111;stroke-width:2}
 </style></head><body><div id="app">
 <div id="bar">
   <h1>EWR analysis tool</h1>
@@ -65,10 +66,10 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
   <button id="swapBC" title="Swap base and comparison" style="display:none">⇄ Reverse</button>
   <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
-  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion scaled to ten years: how many years in 10 the MRIP is exceeded (lower is better)">Years in 10 exceeding MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Frequency achieved</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button></div></details></span></label>
+  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion scaled to ten years: how many years in 10 the MRIP is exceeded (lower is better)">Years in 10 exceeding MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button></div></details></span></label>
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its years in 10 exceeding MRIP is at or below this value, otherwise 0">MRIP achieved when years in 10 exceeding MRIP ≤ <input id="ethr" type="number" min="0" max="10" step="0.1" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
-  <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Achieved when FR ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="0.9" style="width:56px;font:inherit;padding:2px 4px"></label>
+  <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Frequency threshold (target = 1.0) ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="1.0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
   <button id="share" class="ghost" title="Copy a link to this exact view">🔗 <span id="shareT"></span></button>
 </div>
@@ -97,7 +98,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const $=id=>document.getElementById(id);
 
 const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
-const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:0.9,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 
 // ---- values and averages -----------------------------------------------------------------------------------------
@@ -105,7 +106,7 @@ const S={src:"demo",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dma
 const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c;
 const isDiff=()=>S.mode==="diff";
 const ETY=10, FAMN={fr:"FR",et:"Years in 10 exceeding MRIP"};   // the ETP (0-1 time proportion) is shown scaled to ten years; stored and coloured as a proportion
-const MN={fr:"mean FR",et:"mean years in 10 exceeding MRIP",ach:"% EWRs achieving",mz:"% EWRs achieving MRIP",fb:"% EWRs failed badly"}, MS={fr:"FR",et:"yrs in 10",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
+const MN={fr:"mean FR",et:"mean years in 10 exceeding MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly"}, MS={fr:"FR",et:"yrs in 10",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
 const FAM={fr:"f",ach:"f",fb:"f",et:"e",mz:"e"}, inFam=k=>["ach","fb","mz"].includes(S.metric)||k===S.metric;   // FR or years-in-10 selected: only that metric is shown; a metric from the "More" menu: all of them are shown
 const METRICS=["fr","et","ach","mz","fb"], LOWER={et:1,fb:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
 // per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (|change| under 1 point)
@@ -235,6 +236,7 @@ function crumbHtml(){
   return c.join(" ▸ ");
 }
 function render(){
+  ++performanceToken;
   const s=S.sel;
   if(s.type==="none"){
     const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
@@ -246,7 +248,7 @@ function render(){
   const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
   const bx=k=>s.type==="gauge"&&S.metric===k?boxPlot(rows,k):"";   // gauge view, FR or years-in-10 selected: distribution of the EWRs beside the mean
   let h=`<div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"mean FR difference":"mean frequency ratio"} · ${fr.n} EWRs</span>${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
-    ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"change in EWRs achieving":"EWRs achieving"} · ${ac.n} EWRs</span></div>`:""}
+    ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"change in EWRs achieving":"hierarchical % meeting frequency threshold"} · ${ac.n} EWRs</span></div>`:""}
     ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"change in EWRs achieving MRIP":"EWRs achieving MRIP"} · ${mz.n} EWRs</span></div>`:""}
     ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"change in EWRs failing badly":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
     ${inFam("et")?`<div class="tile${bx("et")?" wb":""}"><div><b>${f3(et.mean,"et")}</b><span>${isDiff()?"change in mean years in 10 exceeding MRIP":"mean years in 10 exceeding MRIP"} · ${et.n} EWRs</span>${bx("et")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("et")}</div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
@@ -260,7 +262,7 @@ function render(){
     </div>
     ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
 
-  $("panel").innerHTML=h; wireFlow();
+  $("panel").innerHTML=h+performancePanels(rows); wireFlow(); drawPerformance(rows);
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -1055,7 +1057,7 @@ function encodeState(){
   p.set("src",S.src); p.set("mode",S.mode); p.set("pol",META.policies[S.pol]); p.set("cli",META.climates[S.cli]);
   if(isDiff()){ p.set("bpol",META.policies[S.bpol]); p.set("bcli",META.climates[S.bcli]); }
   p.set("metric",S.metric);
-  if(S.thr!==0.9) p.set("thr",S.thr); if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
+  if(S.thr!==1.0) p.set("thr",S.thr); if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
   if(S.sort!=="default") p.set("sort",S.sort);
   if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
   else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
@@ -1070,7 +1072,7 @@ function applyHash(){
   if(pi(p.get("bpol"))>=0) S.bpol=pi(p.get("bpol")); if(ci(p.get("bcli"))>=0) S.bcli=ci(p.get("bcli"));
   if(["single","diff"].includes(p.get("mode"))) S.mode=p.get("mode");
   if(METRICS.includes(p.get("metric"))) S.metric=p.get("metric");
-  const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",0.9); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
+  const num=(k,d)=>isFinite(parseFloat(p.get(k)))?parseFloat(p.get(k)):d; S.thr=num("thr",1.0); S.ethr=num("ethr",0); S.fbthr=num("fbthr",0.5);
   if(["default","high","low"].includes(p.get("sort"))) S.sort=p.get("sort");
   const sel=(p.get("sel")||"").split("~"), sdl=n=>META.sdls.indexOf(n), pu=n=>META.pus.indexOf(n), ga=n=>META.gauges.indexOf(n);
   S.sel={type:"none"};
@@ -1092,6 +1094,7 @@ function pushHash(){ try{ history.replaceState(null,"",location.pathname+locatio
 $("share").onclick=()=>{ pushHash(); const done=()=>{ $("shareT").textContent="copied"; setTimeout(()=>{ $("shareT").textContent=""; },1500); };
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(done,()=>prompt("Copy this link",location.href)); else prompt("Copy this link",location.href); };
 window.addEventListener("hashchange",()=>{ if(location.hash.slice(1)!==encodeState()){ applyHash(); refresh(); } });
+__PERFORMANCE_JS__
 restoreCustom();
 for(const c of PRELOADED) if(!CUSTOM.some(x=>!x.removed&&x.name===c.name)) addCustom(c.name,c.vals,null,[],c.fmt||"Standard time-series");
 fillPolicyOptions();

@@ -201,3 +201,45 @@ The hooks (`.pre-commit-config.yaml`) run syntax and file checks, ruff, mypy and
 
 - The "Your data" mode needs the local server (start it with `start.command` / `start.bat` / `python3 run.py`); without it the page works in Demo data mode only.
 - The input data comes from the MDBA's 2026 Basin Plan review outputs and public datasets. Check the original licences before reusing it.
+
+### Joint performance and climate robustness
+
+Selecting an SDL unit, planning unit or gauge now adds a joint FR–MRIP view and
+policy-by-climate matrix. Frequency target compliance is FR ≥ 1.0; 0.9 ≤ FR < 1.0
+is explicitly a tolerance band. The joint views always use 1.0, even if the existing
+frequency-threshold control is changed. MRIP compliance uses the current exceedance
+threshold (default zero); ETP is a time proportion, not a calendar-year count.
+Differential mode draws base-to-comparison arrows using absolute values. Locked
+scatter axes use FR 0–2 and ETP 0–1; points outside the FR range are counted and can
+be inspected in the exact-values disclosure or by unlocking the axes. Matrix colours
+always use a fixed 0–100% joint-score scale.
+
+`src/performance.js` contains the reusable views and is embedded by the builder.
+The existing `(planning unit, SDL unit, gauge, EWR)` pairing of FR and ETP remains
+unchanged, including the documented averaging of source variants. Only EWRs with
+both finite metrics enter joint denominators. Raw EWR mean, minimum, lower decile
+(nearest lower order statistic), target percentage and paired coverage accompany
+the existing hierarchical averages. “Severe” means FR below the configurable floor
+(default 0.5), not a new ecological classification. Resilience requires compliance
+in every climate; threshold crossings identify observed compliant/noncompliant
+climates, and do not imply a causal tipping point. Uploaded records lack climate
+metadata and therefore receive a record comparison, not inferred climate robustness.
+
+At an uploaded gauge, **Load annual raster** evaluates all supported selected rules
+through the existing py_ewr annual endpoint. Rows are grouped by ecological theme;
+assessment windows are labelled because they may differ. Time since success is
+unknown before the first observed success or following incomplete years. Rolling
+frequency requires five consecutive complete assessment years. Dates, missing days,
+complete assessment years and MRIP limits come from the evaluated daily records.
+Bundled summaries cannot supply these temporal diagnostics. The diagnostic inventory
+includes level, volume and specialised rules even when their detailed annual plots
+are unsupported. Existing event-gap plots retain longest-gap diagnostics.
+
+Optional observation charts accept an **unquoted** CSV with `date` (ISO YYYY-MM-DD)
+and any of `stage_m`, `temperature_c`, `dissolved_oxygen_mg_l`. Blank measurements stay
+missing; duplicates and invalid dates/values are rejected. Stage changes use adjacent
+daily observations only. Uploaded observations apply to the current selection and
+are not saved or used to infer ecological safety. No observations are fabricated.
+
+Additional calculation tests: `node tests/test_performance.js` and
+`pytest tests/test_performance_backend.py`. Rebuild with `python src/build_dashboard.py`.

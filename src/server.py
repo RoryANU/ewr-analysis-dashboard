@@ -505,6 +505,30 @@ def ewr_list(gauge: str) -> list[dict[str, Any]]:
     return list(uniq.values())
 
 
+def diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
+    """All parameter rules, including rules excluded from the detailed flow selector."""
+    from py_ewr import data_inputs
+
+    supported = {(e["code"], pu) for e in ewr_list(gauge) for pu in e["pus"]}
+    table = _EWR_CACHE["table"]
+    cfg = data_inputs.get_ewr_calc_config(None)
+    handlers = {key: handler for handler, keys in cfg.items() for key in keys}
+    result = []
+    for r in table[table.Gauge.astype(str) == gauge].itertuples():
+        multi = isinstance(r.Multigauge, str) and bool(r.Multigauge.strip())
+        key = f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}"
+        result.append(
+            {
+                "code": r.Code,
+                "pu": r.PlanningUnitName,
+                "kind": r.FlowLevelVolume,
+                "handler": handlers.get(key, "unmapped"),
+                "detailed": (r.Code, r.PlanningUnitName) in supported,
+            }
+        )
+    return result
+
+
 _EVAL_CACHE: dict[tuple[str, str, str, str], dict[str, Any]] = {}  # (scenario id, gauge, code, planning unit) -> one EWR evaluated by py_ewr (see ewr_eval)
 
 
@@ -691,7 +715,19 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
                 )
         events.sort(key=lambda e: e["start"])
         gaps, etp = ewr_gaps(ev)
-        out["scenarios"][k] = {"years": years, "events": events, "gaps": gaps, "etp": etp}
+        out["scenarios"][k] = {
+            "years": years,
+            "events": events,
+            "gaps": gaps,
+            "etp": etp,
+            "coverage": {
+                "start": fdate(flow.index.min()),
+                "end": fdate(flow.index.max()),
+                "missing_days": int(flow.isna().sum()),
+                "complete_years": sum(complete),
+                "years": len(wy),
+            },
+        }
         out.update({kk: ev[kk] for kk in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})
     if "comp" in out["scenarios"]:
         b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
@@ -1052,7 +1088,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if u.path == "/api/interevents":
                     return self._json(interevents(q))
                 if u.path == "/api/ewrs":
-                    return self._json({"ewrs": ewr_list(q.get("gauge", ""))})
+                    return self._json({"ewrs": ewr_list(q.get("gauge", "")), "inventory": diagnostic_inventory(q.get("gauge", ""))})
                 if u.path == "/api/ewryears":
                     return self._json(ewr_years(q))
                 if u.path == "/api/spells":

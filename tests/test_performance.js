@@ -1,0 +1,42 @@
+// Run with node tests/test_performance.js. No browser or network dependencies.
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('src/performance.js','utf8');
+const context=vm.createContext({S:{ethr:0,fbthr:.5},console});
+vm.runInContext(source,context);
+const run=code=>vm.runInContext(code,context);
+assert.equal(run('jointClass(1,0)'),0);
+assert.equal(run('jointClass(.99,0)'),2);
+assert.equal(run('jointClass(1,.01)'),1);
+assert.equal(run('jointClass(.8,.1)'),3);
+assert.equal(run('jointClass(null,0)'),null);
+assert.equal(run('jointClass(1,NaN)'),null);
+assert.equal(run('jointSummary([[0,0,0,0,0,0,[1],[0]],[0,0,0,0,0,0,[null],[0]]],0).n'),1);
+assert.equal(run('jointSummary([],0).score'),null);
+assert.equal(run('JSON.stringify(sequenceStats({wy:[2000,2001,2002,2003,2004,2005,2006],complete:[1,1,1,1,1,0,1],achieved:[0,1,0,0,0,0,0]}).since)'), '[null,0,1,2,3,null,null]');
+assert.equal(run('JSON.stringify(sequenceStats({wy:[2000,2001,2002,2003,2004],complete:[1,1,1,1,1],achieved:[0,1,0,0,0]}).rolling)'), '[null,null,null,null,0.2]');
+assert.equal(run('sequenceStats({wy:[2000,2002],complete:[1,1],achieved:[1,0]}).since[1]'),null);
+assert.equal(run('parseConditions("date,stage_m\\n2000-01-01,1\\n2000-01-02,0.5\\n2000-01-04,2")[1].rate'),-.5);
+assert.equal(run('parseConditions("date,stage_m\\n2000-01-01,1\\n2000-01-03,2")[1].rate'),null);
+assert.throws(()=>run('parseConditions("date,stage_m\\n2000-02-30,1")'));
+assert.throws(()=>run('parseConditions("date,stage_m\\n2000-01-01,1\\n2000-01-01,2")'));
+// Also compile the entire generated page to catch integration syntax errors.
+const html=fs.readFileSync('ewr_analysis_dashboard.html','utf8');
+for(const match of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(match[1]);
+console.log('Performance calculations and generated JavaScript syntax passed.');
+const embedded=html.match(/const DATA=([\s\S]*?);\s*const /)[0].replace(/\s*const $/,'');
+vm.runInContext(embedded,context);
+vm.runInContext(`
+const NC=META.climates.length,CUSTOM=[];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c,isDiff=()=>S.mode==='diff';
+const nodes=new Map(),$=id=>{if(!nodes.has(id))nodes.set(id,{});return nodes.get(id);};
+Object.assign(S,{pol:3,cli:0,bpol:1,bcli:0,src:'demo',mode:'single',sel:{type:'sdl'}});
+`,context);
+assert.match(run('performancePanels(ROWS.slice(0,10))'),/Hydrological opportunities for recruitment/);
+run('drawPerformance(ROWS.slice(0,10))');
+assert.match(run("$('jointPlot').innerHTML"),/<svg/);
+run("S.mode='diff'; drawPerformance(ROWS.slice(0,10))");
+assert.match(run("$('jointPlot').innerHTML"),/Hollow points/);
+run("S.src='user'");
+assert.match(run('robustnessTable(ROWS.slice(0,10))'),/climate unspecified/);
+console.log('Rendering smoke checks passed against embedded dashboard data.');
