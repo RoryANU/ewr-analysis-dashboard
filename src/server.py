@@ -12,6 +12,8 @@ Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/heatmap?base=<id>[&comp=<id>]&gauge=<g>&xlim=&dmax=&sm=&em=   threshold x duration achievement heat map data
     GET  /api/ewrs?gauge=<g>                                               EWRs at a gauge handled by flow_handle / lowflow_handle
     GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
+    GET  /api/ewryears?base=<id>[&comp=<id>]&gauge=<g>&ewr=<code>&pu=<name> one EWR by water year: achievement, events (duration, volume, timing), gaps vs MRIP
+    GET  /api/spells?base=<id>[&comp=<id>]&gauge=<g>&thr=<ML/d>            low-flow spells (consecutive days below thr) by water year
     GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymin=][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
     POST /api/forget?id=<id>           delete a stored scenario
 
@@ -208,7 +210,7 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
             old = pd.read_csv(old_path, index_col=0, parse_dates=True)
             new = old.drop(columns=[c for c in old.columns if c in new.columns]).join(new, how="outer")
         new.to_csv(old_path)
-        FLOWS.pop(scn_id, None)
+        forget_cached(scn_id)
     sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
     res = sh.get_ewr_results()
@@ -260,8 +262,33 @@ def load_flows(scn_id):
         path = STORE / f"{scn_id}.csv"
         if not path.exists():
             raise ValueError("the time series for this scenario is not on the server (re-upload it)")
-        FLOWS[scn_id] = pd.read_csv(path, index_col=0, parse_dates=True)
+        df = pd.read_csv(path, index_col=0, parse_dates=True).sort_index()
+        # one row per day: the completeness checks count rows, so a repeated date would pass for a missing one. Exact repeats are
+        # dropped; a date given twice with different flows is an error rather than a silent pick.
+        dup = df.index.duplicated(keep=False)
+        if dup.any():
+            if (df[dup].groupby(level=0).nunique(dropna=False) > 1).any().any():
+                raise ValueError("the stored time series has dates repeated with different flows (re-upload it)")
+            df = df[~df.index.duplicated()]
+        FLOWS[scn_id] = df
     return FLOWS[scn_id]
+
+
+def forget_cached(scn_id):
+    """Drop everything computed from a scenario's stored flows (after it is replaced, merged or deleted)."""
+    FLOWS.pop(scn_id, None)
+    for k in [k for k in _EVAL_CACHE if k[0] == scn_id]:
+        _EVAL_CACHE.pop(k, None)
+
+
+def daily_series(scn_id, gauge):
+    """A gauge's flows on every calendar day from its first to its last observed day; days with no flow stay NaN (never filled)."""
+    import pandas as pd
+    s = gauge_series(scn_id, gauge)
+    s = s.loc[s.first_valid_index():s.last_valid_index()] if s.notna().any() else s.iloc[:0]
+    if s.empty:
+        raise ValueError(f"gauge {gauge} has no flows in this scenario")
+    return s.reindex(pd.date_range(s.index[0], s.index[-1]))
 
 
 def gauge_series(scn_id, gauge):
@@ -385,38 +412,217 @@ def ewr_list(gauge):
     return list(uniq.values())
 
 
-def interevents(q):
-    """Gaps between successful events of one EWR (py_ewr successful inter-events) that exceed its maximum inter-event period."""
+_EVAL_CACHE = {}       # (scenario id, gauge, code, planning unit) -> one EWR evaluated by py_ewr (see ewr_eval)
+
+
+def _water_year(d):
+    """py_ewr's water year label: the calendar year it starts in (1 Jul Y - 30 Jun Y+1)."""
+    return d.year if d.month >= 7 else d.year - 1
+
+
+def ewr_eval(scn_id, gauge, code, pu=""):
+    """py_ewr on one EWR at one gauge of a stored scenario: its yearly statistics, every threshold event, the successful events and
+    the gaps between successful events, exactly as py_ewr computes them (calc_sorter + ScenarioHandler). Missing days stay
+    missing (py_ewr counts them per year in missingDays); nothing is filled in."""
     import pandas as pd
     from py_ewr import data_inputs, evaluate_EWRs
     from py_ewr.scenario_handling import ScenarioHandler
-    gauge, code, pu = q["gauge"], q["ewr"], q.get("pu", "")
-    s = gauge_series(q["scn"], gauge).dropna()
+    key = (scn_id, gauge, code, pu)
+    if key in _EVAL_CACHE:
+        return _EVAL_CACHE[key]
     table = data_inputs.get_EWR_table(None)
     sel = table[(table.Gauge.astype(str) == gauge) & (table.Code == code) & ((table.PlanningUnitName == pu) if pu else True)]
     if sel.empty:
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
-    mi = pd.to_numeric(sel["MaxInter-event"], errors="coerce").iloc[0]
-    if not mi or pd.isna(mi) or mi <= 0:
-        return {"mrip_days": 0, "exceed": [], "n_gaps": 0}
+    sel = sel.iloc[:1]
     pu = sel.PlanningUnitName.iloc[0]
-    df_F = s.to_frame(gauge)
-    df_F.index.name = "Date"
-    df_F = df_F.reindex(pd.date_range(df_F.index[0], df_F.index[-1]))
+    num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]
+    df_F = daily_series(scn_id, gauge).to_frame(gauge)
     df_F.index.name = "Date"
     df_L = pd.DataFrame(index=df_F.index)
-    calc_config = data_inputs.get_ewr_calc_config(None)
-    results, events = evaluate_EWRs.calc_sorter(df_F, df_L, gauge, sel, calc_config)
+    results, events = evaluate_EWRs.calc_sorter(df_F, df_L, gauge, sel, data_inputs.get_ewr_calc_config(None))
     sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": {gauge: results}}, {"scenario": {gauge: events}}, df_F, df_L
-    inter = sh.get_all_successful_interEvents()
-    inter = inter[(inter.Gauge == gauge) & (inter.Code == code) & (inter.PlanningUnit == pu)].copy()
-    inter["interEventLength"] = pd.to_numeric(inter["interEventLength"], errors="coerce")
-    mrip = int(round(float(mi) * 365))
-    big = inter[inter.interEventLength > mrip]
+    cols = ["startDate", "endDate", "interEventLength", "eventDuration"]
+    pick = lambda d: d[(d.Gauge == gauge) & (d.Code == code) & (d.PlanningUnit == pu)].copy() if len(d) and "Gauge" in d else pd.DataFrame(columns=cols)
+    if any(lst for lst in events[pu][code].values()):
+        inter = pick(sh.get_all_successful_interEvents())
+        succ = pick(sh.get_all_successful_events())
+    else:                                                    # py_ewr's summaries fail on an empty event ledger: no events, so none succeeded
+        inter = succ = pd.DataFrame(columns=cols)
+    yr = results[pu]
+    yr = yr[[c for c in yr.columns if c.startswith(code + "_")]].rename(columns=lambda c: c[len(code) + 1:])
+    mi = num("MaxInter-event")
+    out = {"pu": pu, "years": yr, "events": events[pu][code], "flow": df_F[gauge],
+           "succ": succ, "inter": inter, "mrip_days": int(round(float(mi) * 365)) if mi and not pd.isna(mi) and mi > 0 else 0,
+           "thr": float(num("FlowThresholdMin")), "dur": int(num("Duration")), "sm": int(num("StartMonth")), "em": int(num("EndMonth")),
+           "target": None if pd.isna(num("TargetFrequency")) else float(num("TargetFrequency"))}
+    opt = lambda c, f: None if pd.isna(num(c)) else f(num(c))
+    out.update({"min_spell": opt("MinSpell", int), "per_year": opt("EventsPerYear", int), "gap_tol": opt("WithinEventGapTolerance", int),
+                "thr_max": opt("FlowThresholdMax", float)})
+    # py_ewr's assessment year: 1 July - 30 June, except when the timing window runs from the first half of the year into the second
+    # (StartMonth <= 6 and EndMonth >= 7, e.g. Jun-Nov): then it starts on the 1st of StartMonth (evaluate_EWRs.wateryear_daily)
+    out["ystart"] = out["sm"] if out["sm"] <= 6 and out["em"] >= 7 else 7
+    _EVAL_CACHE[key] = out
+    return out
+
+
+def ewr_gaps(ev):
+    """py_ewr's gaps between successful events (including the gaps from the start of the record to the first event and from the
+    last event to the end, as py_ewr counts them), each with the days beyond the maximum inter-event period. Two corrections to
+    what py_ewr returns:
+    - an EWR with no successful event in the whole record gets one gap covering the record (py_ewr returns none, which would read
+      as "never longer than the maximum");
+    - a gap containing a missing day has an unknown length: it is kept but marked `censored` and counts nowhere.
+    Returns (gaps, etp): etp = days beyond the maximum in the uncensored gaps / days of record outside the censored gaps (the same
+    spans in both), or None when the EWR has no maximum or nothing is left to count."""
+    import pandas as pd
+    flow, mrip = ev["flow"], ev["mrip_days"]
     fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
-    return {"mrip_days": mrip, "maxint_years": float(mi), "n_gaps": int(len(inter)),
-            "exceed": [{"start": fdate(a), "end": fdate(b), "days": int(n)} for a, b, n in zip(big.startDate, big.endDate, big.interEventLength)]}
+    first, last = flow.index[0], flow.index[-1]
+    inter = ev["inter"]
+    rows = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in zip(inter.startDate, inter.endDate)] if len(inter) else []
+    nosucc = not len(ev["succ"])
+    if nosucc:
+        rows = [(first, last)]
+    gaps = []
+    for a, b in rows:
+        n = (b - a).days + 1
+        cen = bool(flow.loc[a:b].isna().any())
+        gaps.append({"start": fdate(a), "end": fdate(b), "days": n, "censored": cen, "boundary": bool(a <= first or b >= last),
+                     "excess": None if cen else (max(0, n - mrip) if mrip else 0), "no_success": nosucc})
+    days = len(flow) - sum(g["days"] for g in gaps if g["censored"])
+    etp = round(sum(g["excess"] for g in gaps if not g["censored"]) / days, 4) if mrip and days > 0 else None
+    return gaps, etp
+
+
+def interevents(q):
+    """Gaps between successful events of one EWR (py_ewr successful inter-events) that exceed its maximum inter-event period."""
+    ev = ewr_eval(q["scn"], q["gauge"], q["ewr"], q.get("pu", ""))
+    if not ev["mrip_days"]:
+        return {"mrip_days": 0, "exceed": [], "n_gaps": 0}
+    gaps, _ = ewr_gaps(ev)
+    return {"mrip_days": ev["mrip_days"], "maxint_years": ev["mrip_days"] / 365, "n_gaps": len(gaps), "n_censored": sum(g["censored"] for g in gaps),
+            "exceed": [{"start": g["start"], "end": g["end"], "days": g["days"]} for g in gaps if g["excess"]]}
+
+
+def ewr_years(q):
+    """One EWR, year by year and event by event, for one scenario or a base / comparison pair (py_ewr's own results throughout).
+    years:  py_ewr's yearly statistics; a water year is complete when py_ewr reports no missing days and a full year of days.
+    events: every threshold event py_ewr found (ok = it is one of py_ewr's successful events, i.e. at least MinSpell days long), with
+            its calendar length (days = start to end; qual = the days at or above the threshold, fewer when the event bridges short
+            dips within its gap tolerance), total volume (sum of the daily flows over every day from start to end, ML) and peak.
+    gaps:   see ewr_gaps.
+    paired: two scenarios: achievement compared over the water years complete in BOTH, year by year."""
+    import numpy as np
+    import pandas as pd
+    gauge, code, pu = q["gauge"], q["ewr"], q.get("pu", "")
+    ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    out = {"code": code, "gauge": gauge, "scenarios": {}}
+    for k, sid in ids:
+        ev = ewr_eval(sid, gauge, code, pu)
+        y, flow = ev["years"], ev["flow"]
+        col = lambda c: pd.to_numeric(y[c], errors="coerce").fillna(0).astype(int).tolist() if c in y else [0] * len(y)
+        wy = [int(v) for v in y.index]
+        # a year counts when every day of the EWR's timing window in that assessment year has a flow (a missing day elsewhere in the
+        # year does not matter); the window's days are taken from the calendar, so a window cut off by the record's ends is incomplete
+        ys, sm, em = ev["ystart"], ev["sm"], ev["em"]
+        in_win = lambda m: (m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)
+        complete = []
+        for w in wy:
+            days = pd.date_range(pd.Timestamp(w, ys, 1), pd.Timestamp(w + 1, ys, 1) - pd.Timedelta(days=1))
+            days = days[in_win(days.month)]
+            complete.append(int(len(days) > 0 and flow.reindex(days).notna().all()))
+        years = {"wy": wy, "achieved": col("eventYears"), "n_events": col("numEvents"), "n_all": col("numEventsAll"),
+                 "event_days": col("totalEventDays"), "max_event": col("maxEventDays"), "missing": col("missingDays"), "complete": complete}
+        ok = set(pd.to_datetime(ev["succ"].startDate).dt.strftime("%Y-%m-%d")) if len(ev["succ"]) else set()
+        events = []
+        for w, lst in ev["events"].items():
+            for e in lst:
+                if not e:
+                    continue
+                a, b = pd.Timestamp(e[0][0]), pd.Timestamp(e[-1][0])
+                span = flow.loc[a:b]                                  # every calendar day from start to end (an event may skip days within its gap tolerance)
+                events.append({"wy": int(w), "start": fdate(a), "end": fdate(b), "days": (b - a).days + 1, "qual": len(e),
+                               "vol": None if span.isna().any() else round(float(span.sum()), 1), "peak": round(float(span.max()), 2),
+                               "ok": fdate(a) in ok})
+        events.sort(key=lambda e: e["start"])
+        gaps, etp = ewr_gaps(ev)
+        out["scenarios"][k] = {"years": years, "events": events, "gaps": gaps, "etp": etp}
+        out.update({kk: ev[kk] for kk in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})
+    if "comp" in out["scenarios"]:
+        b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
+        bi = {w: i for i, w in enumerate(b["wy"]) if b["complete"][i]}
+        ci = {w: i for i, w in enumerate(c["wy"]) if c["complete"][i]}
+        common = sorted(set(bi) & set(ci))
+        pb = [b["achieved"][bi[w]] for w in common]
+        pc = [c["achieved"][ci[w]] for w in common]
+        n = len(common)
+        out["paired"] = {"wy": common, "n": n, "base": int(sum(pb)), "comp": int(sum(pc)),
+                         "gained": sum(1 for x, z in zip(pb, pc) if not x and z), "lost": sum(1 for x, z in zip(pb, pc) if x and not z),
+                         "pct_base": round(100 * sum(pb) / n, 3) if n else None, "pct_comp": round(100 * sum(pc) / n, 3) if n else None}
+    return out
+
+
+def _feb29(w):
+    """True when water year w (1 Jul w - 30 Jun w+1) holds a 29 February."""
+    import calendar
+    return calendar.isleap(w + 1)
+
+
+def spells(q):
+    """Low-flow spells: runs of consecutive days with flow below `thr` ML/d. A missing day ends a run and the runs either side of it
+    are marked as touching missing data (their true length is unknown); missing days are never counted as low. Per water year
+    (1 Jul - 30 Jun, labelled by its first calendar year as in py_ewr): days below, the longest run inside that year (a run crossing
+    30 June is split at the year boundary for this) and the number of runs starting in it. Only complete water years (every day
+    observed) are reported as numbers; with two scenarios they are compared over the water years complete in both."""
+    import numpy as np
+    import pandas as pd
+    gauge, thr = q["gauge"], float(q["thr"])
+    ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    out = {"gauge": gauge, "thr": thr, "scenarios": {}}
+    for k, sid in ids:
+        s = daily_series(sid, gauge)
+        v = s.to_numpy(dtype=float)
+        miss = np.isnan(v)
+        low = (v < thr) & ~miss
+        wy = np.array([_water_year(d) for d in s.index])
+        # runs over the whole record (split by missing days, not by water year)
+        runs, i, n = [], 0, len(v)
+        while i < n:
+            if not low[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < n and low[j + 1]:
+                j += 1
+            runs.append({"start": fdate(s.index[i]), "end": fdate(s.index[j]), "days": j - i + 1,
+                         "censored": bool((i > 0 and miss[i - 1]) or (j + 1 < n and miss[j + 1]) or i == 0 or j == n - 1), "wy": int(wy[i])})
+            i = j + 1
+        years = {"wy": [], "below": [], "longest": [], "n": [], "complete": []}
+        for w in np.unique(wy):
+            m = wy == w
+            full = 366 if _feb29(int(w)) else 365
+            comp = bool(m.sum() == full and not miss[m].any())
+            lo, best, cur = low[m], 0, 0
+            for x in lo:
+                cur = cur + 1 if x else 0
+                best = max(best, cur)
+            years["wy"].append(int(w))
+            years["complete"].append(int(comp))
+            years["below"].append(int(lo.sum()) if comp else None)
+            years["longest"].append(best if comp else None)
+            years["n"].append(sum(1 for r in runs if r["wy"] == w) if comp else None)
+        top = sorted(runs, key=lambda r: -r["days"])[:10]
+        out["scenarios"][k] = {"years": years, "longest_runs": top, "n_runs": len(runs), "missing_days": int(miss.sum())}
+    if "comp" in out["scenarios"]:
+        b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
+        bi = {w: i for i, w in enumerate(b["wy"]) if b["complete"][i]}
+        ci = {w: i for i, w in enumerate(c["wy"]) if c["complete"][i]}
+        out["paired"] = {"wy": sorted(set(bi) & set(ci))}
+    return out
 
 
 def heatmap(q):
@@ -457,21 +663,53 @@ def exceed_pct(sorted_vals, x):
     return 100.0 * (n - np.searchsorted(sorted_vals, x, side="left")) / n
 
 
+def _paired(q, gauge):
+    """The flows the duration curves are built from: one scenario's observed days, or for two scenarios only the days on which
+    BOTH have a flow, so a difference never mixes in a difference in coverage."""
+    import pandas as pd
+    ser = {k: gauge_series(q[k], gauge) for k in ("base", "comp") if q.get(k)}
+    if len(ser) == 2:
+        df = pd.concat(ser, axis=1, join="inner").dropna()
+        if df.empty:
+            raise ValueError("the scenarios share no observed dates at this gauge")
+        return {k: df[k] for k in ser}
+    return {k: v.dropna() for k, v in ser.items()}
+
+
 def curves(q):
-    """kind: hydro (daily flow, one scenario) | fdc (flow duration curve, one or two scenarios) |
+    """kind: hydro (daily flow and water-year volumes, one or two scenarios, on shared dates) | fdc (flow duration curve, one or two scenarios) |
     dfdc (differential flow duration curve: change in % of time flow >= x, comparison - base).
     thr (comma-separated flows): % of time exceeded at each, for each scenario."""
     import numpy as np
+    import pandas as pd
     gauge = q["gauge"]
     kind = q.get("kind") or ("fdc" if q.get("comp") else "hydro")
+    paired = _paired(q, gauge)
     if kind == "hydro":
-        s = gauge_series(q["base"], gauge).dropna()
-        return {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in s.index], "flow": np.round(s.to_numpy(), 2).tolist()}
+        # daily flows (missing days stay null so the line breaks there) and the volume of each complete water year; with two
+        # scenarios both lines are on the dates they share, and a water year's volumes are compared only when both are complete
+        df = pd.concat({k: daily_series(q[k], gauge) for k in ("base", "comp") if q.get(k)}, axis=1, join="inner" if q.get("comp") else "outer")
+        if df.empty:
+            raise ValueError("the scenarios share no dates at this gauge")
+        out = {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in df.index]}
+        for k in df.columns:
+            out[k] = [None if np.isnan(v) else round(float(v), 2) for v in df[k].to_numpy(dtype=float)]
+        out["flow"] = out["base"]
+        wy = np.array([_water_year(d) for d in df.index])
+        full = df.notna().all(axis=1).to_numpy()
+        years = []
+        for w in np.unique(wy):
+            m = wy == w
+            if m.sum() == (366 if _feb29(int(w)) else 365) and full[m].all():
+                years.append({"wy": int(w), **{k: round(float(df[k].to_numpy()[m].sum()), 1) for k in df.columns}})
+        out["years"] = years
+        out["missing_days"] = int((~full).sum())
+        return out
     if kind == "mdfdc":
         # monthly differential flow duration: for each calendar month, the change (comparison - base) in the % of that month's days at or above each flow
         if not q.get("comp"):
             raise ValueError("the monthly differential flow duration needs two scenarios")
-        ser = {k: gauge_series(q[k], gauge).dropna() for k in ("base", "comp")}
+        ser = paired
         order = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]
         by = {k: {m: np.sort(v[v.index.month == m].to_numpy(dtype=float)) for m in order} for k, v in ser.items()}
         top = 0.0
@@ -509,7 +747,7 @@ def curves(q):
             return series
         m = series.index.month
         return series[(m >= sm) & (m <= em)] if sm <= em else series[(m >= sm) | (m <= em)]
-    vals = {k: np.sort(windowed(gauge_series(q[k], gauge)).to_numpy(dtype=float)) for k in ("base", "comp") if q.get(k)}
+    vals = {k: np.sort(windowed(v).to_numpy(dtype=float)) for k, v in paired.items()}
     if any(len(v) == 0 for v in vals.values()):
         raise ValueError("no flow data inside that timing window")
     thrs = [float(t) for t in (q.get("thr") or "").split(",") if t.strip()]
@@ -566,13 +804,17 @@ class Handler(SimpleHTTPRequestHandler):
             if job["status"] == "running":
                 out["elapsed"] = round(time.time() - job["t0"], 1)
             return self._json(out)
-        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents"):
+        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents", "/api/ewryears", "/api/spells"):
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             try:
                 if u.path == "/api/interevents":
                     return self._json(interevents(q))
                 if u.path == "/api/ewrs":
                     return self._json({"ewrs": ewr_list(q.get("gauge", ""))})
+                if u.path == "/api/ewryears":
+                    return self._json(ewr_years(q))
+                if u.path == "/api/spells":
+                    return self._json(spells(q))
                 return self._json(heatmap(q) if u.path == "/api/heatmap" else curves(q))
             except Exception as e:
                 traceback.print_exc()
@@ -585,7 +827,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
                 return self._json({"message": "origin or host not allowed"}, 403)
             sid = re.sub(r"[^A-Za-z0-9_-]", "", parse_qs(u.query).get("id", [""])[0])
-            FLOWS.pop(sid, None)
+            forget_cached(sid)
             (STORE / f"{sid}.csv").unlink(missing_ok=True)
             return self._json({"ok": True})
         if u.path != "/api/run":

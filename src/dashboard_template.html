@@ -258,9 +258,9 @@ function render(){
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
       ${s.type==="gauge"?`<div class="seg"><span class="lbl">Columns · flow regimes</span><span class="tabs sm"><button data-act="expand-x" class="${COLL_REG.size===0?"on":""}" title="Expand every flow regime into its EWRs">Expand</button><button data-act="collapse-x" class="${META.regimes.every(x=>COLL_REG.has(x))?"on":""}" title="Collapse every flow regime into one column">Collapse</button></span></div>`:""}
     </div>
-    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}${monthlyPanel()}`;
+    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}${ewrPanel()}${spellPanel()}${monthlyPanel()}`;
 
-  $("panel").innerHTML=h; wireFlow(); wireMonthly();
+  $("panel").innerHTML=h; wireFlow(); wireEwr(); wireSpells(); wireMonthly();
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -439,7 +439,7 @@ function flowCtx(){
 }
 const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
 const CHARTS={heat:"Heat map",hydro:"Hydrograph",fdc:"Flow duration curve",dfdc:"Differential flow duration curve"};
-const chartsFor=D=>D?["heat","dfdc"]:["heat","hydro"];
+const chartsFor=D=>D?["heat","hydro","dfdc"]:["heat","hydro"];
 const thrKey=e=>e.code+"|"+e.pu;
 // differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
 const stemOf=c=>c.replace(/_[^_]+$/,"");
@@ -461,12 +461,12 @@ function flowPanel(){
     <div class="mxbar"><div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${chartsFor(D).map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</select></div>
       ${f.chart==="heat"&&D?`<div class="seg"><span class="lbl">Show</span>${tabs([["diff","Difference"],["base","Base"],["comp","Comparison"]],f.show,"show")}</div>`:""}
       ${multi?`<div class="seg"><span class="lbl">Thresholds</span><details class="multi" id="flowThrD"><summary id="flowThrS">${f.thr.length?f.thr.length+" selected":"none"}</summary><div class="pop" id="flowThr"></div></details></div>`
-             :`<div class="seg"><span class="lbl">EWR</span><select id="flowEwr" data-fl="ewr"><option value="">none</option></select></div>`}
+             :f.chart==="hydro"&&D?"":`<div class="seg"><span class="lbl">EWR</span><select id="flowEwr" data-fl="ewr"><option value="">none</option></select></div>`}
       ${f.chart==="heat"?`<div class="seg"><span class="lbl">Days</span>${tabs([["any","Any days"],["consec","Consecutive"]],f.days,"days")}</div>
         <div class="seg"><span class="lbl">Max threshold (ML/d)</span><input type="number" min="10" step="10" data-fl="xlim" value="${esc(f.xlim)}" placeholder="${f.xlimAuto||"auto"}"></div>
         <div class="seg"><span class="lbl">Max duration (days)</span><input type="number" min="2" max="366" data-fl="dmax" value="${f.dmax}"></div>
         <div class="seg"><span class="lbl">Timing window</span>${mo(f.sm,"sm")} to ${mo(f.em,"em")}</div>`:(f.chart==="hydro"?`<label class="seg"><input type="checkbox" data-fl="ylog"${f.ylog?" checked":""}> <span class="lbl">log scale</span></label>`:(f.chart==="dfdc"?`<label class="seg"><input type="checkbox" data-fl="xlog"${f.xlog?" checked":""}> <span class="lbl">log scale</span></label>`:""))}
-    </div>${customForm(mo)}<div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div></details>`;
+    </div>${customForm(mo)}<div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div><div id="flowVolNote" class="note"></div></details>`;
 }
 function customForm(mo){   // user-defined constraint: a name, a flow threshold, a duration and a timing window; it joins the EWR lists
   const f=S.flow, list=CEWR.map((e,i)=>`<span class="chip">${esc(e.code)}: ≥${e.thr.toLocaleString()} ML/d × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.consecutive?"":" (any days)"}${e.target!=null?` · target ${e.target}%`:""} <button data-cdel="${i}" title="Remove" class="ghost">×</button></span>`).join(" ");
@@ -538,6 +538,201 @@ async function fillEwrSelect(){
     pop.onchange=()=>{ S.flow.thr=[...pop.querySelectorAll("input:checked")].map(x=>x.value); lock(); $("flowThrS").textContent=S.flow.thr.length?S.flow.thr.length+" selected":"none"; drawFlow(); };
   }
 }
+// ---- annual volumes, EWR performance by water year, low-flow spells (uploaded scenarios) ------------------------------------
+const SCOL={base:"#4b5563",comp:"#eb6834"}, UPC="rgb(33,102,172)", DNC="rgb(178,24,43)";   // scenario identity: base grey, comparison orange; a change: blue better, red worse
+const wyl=w=>`${w}–${String((w+1)%100).padStart(2,"0")}`, wyMid=w=>`${w+1}-01-01`;   // water year 1 Jul w – 30 Jun w+1 (py_ewr labels it w), drawn on a date axis at its middle
+const fmtML=v=>v==null?"–":Math.abs(v)>=1000?(v/1000).toLocaleString(undefined,{maximumFractionDigits:Math.abs(v)>=1e5?0:1})+" GL":Math.round(v).toLocaleString()+" ML";
+const med=a=>{ const v=a.filter(x=>x!=null).sort((x,y)=>x-y); if(!v.length) return null; const m=v.length>>1; return v.length%2?v[m]:(v[m-1]+v[m])/2; };
+const sgn=(v,dp=1,u="")=>{ if(v==null||!isFinite(v)) return "–"; const a=Math.abs(v).toFixed(dp); return (+a===0?"":v>0?"+":"−")+a+u; };   // a value that rounds to 0 has no sign
+const fx=(v,dp=1)=>v==null||!isFinite(v)?"–":v.toLocaleString(undefined,{maximumFractionDigits:dp});
+const pAx=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
+const pLay=extra=>Object.assign({margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},hovermode:"closest",hoverlabel:{bgcolor:"white",bordercolor:"#9aa3b0",font:{size:11,color:"#1f2937"},align:"left"}},extra);
+const PCFG={responsive:true,displaylogo:false};
+const sw=(col,hollow)=>`<span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin:0 4px 0 10px;${hollow?`border:1.5px solid ${col};background:#fff`:`background:${col}`}"></span>`;
+// rows: [label, base, comparison, change]; one scenario: [label, value]
+const statTbl=(rows,D,c)=>`<table class="ewrtbl"><tr><th></th>${D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Change</th>`:`<th>${esc(c.bn)}</th>`}</tr>${rows.map(r=>`<tr><td style="text-align:left">${r[0]}</td>${D?`<td>${r[1]}</td><td>${r[2]}</td><td>${r[3]??""}</td>`:`<td>${r[1]}</td>`}</tr>`).join("")}</table>`;
+function volumes(d,c){   // volume (sum of daily flow) of each complete water year under the hydrograph; two scenarios: the change, over years complete in both
+  const el=$("flowPlot2"), nt=$("flowVolNote"); if(!el) return; if(nt) nt.textContent="";
+  if(!d.years||!d.years.length){ el.innerHTML=""; return; }
+  const y=d.years, x=y.map(r=>wyMid(r.wy)), G=v=>v/1000, mean=k=>y.reduce((a,r)=>a+r[k],0)/y.length;
+  const tr=c.comp?[{type:"bar",x,y:y.map(r=>G(r.comp-r.base)),customdata:y.map(r=>[wyl(r.wy),G(r.base),G(r.comp)]),marker:{color:"#6b7280"},hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]:,.1f} GL → ${esc(c.cn)} %{customdata[2]:,.1f} GL<br><b>%{y:+,.1f} GL</b><extra></extra>`}]
+    :[{type:"bar",x,y:y.map(r=>G(r.base)),customdata:y.map(r=>wyl(r.wy)),marker:{color:"#1f4e8c"},hovertemplate:"<b>%{customdata}</b><br>%{y:,.1f} GL<extra></extra>"}];
+  Plotly.newPlot(el,tr,pLay({height:230,bargap:0.15,xaxis:pAx("Water year (July–June)",{type:"date"}),yaxis:pAx(c.comp?"Change in volume (GL)":"Volume (GL)",{zeroline:true,zerolinecolor:"#9aa3b0"}),showlegend:false}),PCFG);
+  if(nt){ const b=mean("base"); nt.textContent=c.comp?(()=>{ const m=mean("comp"); return `Annual volume (sum of daily flow), ${c.cn} − ${c.bn}, for the ${y.length} water years complete in both: mean ${fx(G(b))} → ${fx(G(m))} GL a year (${sgn(G(m-b))} GL, ${b?sgn(100*(m-b)/b,1,"%"):"–"}). Grey bars: more or less water is not by itself better or worse.`; })()
+    :`Annual volume (sum of daily flow) of each of the ${y.length} complete water years: mean ${fx(G(b))} GL a year.`; }
+}
+S.ev={open:false,ewr:"",view:"year"}; S.sp={open:false,thr:""}; let EVTOKEN=0, SPTOKEN=0;
+const EVVIEWS=[["year","By year"],["events","Events"],["timing","Timing"],["gaps","Gaps vs MRIP"]];
+async function ewrsAt(g){ if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } } return EWRLIST.get(g); }
+function ewrPanel(){
+  const c=flowCtx(); if(!c||!c.ok) return "";
+  return `<details id="evDet" class="flowp"${S.ev.open?" open":""}><summary>EWR performance · ${esc(gaugeName(S.sel.i))}</summary>
+    <div class="mxbar"><div class="seg"><span class="lbl">EWR</span><select id="evEwr"><option>loading …</option></select></div>
+      <div class="seg"><span class="lbl">View</span><span class="tabs sm" id="evTabs">${EVVIEWS.map(([k,l])=>`<button data-ev="${k}" class="${S.ev.view===k?"on":""}">${l}</button>`).join("")}</span></div></div>
+    <div id="evMsg" class="note"></div><div id="evPlot"></div><div id="evTbl"></div></details>`;
+}
+function wireEwr(){
+  const d=$("evDet"); if(!d) return;
+  d.addEventListener("toggle",()=>{ S.ev.open=d.open; if(d.open) drawEwr(); });
+  $("evTabs").onclick=e=>{ const b=e.target.closest("[data-ev]"); if(!b) return; S.ev.view=b.dataset.ev; $("evTabs").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); drawEwr(); };
+  $("evEwr").onchange=e=>{ S.ev.ewr=e.target.value; drawEwr(); };
+  if(S.ev.open) drawEwr();
+}
+// water years an EWR's statistics are taken over: one scenario, its complete years; two, the years complete in both
+function keptYears(d,D){ const own=k=>{ const y=d.scenarios[k].years; return new Set(y.wy.filter((_,i)=>y.complete[i])); };
+  if(!D) return {base:own("base")}; const p=new Set(d.paired.wy); return {base:p,comp:p}; }
+// the EWR tool's assessment year w starts on the 1st of month ys: July, unless the timing window runs from the first half of the
+// year into the second (e.g. Jun–Nov), when it starts in the window's first month
+const ayLab=(w,ys)=>ys===7?wyl(w):`${MONTHS[ys-1]} ${w} – ${MONTHS[(ys+10)%12]} ${w+1}`;
+const ayMid=(w,ys)=>`${w+(ys+6>12?1:0)}-${String((ys+5)%12+1).padStart(2,"0")}-01`;
+const ayName=ys=>ys===7?"Water year (July–June)":`EWR assessment year (${MONTHS[ys-1]}–${MONTHS[(ys+10)%12]})`;
+function ewrDef(e,d){   // the EWR's rule as the EWR tool applies it
+  const hi=d.thr_max!=null&&d.thr_max<1e5, ms=d.min_spell??d.dur, py=d.per_year||1;
+  return `${e.code}: flow ${hi?`${d.thr.toLocaleString()}–${d.thr_max.toLocaleString()}`:`≥ ${d.thr.toLocaleString()}`} ML/d, ${MONTHS[d.sm-1]}–${MONTHS[d.em-1]}. `+
+    `An event is successful when it lasts at least ${ms} day${ms===1?"":"s"}${d.gap_tol?` (dips below the threshold of up to ${d.gap_tol} days are bridged)`:""}; `+
+    `a year is achieved under the EWR tool's annual rule (${d.dur} day${d.dur===1?"":"s"} ${e.consecutive?"in an event":"in the year, any days"}${py>1?`, ${py} events a year`:""})`+
+    `${d.target!=null?`; target ${d.target}% of years`:""}${d.mrip_days?`; max inter-event period ${+(d.mrip_days/365).toFixed(2)} yr`:""}.`;
+}
+async function drawEwr(){
+  const c=flowCtx(); if(!c||!c.ok||!S.ev.open||!$("evPlot")) return;
+  const msg=$("evMsg"), tok=++EVTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
+  if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
+  const list=[...await ewrsAt(c.gauge)].sort((a,b)=>/^VF/i.test(b.code)-/^VF/i.test(a.code)); if(tok!==EVTOKEN) return;
+  if(!list.length){ $("evEwr").innerHTML=""; msg.textContent="No single-gauge flow-threshold EWRs at this gauge."; return; }
+  if(!list.some(e=>thrKey(e)===S.ev.ewr)){ const fe=list.find(e=>thrKey(e)===S.flow.ewr); S.ev.ewr=thrKey(fe||list[0]); }   // start from the flow chart's EWR when it has one
+  const cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map());
+  $("evEwr").innerHTML=list.map(e=>`<option value="${esc(thrKey(e))}"${thrKey(e)===S.ev.ewr?" selected":""}>${esc(e.code)}${cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+")":""} · ≥${e.thr.toLocaleString()} ML/d × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
+  const e=list.find(x=>thrKey(x)===S.ev.ewr);
+  msg.textContent="Loading … (the EWR tool runs on this EWR the first time)"; $("evTbl").innerHTML="";
+  try{
+    const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(c.base)}${D?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(e.code)}&pu=${encodeURIComponent(e.pu)}`); if(tok!==EVTOKEN) return;
+    Plotly.purge($("evPlot"));
+    const K=keptYears(d,D), none=!K.base.size, def=ewrDef(e,d);
+    if(none&&S.ev.view!=="gaps"&&S.ev.view!=="year"){ msg.textContent=`${def}\n${D?"No assessment year is complete in both scenarios":"No assessment year is complete"} (every day of the timing window observed), so there is nothing to summarise.`; return; }
+    ({year:evYears,events:evEvents,timing:evTiming,gaps:evGaps})[S.ev.view](d,c,e,def,msg);
+  }catch(er){ if(tok===EVTOKEN) msg.textContent="Could not draw: "+er.message; }
+}
+function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment year (the EWR tool's verdict), and how close each year came
+  const D=!!c.comp, B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, low=e.handler==="lowflow_handle", ys=d.ystart, py=d.per_year||1;
+  const all=[...new Set([...B.wy,...(C?C.wy:[])])].sort((a,b)=>a-b), x=all.map(w=>ayMid(w,ys)), lab=all.map(w=>ayLab(w,ys));
+  const at=(Y,f)=>{ const m=new Map(Y.wy.map((w,i)=>[w,i])); return all.map(w=>{ const i=m.get(w); return i==null||!Y.complete[i]?null:f(Y,i); }); };
+  // the bar: what the annual rule mostly turns on — events in the year when several are needed, else days in the year (any-days EWRs) or the longest event
+  const [mName,mKey,need]=py>1?["Events meeting the EWR in the year","n_events",py]:low?["Days at or above the threshold in the year","event_days",d.dur]:["Longest event in the year (days)","max_event",d.dur];
+  const ach=Y=>at(Y,(Y,i)=>Y.achieved[i]?1:0), met=Y=>at(Y,(Y,i)=>Y[mKey][i]);
+  const rows=[ach(B)].concat(D?[ach(C)]:[]), names=[c.bn].concat(D?[c.cn]:[]);
+  const word=v=>v==null?"":v?"achieved":"not achieved";
+  const tr=[{type:"heatmap",x,y:names,z:rows,zmin:0,zmax:1,colorscale:[[0,"#e5e7eb"],[0.5,"#e5e7eb"],[0.5,UPC],[1,UPC]],showscale:false,xgap:1,ygap:4,hoverongaps:false,
+    text:rows.map(r=>r.map(word)),customdata:names.map(()=>lab),hovertemplate:"<b>%{customdata}</b> · %{y}<br>%{text}<extra></extra>"}];
+  const P=D?new Set(d.paired.wy):null, mb=met(B), mc=D?met(C):null;
+  if(D){ const ch=all.map((w,i)=>!P.has(w)?null:rows[1][i]-rows[0][i]);
+    tr.push({type:"heatmap",x,y:["Change"],z:[ch],zmin:-1,zmax:1,yaxis:"y2",colorscale:[[0,DNC],[0.34,DNC],[0.34,"#f5f6f8"],[0.66,"#f5f6f8"],[0.66,UPC],[1,UPC]],showscale:false,xgap:1,hoverongaps:false,
+      text:[ch.map(v=>v==null?"":v>0?`achieved in ${c.cn} only`:v<0?`achieved in ${c.bn} only`:"no change")],customdata:[lab],hovertemplate:"<b>%{customdata}</b><br>%{text}<extra></extra>"});
+    const dv=all.map((w,i)=>P.has(w)&&mb[i]!=null&&mc[i]!=null?mc[i]-mb[i]:null);
+    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]} → ${esc(c.cn)} %{customdata[2]}<br><b>%{y:+}</b><extra></extra>`});
+  } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:"#b8bfca")},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y}<extra></extra>`});
+  const lay=pLay({height:D?480:420,bargap:0.1,showlegend:false,xaxis:pAx(ayName(ys),{type:"date",anchor:"y3"}),
+    yaxis:{domain:D?[0.78,1]:[0.8,1],showgrid:false,ticks:"",automargin:true,fixedrange:true,autorange:"reversed"},   // base on top
+    yaxis3:pAx(D?`Change: ${mName[0].toLowerCase()+mName.slice(1)}`:mName,{domain:[0,D?0.6:0.68],zeroline:true,zerolinecolor:"#9aa3b0"}),
+    shapes:D?[]:[{type:"line",xref:"paper",x0:0,x1:1,yref:"y3",y0:need,y1:need,line:{color:"#111",width:1.2,dash:"dash"}}],
+    annotations:D?[]:[{xref:"paper",x:1,yref:"y3",y:need,text:`required: ${need}`,showarrow:false,xanchor:"right",yanchor:"bottom",font:{size:10}}]});
+  if(D) lay.yaxis2={domain:[0.67,0.73],showgrid:false,ticks:"",automargin:true,fixedrange:true};
+  Plotly.newPlot("evPlot",tr,lay,PCFG);
+  const Bn=B.wy.filter((_,i)=>B.complete[i]).length, Ba=B.wy.filter((_,i)=>B.complete[i]&&B.achieved[i]).length, inc=B.wy.length-Bn, yr=ys===7?"water year":"assessment year";
+  const tail=` Achievement is the EWR tool's own; the bars show how close each year came (${mName[0].toLowerCase()+mName.slice(1)}), which can disagree with it where other parts of the rule apply.`;
+  if(!D) msg.textContent=`${def}\n`+(Bn?`${c.bn}: achieved in ${Ba} of ${Bn} complete ${yr}s (${fx(100*Ba/Bn)}%)${d.target!=null?` against a target of ${d.target}%`:""}.`:`${c.bn}: no complete ${yr}.`)+(inc?` ${inc} ${yr}${inc===1?"":"s"} with missing days in the timing window ${inc===1?"is":"are"} left blank and not counted.`:"")+tail;
+  else { const p=d.paired; msg.textContent=`${def}\n`+(p.n?`Over the ${p.n} ${yr}s complete in both: ${c.bn} ${p.base} (${fx(p.pct_base)}%) → ${c.cn} ${p.comp} (${fx(p.pct_comp)}%), ${sgn(p.pct_comp-p.pct_base,1," pts")}. Achieved in ${c.cn} but not in ${c.bn}: ${p.gained} year${p.gained===1?"":"s"} (blue); the reverse: ${p.lost} (red). Equal totals can still hide years that changed.`:`No ${yr} is complete in both scenarios, so achievement cannot be compared.`)+tail; }
+  $("evTbl").innerHTML=`<div class="note">${sw(UPC)}achieved${sw("#e5e7eb")}not achieved · blank = incomplete year${D?` · change row: ${sw(UPC)}achieved in ${esc(c.cn)} only${sw(DNC)}in ${esc(c.bn)} only${sw("#f5f6f8")}no change`:""}</div>`;
+}
+function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how long, how big
+  const D=!!c.comp, K=keptYears(d,D), ms=d.min_spell??d.dur, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, tr=[], st={};
+  ks.forEach(k=>{ const ev=d.scenarios[k].events.filter(x=>K[k].has(x.wy)), ok=ev.filter(x=>x.ok), no=ev.filter(x=>!x.ok), col=D?SCOL[k]:"#1f4e8c";
+    const cd=a=>a.map(x=>[x.start,x.end,x.peak,fmtML(x.vol),x.qual<x.days?` (${x.qual} at or above the threshold)`:""]), ht=t=>`<b>${esc(nm[k])}</b> · ${t}<br>%{customdata[0]} to %{customdata[1]} · <b>%{y} days</b>%{customdata[4]}<br>peak %{customdata[2]:,.0f} ML/d · volume %{customdata[3]}<extra></extra>`;
+    tr.push({type:"scatter",mode:"markers",name:`${nm[k]} · successful`,x:ok.map(x=>x.start),y:ok.map(x=>x.days),customdata:cd(ok),marker:{size:8,color:col,line:{color:"white",width:1}},hovertemplate:ht("successful")});
+    if(no.length) tr.push({type:"scatter",mode:"markers",name:`${nm[k]} · too short`,x:no.map(x=>x.start),y:no.map(x=>x.days),customdata:cd(no),marker:{size:7,color:"white",line:{color:col,width:1.5}},hovertemplate:ht("too short")});
+    const n=K[k].size; st[k]={yrs:n,n:ok.length,per10:n?ok.length/n*10:null,dur:med(ok.map(x=>x.days)),peak:med(ok.map(x=>x.peak)),vol:med(ok.map(x=>x.vol))}; });
+  Plotly.newPlot("evPlot",tr,pLay({height:400,showlegend:true,legend:{orientation:"h",x:0,y:1.1},xaxis:pAx("Event start",{type:"date"}),yaxis:pAx("Event length, start to end (days)",{rangemode:"tozero"}),
+    shapes:[{type:"line",xref:"paper",x0:0,x1:1,y0:ms,y1:ms,line:{color:"#111",width:1.2,dash:"dash"}}],
+    annotations:[{xref:"paper",x:1,y:ms,text:`minimum: ${ms} d`,showarrow:false,xanchor:"right",yanchor:"bottom",font:{size:10}}]}),PCFG);
+  const b=st.base, q=st.comp, ch=(f,dp,u)=>D?sgn(q[f]!=null&&b[f]!=null?q[f]-b[f]:null,dp,u):null, yr=d.ystart===7?"Water years":"Assessment years";
+  const rows=[[`${yr} counted`,b.yrs,D?q.yrs:null,null],["Successful events",b.n,D?q.n:null,ch("n",0)],["… per 10 years",fx(b.per10),D?fx(q.per10):null,ch("per10",1)],
+    ["Median length (days)",fx(b.dur),D?fx(q.dur):null,ch("dur",1)],["Median peak (ML/d)",fx(b.peak,0),D?fx(q.peak,0):null,ch("peak",0)],
+    ["Median volume",fmtML(b.vol),D?fmtML(q.vol):null,D&&q.vol!=null&&b.vol!=null?(q.vol>=b.vol?"+":"−")+fmtML(Math.abs(q.vol-b.vol)):null]];
+  msg.textContent=`${def}\nEach dot is one event the EWR tool found in the timing window: filled = successful (at least ${ms} days), hollow = too short. Length runs from the event's first to its last day${d.gap_tol?" (bridged dips included)":""}; volume = sum of the daily flows over those days (ML), not only the part above the threshold. Whether a year is achieved also depends on the annual rule (By year). `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
+  $("evTbl").innerHTML=statTbl(rows,D,c);
+}
+function evTiming(d,c,e,def,msg){   // in which months the successful events start, per 10 years
+  const D=!!c.comp, K=keptYears(d,D), ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, ys=d.ystart, ord=Array.from({length:12},(_,i)=>(ys-1+i)%12+1), ml=ord.map(m=>MONTHS[m-1]), per={};
+  ks.forEach(k=>{ const ev=d.scenarios[k].events.filter(x=>x.ok&&K[k].has(x.wy)), n=K[k].size; per[k]=ord.map(m=>ev.filter(x=>+x.start.slice(5,7)===m).length/n*10); per[k].tot=ev.length/n*10; });
+  const tr=ks.map(k=>({type:"bar",name:nm[k],x:ml,y:per[k],marker:{color:D?SCOL[k]:"#1f4e8c"},hovertemplate:`<b>${esc(nm[k])}</b> · %{x}<br>%{y:.2f} events per 10 years<extra></extra>`}));
+  const inWin=m=>d.sm<=d.em?m>=d.sm&&m<=d.em:m>=d.sm||m<=d.em;
+  const shapes=ord.every(inWin)?[]:ord.map((m,i)=>inWin(m)?{type:"rect",xref:"x",x0:i-0.5,x1:i+0.5,yref:"paper",y0:0,y1:1,fillcolor:"rgba(31,78,140,.07)",line:{width:0},layer:"below"}:null).filter(Boolean);
+  Plotly.newPlot("evPlot",tr,pLay({height:360,barmode:"group",bargap:0.25,bargroupgap:0.08,showlegend:D,legend:{orientation:"h",x:0,y:1.1},xaxis:pAx(`Month the event starts (${ys===7?"water year":"assessment year"} order)`,{type:"category"}),yaxis:pAx("Events per 10 years",{rangemode:"tozero"}),shapes}),PCFG);
+  const q4=[0,3,6,9].map(a=>[a,a+3,`${ml[a]}–${ml[a+2]}`]), sh=(k,a,z)=>per[k].tot?100*per[k].slice(a,z).reduce((s,v)=>s+v,0)/per[k].tot:null;
+  const rows=[["Successful events per 10 years",fx(per.base.tot,2),D?fx(per.comp.tot,2):null,D?sgn(per.comp.tot-per.base.tot,2):null]].concat(q4.map(([a,z,l])=>[`Share starting ${l}`,sh("base",a,z)==null?"–":fx(sh("base",a,z),0)+"%",D?(sh("comp",a,z)==null?"–":fx(sh("comp",a,z),0)+"%"):null,D?sgn(sh("comp",a,z)!=null&&sh("base",a,z)!=null?sh("comp",a,z)-sh("base",a,z):null,0," pts"):null]));
+  msg.textContent=`${def}\nStart month of the successful events, as events per 10 years so scenarios with different record lengths compare fairly; ${ord.every(inWin)?"the EWR's timing window is the whole year":"the shaded months are the EWR's timing window"}. `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
+  $("evTbl").innerHTML=statTbl(rows,D,c);
+}
+function evGaps(d,c,e,def,msg){   // gaps between successful events against the maximum inter-event period
+  const D=!!c.comp, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, M=d.mrip_days, tr=[], st={};
+  ks.forEach(k=>{ const g=d.scenarios[k].gaps, seg=(a,col,name,dash)=>{ if(!a.length) return; const x=[], y=[], cd=[]; a.forEach(z=>{ const t=[z.start,z.end,z.days,z.censored?"length unknown: missing days inside":z.excess?`${z.excess.toLocaleString()} days beyond the maximum`:"",z.boundary?"<br>runs from the start or to the end of the record":""]; x.push(z.start,z.end,null); y.push(z.days/365,z.days/365,null); cd.push(t,t,null); });
+      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.2f} yr)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
+    const known=g.filter(z=>!z.censored), unk=g.filter(z=>z.censored);
+    if(D) seg(known,SCOL[k],nm[k]); else { seg(known.filter(z=>!z.excess),"#9ca3af","within the maximum"); seg(known.filter(z=>z.excess),DNC,"longer than the maximum"); }
+    seg(unk,"#9ca3af",`${D?nm[k]+" · ":""}length unknown (missing data)`,"dot");
+    const lg=known.reduce((a,z)=>!a||z.days>a.days?z:a,null), s=d.scenarios[k];
+    st[k]={n:known.length,unk:unk.length,over:known.filter(z=>z.excess).length,long:lg,ex:known.reduce((a,z)=>a+z.excess,0),y10:s.etp==null?null:s.etp*10,nosucc:g.some(z=>z.no_success)}; });
+  Plotly.newPlot("evPlot",tr,pLay({height:380,showlegend:true,legend:{orientation:"h",x:0,y:1.1},xaxis:pAx("Date",{type:"date"}),yaxis:pAx("Gap between successful events (years)",{rangemode:"tozero"}),
+    shapes:M?[{type:"line",xref:"paper",x0:0,x1:1,y0:M/365,y1:M/365,line:{color:"#111",width:1.2,dash:"dash"}}]:[],
+    annotations:M?[{xref:"paper",x:1,y:M/365,text:`maximum: ${+(M/365).toFixed(2)} yr`,showarrow:false,xanchor:"right",yanchor:"bottom",font:{size:10}}]:[]}),PCFG);
+  const b=st.base, q=st.comp, L=z=>z?`${fx(z.days/365,2)} yr<br><small>${z.start} to ${z.end}</small>`:"–", ch=(f,dp)=>D?sgn(q[f]!=null&&b[f]!=null?q[f]-b[f]:null,dp):null;
+  const rows=[["Gaps between successful events",b.n,D?q.n:null,ch("n",0)]].concat(b.unk||(D&&q.unk)?[["Gaps with missing days (not counted)",b.unk,D?q.unk:null,null]]:[])
+    .concat(M?[["… longer than the maximum",b.over,D?q.over:null,ch("over",0)],["Days beyond the maximum (total)",fx(b.ex,0),D?fx(q.ex,0):null,ch("ex",0)],
+    ["Years in 10 exceeding the maximum",fx(b.y10,2),D?fx(q.y10,2):null,ch("y10",2)]]:[]).concat([["Longest gap",L(b.long),D?L(q.long):null,D&&b.long&&q.long?sgn((q.long.days-b.long.days)/365,2," yr"):null]]);
+  const nos=ks.filter(k=>st[k].nosucc).map(k=>nm[k]);
+  msg.textContent=`${def}\n`+(M?`Each line is a gap between successful events (the EWR tool's), drawn from its start to its end at its length; the first and last gaps run from the start and to the end of the record, as the EWR tool counts them. A gap with missing days inside has an unknown length: it is drawn dotted and counted nowhere. Years in 10 exceeding the maximum = days beyond the maximum ÷ days of record outside such gaps × 10, the matrix's measure (a share of time). `+(D?"Each scenario over its own record.":""):`This EWR has no maximum inter-event period; the gaps are shown for reference.`)+
+    (nos.length?` ${nos.join(" and ")}: no successful event in the whole record, so the record is one gap.`:"");
+  $("evTbl").innerHTML=statTbl(rows,D,c);
+}
+function spellPanel(){
+  const c=flowCtx(); if(!c||!c.ok) return "";
+  return `<details id="spDet" class="flowp"${S.sp.open?" open":""}><summary>Low-flow spells · ${esc(gaugeName(S.sel.i))}</summary>
+    <div class="mxbar"><div class="seg"><span class="lbl">Spell = consecutive days with flow below (ML/d)</span><input id="spThr" type="number" min="0" step="any" value="${esc(S.sp.thr)}" placeholder="1"></div><div class="seg" id="spQuick"></div></div>
+    <div id="spMsg" class="note"></div><div id="spPlot"></div><div id="spTbl"></div></details>`;
+}
+function wireSpells(){
+  const d=$("spDet"); if(!d) return;
+  d.addEventListener("toggle",()=>{ S.sp.open=d.open; if(d.open) drawSpells(); });
+  $("spThr").onchange=e=>{ S.sp.thr=e.target.value.trim(); drawSpells(); };
+  $("spQuick").onclick=e=>{ const b=e.target.closest("[data-thr]"); if(!b) return; S.sp.thr=b.dataset.thr; $("spThr").value=S.sp.thr; drawSpells(); };
+  if(S.sp.open) drawSpells();
+}
+async function drawSpells(){
+  const c=flowCtx(); if(!c||!c.ok||!S.sp.open||!$("spPlot")) return;
+  const msg=$("spMsg"), tok=++SPTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
+  if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
+  const list=await ewrsAt(c.gauge); if(tok!==SPTOKEN) return;
+  const lows=[...new Map(list.filter(e=>/^(CF|VF|BF)/i.test(e.code)).sort((a,b)=>a.thr-b.thr).map(e=>[e.thr,e])).values()].slice(0,5);   // quick picks: the gauge's cease-to-flow, very low and base flow thresholds
+  $("spQuick").innerHTML=`<span class="lbl">Quick pick</span><button data-thr="1" title="Practically no flow">Cease to flow (1)</button>`+lows.map(e=>`<button data-thr="${e.thr}" title="${esc(e.code)} threshold">${esc(e.code)} (${e.thr.toLocaleString()})</button>`).join("");
+  const thr=S.sp.thr!==""&&+S.sp.thr>=0?+S.sp.thr:1;
+  msg.textContent="Loading …"; $("spTbl").innerHTML="";
+  try{
+    const d=await flowGet(`/api/spells?base=${encodeURIComponent(c.base)}${D?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}&thr=${thr}`); if(tok!==SPTOKEN) return;
+    const B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, keep=D?new Set(d.paired.wy):new Set(B.wy.filter((_,i)=>B.complete[i]));
+    const pick=Y=>{ const m=new Map(Y.wy.map((w,i)=>[w,i])); return [...keep].sort((a,b)=>a-b).map(w=>({w,...(i=>({longest:Y.longest[i],below:Y.below[i],n:Y.n[i]}))(m.get(w))})); };
+    const pb=pick(B), pc=D?pick(C):null, x=pb.map(r=>wyMid(r.w));
+    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br><b>%{y:+} days</b><extra></extra>`}]
+      :[{type:"bar",x,y:pb.map(r=>r.longest),marker:{color:"#1f4e8c"},customdata:pb.map(r=>[wyl(r.w),r.below,r.n]),hovertemplate:"<b>%{customdata[0]}</b><br>longest spell <b>%{y} days</b><br>%{customdata[1]} days below in the year · %{customdata[2]} spells start in it<extra></extra>"}];
+    Plotly.newPlot("spPlot",tr,pLay({height:320,bargap:0.1,showlegend:false,xaxis:pAx("Water year (July–June)",{type:"date"}),yaxis:pAx(D?"Change in the longest spell (days)":"Longest spell in the year (days)",{zeroline:true,zerolinecolor:"#9aa3b0"})}),PCFG);
+    const sm=(a,f)=>{ const v=a.map(f); return {mean:v.length?v.reduce((s,z)=>s+z,0)/v.length:null,med:med(v),max:v.length?Math.max(...v):null,any:v.filter(z=>z>0).length}; };
+    const s={base:{b:sm(pb,r=>r.below),l:sm(pb,r=>r.longest)}}; if(D) s.comp={b:sm(pc,r=>r.below),l:sm(pc,r=>r.longest)};
+    const ch=(f,g,dp)=>D?sgn(s.comp[f][g]!=null&&s.base[f][g]!=null?s.comp[f][g]-s.base[f][g]:null,dp):null, run=k=>{ const r=d.scenarios[k].longest_runs[0]; return r?`${r.days.toLocaleString()} d${r.censored?"*":""}<br><small>${r.start} to ${r.end}</small>`:"none"; };
+    const rows=[["Water years counted",keep.size,D?keep.size:null,null],["Mean days below a year",fx(s.base.b.mean),D?fx(s.comp.b.mean):null,ch("b","mean",1)],["Median longest spell (days)",fx(s.base.l.med),D?fx(s.comp.l.med):null,ch("l","med",1)],
+      ["Years with any day below",s.base.b.any,D?s.comp.b.any:null,ch("b","any",0)],["Longest spell in the record",run("base"),D?run("comp"):null,null]];
+    const cens=["base","comp"].some(k=>d.scenarios[k]&&(d.scenarios[k].longest_runs[0]||{}).censored);
+    msg.textContent=`A spell is a run of consecutive days with flow below ${thr.toLocaleString()} ML/d. Per water year: the longest run inside the year (a run that crosses 30 June is split there) and the days below. `+(D?`Over the ${keep.size} water years complete in both; red = a longer spell in ${c.cn} (worse), blue = shorter.`:`Over the ${keep.size} complete water years.`)+` Missing days are never counted as low and break a run.`+(cens?" * touches missing data or the end of the record, so the true length may be longer.":"");
+    $("spTbl").innerHTML=statTbl(rows,D,c);
+  }catch(er){ if(tok===SPTOKEN) msg.textContent="Could not draw: "+er.message; }
+}
 // ---- monthly differential flow duration: its own panel under Flow analysis (differential mode, uploaded scenarios) ----------------
 S.mflow={open:false,xlim:"",yr:null,xr:null}; let MTOKEN=0, MTIMER=0;
 function monthlyPanel(){
@@ -579,12 +774,14 @@ async function drawMonthly(){
 const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
 const sameWin=(grp,keys)=>{ const on=keys.map(k=>grp.find(e=>e.key===k)).filter(Boolean), w=on[0]; return w?on.filter(e=>e.sm===w.sm&&e.em===w.em):[]; };   // only EWRs sharing the first one's timing window stay selected
 const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), on=sameWin(g,S.flow.thr); S.flow.thr=on.map(e=>e.key); return on; };
-async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); FLOWCACHE.set(url,j); return j; }
+let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
+const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
+async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 async function drawFlow(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
   if(typeof Plotly==="undefined"){ $("flowMsg").textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
   const f=S.flow, D=isDiff(), tok=++FLOWTOKEN, msg=$("flowMsg"), base=`base=${encodeURIComponent(c.base)}${c.comp?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}`;
-  msg.textContent="Loading …"; $("flowPlot2").innerHTML="";
+  msg.textContent="Loading …"; if(window.Plotly) Plotly.purge($("flowPlot2")); $("flowPlot2").innerHTML=""; if($("flowVolNote")) $("flowVolNote").textContent="";
   const lay=(extra)=>Object.assign({height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},hovermode:"closest",hoverlabel:{bgcolor:"white",bordercolor:"#9aa3b0",font:{size:11,color:"#1f2937"},align:"left"}},extra);
   const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
   const cfg={responsive:true,displaylogo:false};
@@ -600,7 +797,7 @@ async function drawFlow(){
         if(!isFinite(mn)) return diff?[-5,5]:[0,100]; if(diff){ let lo=Math.floor(Math.min(mn,0)/5)*5, hi=Math.ceil(Math.max(mx,0)/5)*5; if(hi===lo){ lo=-5; hi=5; } return [lo,hi]; }   // min to max in 5-point steps, 0 stays white (zmid)
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
-      const title=diff?`% change from ${c.bn} to ${c.cn}`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
+      const title=diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
       let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(3);
         hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${+df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
       // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
@@ -632,34 +829,44 @@ async function drawFlow(){
       msg.style.whiteSpace="pre-wrap";
       const markNote=()=>thr.map(e=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}; return `\n▢ ${e.code} ≥${e.thr.toLocaleString()} ML/d: `+(c.comp?`${c.bn} ${m.base}% of time → ${c.cn} ${m.comp}% (${m.comp-m.base>=0?"+":""}${(m.comp-m.base).toFixed(3)} pts)`:`flow at or above it ${m.base}% of the time`); }).join("");
       if(f.chart==="hydro"){
-        const ew=curEwr(); let shade=[], note="", ie=null;
+        const ew=c.comp?null:curEwr(); let shade=[], note="", ie=null;   // two scenarios: the gaps are in EWR performance › Gaps vs MRIP
         if(ew&&ew.maxint>0){
           ie=await flowGet(`/api/interevents?scn=${encodeURIComponent(c.base)}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(ew.code)}&pu=${encodeURIComponent(ew.pu)}`); if(tok!==FLOWTOKEN) return;
           const nextDay=s=>{ const t=new Date(s+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+1); return t.toISOString().slice(0,10); };
           shade=ie.exceed.map(g=>({type:"rect",xref:"x",x0:new Date(Date.parse(nextDay(g.end)+"T00:00:00Z")-Math.max(0,g.days-ie.mrip_days)*864e5).toISOString().slice(0,10),x1:nextDay(g.end),yref:"paper",y0:0,y1:1,fillcolor:"rgba(192,57,43,.20)",line:{width:0},layer:"below"}));
-          note=`\n▢ ${ew.code}: max recommended inter-event period ${ew.maxint} yr (${ie.mrip_days} days). ${ie.exceed.length} of ${ie.n_gaps} gaps between successful events exceed it; the time beyond the maximum is shaded`+(ie.exceed.length?`, longest ${Math.max(...ie.exceed.map(g=>g.days))} days.`:".");
-        } else if(ew) note=`\n▢ ${ew.code} has no maximum inter-event period, so there is nothing to shade.`;
+          note=(ie.n_censored?`\n▢ ${ie.n_censored} gap${ie.n_censored===1?" has":"s have"} missing days inside (length unknown) and ${ie.n_censored===1?"is":"are"} not shaded.`:"")+`\n▢ ${ew.code}: max recommended inter-event period ${ew.maxint} yr (${ie.mrip_days} days). ${ie.exceed.length} of ${ie.n_gaps} gaps between successful events exceed it; the time beyond the maximum is shaded`+(ie.exceed.length?`, longest ${Math.max(...ie.exceed.map(g=>g.days))} days.`:".");
+        } else if(ew&&!ew.custom) note=`\n▢ ${ew.code} has no maximum inter-event period, so there is nothing to shade.`;
         const hp=$("flowPlot"), dayMs=864e5, parse=v=>Date.parse(String(v).replace(" ","T").slice(0,19)+"Z"), gaps=ie?ie.exceed.map(g=>{ const b=parse(g.end)+dayMs; return {a:b-Math.max(0,g.days-ie.mrip_days)*dayMs,b}; }):[], t0=parse(d.dates[0]), t1=parse(d.dates[d.dates.length-1])+dayMs;
         const hasStat=ew&&ew.maxint>0;
         document.querySelectorAll("#hydroTools").forEach(x=>x.remove());
-        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div><div class="seg"><span class="lbl">From</span><input type="date" id="hydFrom" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[0]}"> <span class="lbl">to</span><input type="date" id="hydTo" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[d.dates.length-1]}"></div>${hasStat?`<div class="seg"><span class="lbl">Years in 10 exceeding the ${ew.maxint} yr inter-event maximum</span><b id="hydroStat"></b></div>`:""}</div>`);
+        hp.insertAdjacentHTML("beforebegin",`<div id="hydroTools" class="mxbar" style="margin:6px 0"><div class="seg"><span class="lbl">Period</span>${DROUGHTS.map(([n,a,b])=>`<button data-dr="${n}" data-a="${a}" data-b="${b}"${parse(b)<t0||parse(a)>t1?" disabled":""}>${n}</button>`).join("")}<button data-dr="all">All</button></div><div class="seg"><span class="lbl">From</span><input type="date" id="hydFrom" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[0]}"> <span class="lbl">to</span><input type="date" id="hydTo" min="${d.dates[0]}" max="${d.dates[d.dates.length-1]}" value="${d.dates[d.dates.length-1]}"></div>${hasStat?`<div class="seg" title="The matrix's years-in-10 measure (ETP × 10) for the dates shown: days beyond the maximum inter-event period ÷ days shown × 10. It is a share of time, not a count of water years."><span class="lbl">Years in 10 exceeding the ${ew.maxint} yr inter-event maximum (share of time shown)</span><b id="hydroStat"></b></div>`:""}</div>`);
         const stat=(a,b)=>{ if(!hasStat) return; a=Math.max(a,t0); b=Math.min(b,t1); const ex=gaps.reduce((n,g)=>n+Math.max(0,Math.min(g.b,b)-Math.max(g.a,a)),0); $("hydroStat").textContent=(b>a?(ex/(b-a)*10).toFixed(1):"–")+" (visible range "+new Date(a).toISOString().slice(0,10)+" to "+new Date(b-dayMs).toISOString().slice(0,10)+")"; };
         const fitY=(a,b)=>{ const i0=d.dates.findIndex(x=>x>=new Date(a).toISOString().slice(0,10)), i1=d.dates.length-1-[...d.dates].reverse().findIndex(x=>x<=new Date(b).toISOString().slice(0,10)); let mx=-Infinity, mn=Infinity;
-          for(let i=Math.max(i0,0);i<=i1&&i<d.flow.length;i++){ const v=d.flow[i]; if(v>mx) mx=v; if(v>0&&v<mn) mn=v; }
+          for(let i=Math.max(i0,0);i<=i1&&i<d.flow.length;i++) for(const v of c.comp?[d.base[i],d.comp[i]]:[d.flow[i]]){ if(v==null) continue; if(v>mx) mx=v; if(v>0&&v<mn) mn=v; }
           if(!isFinite(mx)) return;           Plotly.relayout(hp,{"yaxis.range":f.ylog?[Math.log10(mn||1),Math.log10(mx*1.1)]:[0,mx*1.05]}); };
-        await Plotly.newPlot("flowPlot",[{type:"scattergl",mode:"lines",x:d.dates,y:d.flow,line:{width:1,color:"#1f4e8c"},name:c.bn,hovertemplate:"<b>%{y:,.0f} ML/d</b><br>%{x|%d %b %Y}<extra></extra>"}],
+        if(c.comp){   // two scenarios on the dates they share: both hydrographs, and the daily difference in its own panel below
+          const dif=d.base.map((b,i)=>b==null||d.comp[i]==null?null:+(d.comp[i]-b).toFixed(2));
+          await Plotly.newPlot("flowPlot",[
+            {type:"scattergl",mode:"lines",x:d.dates,y:d.comp,line:{width:1,color:SCOL.comp},name:c.cn,legendrank:2,hovertemplate:`${esc(c.cn)} <b>%{y:,.0f} ML/d</b><extra></extra>`},
+            {type:"scattergl",mode:"lines",x:d.dates,y:d.base,line:{width:1,color:SCOL.base},name:c.bn,legendrank:1,hovertemplate:`${esc(c.bn)} <b>%{y:,.0f} ML/d</b><extra></extra>`},
+            {type:"scattergl",mode:"lines",x:d.dates,y:dif,yaxis:"y2",line:{width:1,color:"#374151"},name:"Difference",showlegend:false,hovertemplate:`${esc(c.cn)} − ${esc(c.bn)} <b>%{y:+,.0f} ML/d</b><extra></extra>`}],
+            lay({height:520,hovermode:"x unified",xaxis:ax("Date",{anchor:"y2"}),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear",domain:[0.34,1]}),yaxis2:ax("Difference (ML/d)",{domain:[0,0.26],zeroline:true,zerolinecolor:"#9aa3b0"}),
+              showlegend:true,legend:{orientation:"h",x:0,y:1.08}}),cfg);
+        } else await Plotly.newPlot("flowPlot",[{type:"scattergl",mode:"lines",x:d.dates,y:d.flow,line:{width:1,color:"#1f4e8c"},name:c.bn,hovertemplate:"<b>%{y:,.0f} ML/d</b><br>%{x|%d %b %Y}<extra></extra>"}],
           lay({xaxis:ax("Date"),yaxis:ax("Flow (ML/day)",{type:f.ylog?"log":"linear"}),showlegend:false,shapes:shade}),cfg);
+        volumes(d,c);
         stat(t0,t1);
         if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
         const setDates=(a,b)=>{ $("hydFrom").value=new Date(a).toISOString().slice(0,10); $("hydTo").value=new Date(b-dayMs).toISOString().slice(0,10); };
+        const vp=()=>$("flowPlot2"), volRange=r=>{ if(vp()&&vp().data) Plotly.relayout(vp(),r?{"xaxis.range":r}:{"xaxis.autorange":true}); };   // the annual volumes follow the hydrograph's time range
         hp.on("plotly_relayout",ev=>{   // the visible time range drives the y-axis range, the years-in-10 statistic and the date fields
-          if(ev["xaxis.autorange"]){ stat(t0,t1); setDates(t0,t1); Plotly.relayout(hp,{"yaxis.autorange":true}); return; }
+          if(ev["xaxis.autorange"]){ stat(t0,t1); setDates(t0,t1); Plotly.relayout(hp,{"yaxis.autorange":true}); volRange(null); return; }
           const r=ev["xaxis.range"]||(ev["xaxis.range[0]"]!==undefined?[ev["xaxis.range[0]"],ev["xaxis.range[1]"]]:null); if(!r) return;
-          stat(parse(r[0]),parse(r[1])); setDates(Math.max(parse(r[0]),t0),Math.min(parse(r[1]),t1)); fitY(parse(r[0]),parse(r[1])); });
+          stat(parse(r[0]),parse(r[1])); setDates(Math.max(parse(r[0]),t0),Math.min(parse(r[1]),t1)); fitY(parse(r[0]),parse(r[1])); volRange(r); });
         const typed=()=>{ const a=$("hydFrom").value, b=$("hydTo").value; if(a&&b&&a<=b) Plotly.relayout(hp,{"xaxis.range":[a,new Date(parse(b)+dayMs).toISOString().slice(0,10)]}); };   // typed dates: whole days, end date included
         $("hydFrom").onchange=typed; $("hydTo").onchange=typed;
         $("hydroTools").onclick=e=>{ const b=e.target.closest("button[data-dr]"); if(!b) return; if(b.dataset.dr==="all") Plotly.relayout(hp,{"xaxis.autorange":true}); else Plotly.relayout(hp,{"xaxis.range":[b.dataset.a,b.dataset.b]}); };
-        msg.textContent=`${c.bn}: daily flow at ${c.gauge}.`+note;
+        msg.textContent=(c.comp?`${c.bn} and ${c.cn}: daily flow at ${c.gauge} on the dates both cover; the lower panel is the daily difference (${c.cn} − ${c.bn}).`:`${c.bn}: daily flow at ${c.gauge}.`)+(d.missing_days?` ${d.missing_days.toLocaleString()} days have no flow${c.comp?" in one or both":""} (gaps in the line).`:"")+note;
       } else {   // dfdc: change in the % of time flow is at or above each flow (comparison - base)
         // auto range: x runs to the flow still reached 1% of the time (or 1.7 x the largest selected threshold), y fits the difference within it
         let xm=0; for(let i=0;i<d.x.length;i++) if(Math.max(d.base[i],d.comp[i])>=1) xm=d.x[i];
@@ -697,7 +904,7 @@ function addCustom(name,vals,id,flowGauges,fmt){
 }
 function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
 function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt); }catch(e){} }
-function removeCustom(i){ const c=CUSTOM[i]; c.removed=true; if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
+function removeCustom(i){ const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>{ r[6][c.P*NC]=null; r[7][c.P*NC]=null; });
   if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   persistCustom(); fillPolicyOptions(); renderCustomList(); refresh(); }
 function fillInto(){ const live=CUSTOM.filter(c=>!c.removed), cur=$("scnInto").value;
@@ -751,7 +958,7 @@ $("scnRun").onclick=async()=>{
       if(q.status==="running"){ setStatus(`Running the EWR tool … ${Math.round(q.elapsed)} s`); continue; }
       if(q.status==="error") throw new Error(q.message||"run failed");
       const vals=q.rows.map(x=>[x.pu,x.gauge,x.ewr,x.fr,x.et]), st=q.stats||{}, sk=Object.keys(st.skipped||{});
-      let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[]); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt);
+      flowsChanged(); let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[]); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt);
       fillPolicyOptions(); renderCustomList();
       S.pol=res.P; S.cli=0; $("pol").value=S.pol; $("cli").value=0;
       const cs=into||CUSTOM[CUSTOM.length-1]; select(cs.sdls.length===1?{type:"sdl",i:META.sdls.indexOf(cs.sdls[0])}:{type:"none"});   // one SDL unit: open it; several: pick from the list
@@ -772,7 +979,7 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 
 // ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
 (function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
-  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","mflowPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
+  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","flowPlot2","mflowPlot","evPlot","spPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
   try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) pn.style.width=w+"px"; }catch(e){}
   if(window.ResizeObserver) new ResizeObserver(()=>map.invalidateSize()).observe($("map")); else addEventListener("resize",()=>map.invalidateSize());   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
   map.invalidateSize(); addEventListener("load",()=>map.invalidateSize()); setTimeout(()=>map.invalidateSize(),300);   // after fonts / layout settle
