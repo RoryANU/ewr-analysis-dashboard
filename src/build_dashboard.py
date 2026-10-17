@@ -124,7 +124,7 @@ def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, st
         for s, x in v.groupby("scn").EventYears.mean().dropna().items():
             r["ey"][int(s)] = round(float(x), 2)
         for s, x in v.groupby("scn").AverageEventLength.mean().dropna().items():
-            r["ael"][int(s)] = round(float(x), 2)
+            r["ael"][int(s)] = round(float(x), 4)
         days = v.TotalDays.dropna()
         r["ny"] = round(float(days.mean()) / 365.25, 2) if len(days) else None
     for k, v in et.groupby(KEY):

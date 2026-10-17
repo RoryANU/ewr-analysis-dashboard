@@ -696,6 +696,8 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
             "per_year": opt("EventsPerYear", int),
             "gap_tol": opt("WithinEventGapTolerance", int),
             "thr_max": opt("FlowThresholdMax", float),
+            "acc": opt("AccumulationPeriod", int),
+            "vol": opt("VolumeThreshold", float),
         }
     )
     # py_ewr's assessment year (assessment_start)
@@ -822,8 +824,8 @@ def vr_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, acc: Any, vol
         return [None] * len(wys)
     m = flow.index.month
     win = flow.where((m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em))
-    total = win.rolling(int(acc), min_periods=int(acc)).sum()
-    best = total.groupby(flow.index.year - (m < ys)).max()
+    total = win.groupby(flow.index.year - (m < ys)).rolling(int(acc), min_periods=int(acc)).sum()
+    best = total.groupby(level=0).max()
     return [None if pd.isna(best.get(w)) else round(min(float(best[w]) / float(vol), 2.0), 3) for w in wys]
 
 
@@ -913,6 +915,10 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
         # a year counts when every day of the EWR's timing window in that assessment year has a flow (a missing day elsewhere in the
         # year does not matter); the window's days are taken from the calendar, so a window cut off by the record's ends is incomplete
         complete = complete_years(flow, wy, ev["ystart"], ev["sm"], ev["em"])
+        if ev.get("kind", "F") == "F":
+            dr = dr_years(y, "", ev["dur"], ev.get("low", False), ev["per_year"], ev["events"])
+        else:
+            dr = vr_years(flow, wy, ev["ystart"], ev["sm"], ev["em"], ev["acc"], ev["vol"]) if ev["kind"] == "V" else [None] * len(wy)
         years = {
             "wy": wy,
             "achieved": col("eventYears"),
@@ -922,7 +928,7 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "max_event": col("maxEventDays"),
             "missing": col("missingDays"),
             "complete": complete,
-            "dr": dr_years(y, "", ev["dur"], ev.get("low", False), ev["per_year"], ev["events"]) if ev.get("kind", "F") == "F" else [None] * len(wy),
+            "dr": dr,
         }
         ok = set(pd.to_datetime(ev["succ"].startDate).dt.strftime("%Y-%m-%d")) if len(ev["succ"]) else set()
         events = []
