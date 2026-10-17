@@ -287,6 +287,8 @@ def run_scenario(
         if flow is None or flow.empty:  # no dates (ten-thousand-year runs): py_ewr's gap lengths, the record as one gap when nothing succeeded
             lens = [days] if k not in succ_by else pd.to_numeric(inter_by[k].interEventLength, errors="coerce").dropna().tolist() if k in inter_by else []
             gap_stats[k] = {"et": round(min(1.0, sum(max(0.0, x - mrip) for x in lens) / days), 4) if mrip and days > 0 else None}
+            gaps = [{"days": days, "boundary": True, "censored": False, "excess": max(0, days - mrip)}] if k not in succ_by and mrip and days > 0 else []
+            gap_stats[k].update(gap_severity(gaps, mrip))
             continue
         ev = {"flow": flow, "mrip_days": mrip, "inter": inter_by.get(k, empty), "succ": succ_by.get(k, empty)}
         gaps, etp = ewr_gaps(ev)
