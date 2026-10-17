@@ -1,317 +1,422 @@
 [
  {
+  "eps": 0,
   "et": 0.0,
   "ewr": "BF1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405201",
   "ny": 25.0,
-  "pu": "Reach 2 - Yea River to Sunday Creek"
+  "pu": "Reach 2 - Yea River to Sunday Creek",
+  "sev": 0.58,
+  "sev_b": 0.58
  },
  {
+  "eps": 7,
   "et": 0.6697,
   "ewr": "BK1",
   "ey": 8,
   "fr": 0.62,
   "gauge": "405201",
   "ny": 25.0,
-  "pu": "Reach 2 - Yea River to Sunday Creek"
+  "pu": "Reach 2 - Yea River to Sunday Creek",
+  "sev": 8.38,
+  "sev_b": 8.38
  },
  {
+  "eps": 3,
   "et": 0.8437,
   "ewr": "F1",
   "ey": 3,
   "fr": 0.12,
   "gauge": "405201",
   "ny": 25.0,
-  "pu": "Reach 2 - Yea River to Sunday Creek"
+  "pu": "Reach 2 - Yea River to Sunday Creek",
+  "sev": 14.17,
+  "sev_b": 14.17
  },
  {
+  "eps": 6,
   "et": 0.2957,
   "ewr": "F2",
   "ey": 17,
   "fr": 0.68,
   "gauge": "405201",
   "ny": 25.0,
-  "pu": "Reach 2 - Yea River to Sunday Creek"
+  "pu": "Reach 2 - Yea River to Sunday Creek",
+  "sev": 3.86,
+  "sev_b": 3.86
  },
  {
+  "eps": 6,
   "et": 0.3834,
   "ewr": "F3",
   "ey": 16,
   "fr": 0.62,
   "gauge": "405201",
   "ny": 25.0,
-  "pu": "Reach 2 - Yea River to Sunday Creek"
+  "pu": "Reach 2 - Yea River to Sunday Creek",
+  "sev": 4.87,
+  "sev_b": 4.87
  },
  {
+  "eps": 3,
   "et": 0.8552,
   "ewr": "OB1",
   "ey": 3,
   "fr": 0.24,
   "gauge": "405201",
   "ny": 25.0,
-  "pu": "Reach 2 - Yea River to Sunday Creek"
+  "pu": "Reach 2 - Yea River to Sunday Creek",
+  "sev": 8.93,
+  "sev_b": 10.66
  },
  {
+  "eps": 0,
   "et": 0.0,
   "ewr": "BF1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405202",
   "ny": 25.0,
-  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir"
+  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
+  "sev": 0.49,
+  "sev_b": 0.49
  },
  {
+  "eps": 7,
   "et": 0.6393,
   "ewr": "BK1",
   "ey": 8,
   "fr": 0.62,
   "gauge": "405202",
   "ny": 25.0,
-  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir"
+  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
+  "sev": 9.18,
+  "sev_b": 9.18
  },
  {
+  "eps": 5,
   "et": 0.7549,
   "ewr": "F1",
   "ey": 5,
   "fr": 0.19,
   "gauge": "405202",
   "ny": 25.0,
-  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir"
+  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
+  "sev": 13.91,
+  "sev_b": 13.91
  },
  {
+  "eps": 6,
   "et": 0.3473,
   "ewr": "F2",
   "ey": 16,
   "fr": 0.64,
   "gauge": "405202",
   "ny": 25.0,
-  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir"
+  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
+  "sev": 3.88,
+  "sev_b": 3.88
  },
  {
+  "eps": 5,
   "et": 0.4836,
   "ewr": "F3",
   "ey": 12,
   "fr": 0.46,
   "gauge": "405202",
   "ny": 25.0,
-  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir"
+  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
+  "sev": 5.04,
+  "sev_b": 5.04
  },
  {
+  "eps": 5,
   "et": 0.7594,
   "ewr": "OB1",
   "ey": 5,
   "fr": 0.38,
   "gauge": "405202",
   "ny": 25.0,
-  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir"
+  "pu": "Reach 3 - Sunday Creek (Seymour) to Goulburn Weir",
+  "sev": 15.93,
+  "sev_b": 15.93
  },
  {
+  "eps": 0,
   "et": 0.0,
   "ewr": "BF1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405203",
   "ny": 25.0,
-  "pu": "Reach 1 - Lake Eildon to Yea River"
+  "pu": "Reach 1 - Lake Eildon to Yea River",
+  "sev": 0.87,
+  "sev_b": 0.87
  },
  {
+  "eps": 4,
   "et": 0.6622,
   "ewr": "BK1",
   "ey": 8,
   "fr": 0.62,
   "gauge": "405203",
   "ny": 25.0,
-  "pu": "Reach 1 - Lake Eildon to Yea River"
+  "pu": "Reach 1 - Lake Eildon to Yea River",
+  "sev": 14.98,
+  "sev_b": 14.98
  },
  {
+  "eps": 6,
   "et": 0.6321,
   "ewr": "F1",
   "ey": 9,
   "fr": 0.35,
   "gauge": "405203",
   "ny": 25.0,
-  "pu": "Reach 1 - Lake Eildon to Yea River"
+  "pu": "Reach 1 - Lake Eildon to Yea River",
+  "sev": 12.96,
+  "sev_b": 12.96
  },
  {
+  "eps": 4,
   "et": 0.356,
   "ewr": "F2",
   "ey": 16,
   "fr": 0.64,
   "gauge": "405203",
   "ny": 25.0,
-  "pu": "Reach 1 - Lake Eildon to Yea River"
+  "pu": "Reach 1 - Lake Eildon to Yea River",
+  "sev": 5.01,
+  "sev_b": 5.01
  },
  {
+  "eps": 4,
   "et": 0.4987,
   "ewr": "F3",
   "ey": 12,
   "fr": 0.46,
   "gauge": "405203",
   "ny": 25.0,
-  "pu": "Reach 1 - Lake Eildon to Yea River"
+  "pu": "Reach 1 - Lake Eildon to Yea River",
+  "sev": 10.85,
+  "sev_b": 10.85
  },
  {
+  "eps": 2,
   "et": 0.8202,
   "ewr": "OB1",
   "ey": 4,
   "fr": 0.3,
   "gauge": "405203",
   "ny": 25.0,
-  "pu": "Reach 1 - Lake Eildon to Yea River"
+  "pu": "Reach 1 - Lake Eildon to Yea River",
+  "sev": 20.84,
+  "sev_b": 20.84
  },
  {
+  "eps": null,
   "et": null,
   "ewr": "BF_AllYear",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": null,
+  "sev_b": null
  },
  {
+  "eps": null,
   "et": null,
   "ewr": "BF_SumAut_1",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": null,
+  "sev_b": null
  },
  {
+  "eps": null,
   "et": null,
   "ewr": "BF_SumAut_2",
   "ey": 0,
   "fr": 0.0,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": null,
+  "sev_b": null
  },
  {
+  "eps": 4,
   "et": 0.832,
   "ewr": "F_Autumn1",
   "ey": 3,
   "fr": 0.1714,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 12.01,
+  "sev_b": 12.01
  },
  {
+  "eps": 3,
   "et": 0.8724,
   "ewr": "F_Autumn2",
   "ey": 2,
   "fr": 0.1143,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 2.81,
+  "sev_b": 19.1
  },
  {
+  "eps": 2,
   "et": 0.9174,
   "ewr": "F_Autumn3",
   "ey": 1,
   "fr": 0.0571,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 19.22,
+  "sev_b": 19.22
  },
  {
+  "eps": 5,
   "et": 0.6462,
   "ewr": "F_EarlySpring1",
   "ey": 8,
   "fr": 0.32,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 12.94,
+  "sev_b": 12.94
  },
  {
+  "eps": 4,
   "et": 0.794,
   "ewr": "F_EarlySpring2",
   "ey": 4,
   "fr": 0.16,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 15.97,
+  "sev_b": 15.97
  },
  {
+  "eps": 3,
   "et": 0.6338,
   "ewr": "F_LateSpring1",
   "ey": 2,
   "fr": 0.16,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 3.96,
+  "sev_b": 3.96
  },
  {
+  "eps": 2,
   "et": 0.45,
   "ewr": "F_LateSpring2",
   "ey": 5,
   "fr": 0.4,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 3.96,
+  "sev_b": 3.96
  },
  {
+  "eps": 6,
   "et": 0.713,
   "ewr": "F_Winter",
   "ey": 6,
   "fr": 0.23,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 12.0,
+  "sev_b": 12.0
  },
  {
+  "eps": null,
   "et": null,
   "ewr": "OB1-WL",
   "ey": 7,
   "fr": 0.27,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": null,
+  "sev_b": null
  },
  {
+  "eps": null,
   "et": null,
   "ewr": "OB1-WS",
   "ey": 16,
   "fr": 0.62,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": null,
+  "sev_b": null
  },
  {
+  "eps": 2,
   "et": 0.4593,
   "ewr": "OB2-WL",
   "ey": 4,
   "fr": 0.2143,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 4.58,
+  "sev_b": 4.58
  },
  {
+  "eps": 1,
   "et": 0.1929,
   "ewr": "OB2-WS",
   "ey": 10,
   "fr": 0.5429,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 2.61,
+  "sev_b": 2.61
  },
  {
+  "eps": 2,
   "et": 0.6687,
   "ewr": "OB3-WL",
   "ey": 2,
   "fr": 0.1143,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 5.64,
+  "sev_b": 5.64
  },
  {
+  "eps": 2,
   "et": 0.3783,
   "ewr": "OB3-WS",
   "ey": 5,
   "fr": 0.2714,
   "gauge": "405232",
   "ny": 25.0,
-  "pu": "Goulburn river"
+  "pu": "Goulburn river",
+  "sev": 3.9,
+  "sev_b": 3.9
  }
 ]

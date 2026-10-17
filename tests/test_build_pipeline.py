@@ -283,6 +283,7 @@ class TestRowTable:
         # 8: {T, ny, dur, mrip} (no parameters passed: unknown); 9: achieved years per scenario (EventYears, mean over objective repeats)
         none = {"T": None, "dur": None, "mrip": None}
         assert [r[8] for r in table] == [{**none, "ny": ny} for ny in (None, 100.0, 100.0, 100.0, None, None)]
+        assert all(len(r) == 11 and r[10] is None for r in table)  # 10: gap severity, uploads only
         assert [r[9] for r in table] == [
             blank(),
             with_values(i6=50.0, i7=25.5, i14=38.0),
