@@ -14,6 +14,7 @@ Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
     GET  /api/ewryears?base=<id>[&comp=<id>]&gauge=<g>&ewr=<code>&pu=<name> one EWR by water year: achievement, events (duration, volume, timing), gaps vs MRIP
     GET  /api/spells?base=<id>[&comp=<id>]&gauge=<g>&thr=<ML/d>            low-flow spells (consecutive days below thr) by water year
+    GET  /api/regimes?base=<id>[&comp=<id>]&gauge=<g>                     flow regime components (thresholds from the EWR tool) by water year
     GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymin=][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
     POST /api/forget?id=<id>           delete a stored scenario
 
@@ -398,7 +399,7 @@ def ewr_list(gauge):
         thr, dur, sm, em, tgt = num(r.FlowThresholdMin), num(r.Duration), num(r.StartMonth), num(r.EndMonth), num(r.TargetFrequency)
         if h is None or multi or pd.isna(thr) or pd.isna(dur) or pd.isna(sm) or pd.isna(em):
             continue
-        out.append({"code": r.Code, "pu": r.PlanningUnitName, "handler": h, "consecutive": h == "flow_handle", "thr": float(thr), "dur": int(dur),
+        out.append({"code": r.Code, "pu": r.PlanningUnitName, "state": r.State, "handler": h, "consecutive": h == "flow_handle", "thr": float(thr), "dur": int(dur),
                     "sm": int(sm), "em": int(em), "target": None if pd.isna(tgt) else float(tgt),
                     "maxint": 0.0 if pd.isna(mi.get((r.Code, r.PlanningUnitName))) else float(mi.get((r.Code, r.PlanningUnitName)))})
     # the same EWR is often defined in several planning units with identical settings: list it once
@@ -571,58 +572,103 @@ def _feb29(w):
     return calendar.isleap(w + 1)
 
 
-def spells(q):
-    """Low-flow spells: runs of consecutive days with flow below `thr` ML/d. A missing day ends a run and the runs either side of it
-    are marked as touching missing data (their true length is unknown); missing days are never counted as low. Per water year
-    (1 Jul - 30 Jun, labelled by its first calendar year as in py_ewr): days below, the longest run inside that year (a run crossing
-    30 June is split at the year boundary for this) and the number of runs starting in it. Only complete water years (every day
-    observed) are reported as numbers; with two scenarios they are compared over the water years complete in both."""
+def _runs_by_year(s, hit):
+    """Runs of consecutive days where `hit` is true in the daily series `s` (missing days are never hits and break a run; a run
+    beside a missing day or the record's ends is `censored`: its true length is unknown). Per water year (1 Jul - 30 Jun,
+    labelled by its first calendar year as in py_ewr): the days that are hits, the longest run inside that year (a run crossing
+    30 June is split at the year boundary for this) and the number of runs starting in it; numbers only for complete water years
+    (every day observed). Returns (years, runs)."""
     import numpy as np
     import pandas as pd
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    v = s.to_numpy(dtype=float)
+    miss = np.isnan(v)
+    hit = hit & ~miss
+    wy = np.array([_water_year(d) for d in s.index])
+    runs, i, n = [], 0, len(v)
+    while i < n:
+        if not hit[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and hit[j + 1]:
+            j += 1
+        runs.append({"start": fdate(s.index[i]), "end": fdate(s.index[j]), "days": j - i + 1,
+                     "censored": bool((i > 0 and miss[i - 1]) or (j + 1 < n and miss[j + 1]) or i == 0 or j == n - 1), "wy": int(wy[i])})
+        i = j + 1
+    starts = {}
+    for r in runs:
+        starts[r["wy"]] = starts.get(r["wy"], 0) + 1
+    years = {"wy": [], "days": [], "longest": [], "n": [], "complete": []}
+    for w in np.unique(wy):
+        m = wy == w
+        comp = bool(m.sum() == (366 if _feb29(int(w)) else 365) and not miss[m].any())
+        h, best, cur = hit[m], 0, 0
+        for x in h:
+            cur = cur + 1 if x else 0
+            best = max(best, cur)
+        years["wy"].append(int(w))
+        years["complete"].append(int(comp))
+        years["days"].append(int(h.sum()) if comp else None)
+        years["longest"].append(best if comp else None)
+        years["n"].append(starts.get(int(w), 0) if comp else None)
+    return years, runs
+
+
+def _pair_years(out):
+    """Two scenarios: the water years complete in both."""
+    if "comp" in out["scenarios"]:
+        b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
+        bi = {w for w, k in zip(b["wy"], b["complete"]) if k}
+        ci = {w for w, k in zip(c["wy"], c["complete"]) if k}
+        out["paired"] = {"wy": sorted(bi & ci)}
+    return out
+
+
+def spells(q):
+    """Low-flow spells: runs of consecutive days with flow below `thr` ML/d (see _runs_by_year); with two scenarios they are compared
+    over the water years complete in both."""
     gauge, thr = q["gauge"], float(q["thr"])
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
     out = {"gauge": gauge, "thr": thr, "scenarios": {}}
     for k, sid in ids:
         s = daily_series(sid, gauge)
+        years, runs = _runs_by_year(s, s.to_numpy(dtype=float) < thr)
+        years["below"] = years.pop("days")
+        out["scenarios"][k] = {"years": years, "longest_runs": sorted(runs, key=lambda r: -r["days"])[:10], "n_runs": len(runs),
+                               "missing_days": int(s.isna().sum())}
+    return _pair_years(out)
+
+
+def regimes(q):
+    """Flow regime components at a gauge (baseflow, freshes, bankfull, overbank, ...). Each regime's threshold comes from the EWR
+    tool's parameter sheet: the lowest flow threshold among the gauge's flow EWRs in that regime, with EWR codes assigned to regimes
+    by the MDBA pipeline mapping (flow_regime_mappings). For each threshold and complete water year (whole year, not each EWR's
+    timing window): days at or above it, events (runs of consecutive days at or above) starting in the year and the longest one."""
+    from flow_regime_mappings import regimes_for
+    gauge = q["gauge"]
+    by = {}
+    for e in ewr_list(gauge):
+        for rg in regimes_for(e["code"], e.get("state") or ""):
+            if rg != "excluded":
+                by.setdefault(rg, []).append(e)
+    comps = []
+    for rg, es in by.items():
+        thr = min(e["thr"] for e in es)
+        comps.append({"regime": rg, "thr": thr, "codes": sorted({e["code"] for e in es}),
+                      "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
+    comps.sort(key=lambda c: c["thr"])
+    ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
+    out = {"gauge": gauge, "regimes": comps, "scenarios": {}}
+    for k, sid in ids:
+        s = daily_series(sid, gauge)
         v = s.to_numpy(dtype=float)
-        miss = np.isnan(v)
-        low = (v < thr) & ~miss
-        wy = np.array([_water_year(d) for d in s.index])
-        # runs over the whole record (split by missing days, not by water year)
-        runs, i, n = [], 0, len(v)
-        while i < n:
-            if not low[i]:
-                i += 1
-                continue
-            j = i
-            while j + 1 < n and low[j + 1]:
-                j += 1
-            runs.append({"start": fdate(s.index[i]), "end": fdate(s.index[j]), "days": j - i + 1,
-                         "censored": bool((i > 0 and miss[i - 1]) or (j + 1 < n and miss[j + 1]) or i == 0 or j == n - 1), "wy": int(wy[i])})
-            i = j + 1
-        years = {"wy": [], "below": [], "longest": [], "n": [], "complete": []}
-        for w in np.unique(wy):
-            m = wy == w
-            full = 366 if _feb29(int(w)) else 365
-            comp = bool(m.sum() == full and not miss[m].any())
-            lo, best, cur = low[m], 0, 0
-            for x in lo:
-                cur = cur + 1 if x else 0
-                best = max(best, cur)
-            years["wy"].append(int(w))
-            years["complete"].append(int(comp))
-            years["below"].append(int(lo.sum()) if comp else None)
-            years["longest"].append(best if comp else None)
-            years["n"].append(sum(1 for r in runs if r["wy"] == w) if comp else None)
-        top = sorted(runs, key=lambda r: -r["days"])[:10]
-        out["scenarios"][k] = {"years": years, "longest_runs": top, "n_runs": len(runs), "missing_days": int(miss.sum())}
-    if "comp" in out["scenarios"]:
-        b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
-        bi = {w: i for i, w in enumerate(b["wy"]) if b["complete"][i]}
-        ci = {w: i for i, w in enumerate(c["wy"]) if c["complete"][i]}
-        out["paired"] = {"wy": sorted(set(bi) & set(ci))}
-    return out
+        per = []
+        for c in comps:
+            years, runs = _runs_by_year(s, v >= c["thr"])
+            per.append(years)
+        out["scenarios"][k] = {"regimes": per, "years": per[0] if per else {"wy": [], "complete": []}}
+    return _pair_years(out)
 
 
 def heatmap(q):
@@ -804,7 +850,7 @@ class Handler(SimpleHTTPRequestHandler):
             if job["status"] == "running":
                 out["elapsed"] = round(time.time() - job["t0"], 1)
             return self._json(out)
-        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents", "/api/ewryears", "/api/spells"):
+        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents", "/api/ewryears", "/api/spells", "/api/regimes"):
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             try:
                 if u.path == "/api/interevents":
@@ -815,6 +861,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(ewr_years(q))
                 if u.path == "/api/spells":
                     return self._json(spells(q))
+                if u.path == "/api/regimes":
+                    return self._json(regimes(q))
                 return self._json(heatmap(q) if u.path == "/api/heatmap" else curves(q))
             except Exception as e:
                 traceback.print_exc()

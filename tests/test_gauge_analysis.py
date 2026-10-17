@@ -199,6 +199,26 @@ class EwrWithPyEwrTest(StoredFlows):
         self.assertEqual(e["vol"], 6 * 30000 + 2 * 100)        # every day from start to end, the dip days included
 
 
+class RegimeTest(StoredFlows):
+    def test_thresholds_come_from_the_ewr_table_and_runs_are_counted(self):
+        # 416001: the lowest EWR threshold per regime, e.g. Small fresh 540 ML/d (SF1_P, SF1_S, SF2), Very low flow 45 ML/d
+        idx = pd.date_range("2000-07-01", "2001-06-30")
+        f = np.full(len(idx), 50.0)
+        f[10:15] = 600                                       # two 5-day runs at or above 540
+        f[30:35] = 600
+        self.store("a", idx, f, gauge="416001")
+        out = server.regimes({"base": "a", "gauge": "416001"})
+        lowest = {}
+        from flow_regime_mappings import regimes_for
+        for e in server.ewr_list("416001"):
+            for rg in regimes_for(e["code"], e["state"]):
+                lowest[rg] = min(lowest.get(rg, np.inf), e["thr"])
+        self.assertEqual({r["regime"]: r["thr"] for r in out["regimes"]}, {k: v for k, v in lowest.items() if k != "excluded"})
+        by = {r["regime"]: y for r, y in zip(out["regimes"], out["scenarios"]["base"]["regimes"])}
+        self.assertEqual((by["Small fresh"]["days"], by["Small fresh"]["n"], by["Small fresh"]["longest"]), ([10], [2], [5]))
+        self.assertEqual(by["Very low flow"]["days"], [365])          # 45 ML/d: every day
+
+
 class EwrYearPairingTest(unittest.TestCase):
     """ewr_years compares achievement year by year over the water years complete in both scenarios."""
 

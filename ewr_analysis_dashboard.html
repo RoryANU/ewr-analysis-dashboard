@@ -258,9 +258,9 @@ function render(){
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
       ${s.type==="gauge"?`<div class="seg"><span class="lbl">Columns · flow regimes</span><span class="tabs sm"><button data-act="expand-x" class="${COLL_REG.size===0?"on":""}" title="Expand every flow regime into its EWRs">Expand</button><button data-act="collapse-x" class="${META.regimes.every(x=>COLL_REG.has(x))?"on":""}" title="Collapse every flow regime into one column">Collapse</button></span></div>`:""}
     </div>
-    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}${ewrPanel()}${spellPanel()}${monthlyPanel()}`;
+    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div></details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>`}${cellDetail()}${flowPanel()}`;
 
-  $("panel").innerHTML=h; wireFlow(); wireEwr(); wireSpells(); wireMonthly();
+  $("panel").innerHTML=h; wireFlow();
 }
 
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
@@ -438,8 +438,12 @@ function flowCtx(){
   return {ok:false,msg:"Flow charts need uploaded flows for this gauge. "+need};
 }
 const DROUGHTS=[["Federation","1895-01-01","1902-12-31"],["WWII","1937-01-01","1945-12-31"],["Millennium","1997-01-01","2009-12-31"],["Tinderbox","2017-01-01","2019-12-31"]];   // drought quick filters (calendar years)
-const CHARTS={heat:"Heat map",hydro:"Hydrograph",fdc:"Flow duration curve",dfdc:"Differential flow duration curve"};
-const chartsFor=D=>D?["heat","hydro","dfdc"]:["heat","hydro"];
+// every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
+const CHARTS={heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
+  "ev-year":"EWR achievement by year","ev-events":"EWR events","ev-timing":"EWR event timing","ev-gaps":"Gaps between events vs MRIP",regimes:"Flow regime components",spells:"Low-flow spells"};
+const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"]],["EWR performance",["ev-year","ev-events","ev-timing","ev-gaps"]],["Flow regime",["regimes","spells"]]];
+const chartsFor=D=>CHART_GROUPS(D).flatMap(g=>g[1]);
+const famOf=k=>k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
 const thrKey=e=>e.code+"|"+e.pu;
 // differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
 const stemOf=c=>c.replace(/_[^_]+$/,"");
@@ -456,9 +460,18 @@ function flowPanel(){
   if(!f.chart||!chartsFor(D).includes(f.chart)) f.chart="heat";
   const tabs=(items,cur,act)=>`<span class="tabs sm">${items.map(([v,l])=>`<button data-fl="${act}" data-v="${v}" class="${cur===v?"on":""}">${l}</button>`).join("")}</span>`;
   const mo=(cur,k)=>`<select data-fl="${k}">${MONTHS.map((m,i)=>`<option value="${i+1}"${cur===i+1?" selected":""}>${m}</option>`).join("")}</select>`;
-  const multi=f.chart==="dfdc";
-  return `<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${esc(gaugeName(S.sel.i))}</summary>
-    <div class="mxbar"><div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${chartsFor(D).map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</select></div>
+  const multi=f.chart==="dfdc", fam=famOf(f.chart);
+  const sel=`<div class="seg"><span class="lbl">Chart</span><select data-fl="chart">${CHART_GROUPS(D).map(([g,ks])=>`<optgroup label="${g}">${ks.map(k=>`<option value="${k}"${f.chart===k?" selected":""}>${CHARTS[k]}</option>`).join("")}</optgroup>`).join("")}</select></div>`;
+  const head=`<details id="flowDet" class="flowp"${f.open?" open":""}><summary>Flow analysis · ${esc(gaugeName(S.sel.i))}</summary>`;
+  if(fam==="ev") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">EWR</span><select id="evEwr"><option>loading …</option></select></div></div>
+    <div id="evMsg" class="note"></div><div id="evPlot"></div><div id="evTbl"></div></details>`;
+  if(fam==="sp") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">Spell = consecutive days with flow below (ML/d)</span><input id="spThr" type="number" min="0" step="any" value="${esc(S.sp.thr)}" placeholder="1"></div><div class="seg" id="spQuick"></div></div>
+    <div id="spMsg" class="note"></div><div id="spPlot"></div><div id="spTbl"></div></details>`;
+  if(fam==="m") return head+`<div class="mxbar">${sel}<div class="seg"><span class="lbl">Max flow (ML/d)</span><input id="mXlim" type="number" min="10" step="10" value="${esc(S.mflow.xlim)}" placeholder="auto"></div></div>
+    <div id="mflowMsg" class="note"></div><div id="mflowPlot"></div></details>`;
+  if(fam==="rg") return head+`<div class="mxbar">${sel}</div><div id="rgMsg" class="note"></div><div id="rgPlot"></div><div id="rgTbl"></div></details>`;
+  return head+`
+    <div class="mxbar">${sel}
       ${f.chart==="heat"&&D?`<div class="seg"><span class="lbl">Show</span>${tabs([["diff","Difference"],["base","Base"],["comp","Comparison"]],f.show,"show")}</div>`:""}
       ${multi?`<div class="seg"><span class="lbl">Thresholds</span><details class="multi" id="flowThrD"><summary id="flowThrS">${f.thr.length?f.thr.length+" selected":"none"}</summary><div class="pop" id="flowThr"></div></details></div>`
              :f.chart==="hydro"&&D?"":`<div class="seg"><span class="lbl">EWR</span><select id="flowEwr" data-fl="ewr"><option value="">none</option></select></div>`}
@@ -498,7 +511,12 @@ function wireFlow(){
     else if(el.type==="checkbox") el.onchange=()=>{ S.flow[k]=el.checked; render(); };
     else if(k==="chart") el.onchange=()=>{ S.flow.chart=el.value; render(); };
     else el.onchange=()=>{ S.flow[k]=k==="xlim"?el.value.trim():+el.value; render(); }; });
-  fillEwrSelect();
+  const fam=famOf(S.flow.chart);
+  if(fam==="ev") $("evEwr").onchange=e=>{ S.ev.ewr=e.target.value; drawEwr(); };
+  if(fam==="sp"){ $("spThr").onchange=e=>{ S.sp.thr=e.target.value.trim(); drawSpells(); };
+    $("spQuick").onclick=e=>{ const b=e.target.closest("[data-thr]"); if(!b) return; S.sp.thr=b.dataset.thr; $("spThr").value=S.sp.thr; drawSpells(); }; }
+  if(fam==="m") $("mXlim").onchange=e=>{ S.mflow.xlim=e.target.value.trim(); S.mflow.yr=null; S.mflow.xr=null; drawMonthly(); };
+  if(fam==="flow") fillEwrSelect();
   if(S.flow.open) drawFlow();
 }
 const ev_target_is=d=>true;
@@ -561,23 +579,8 @@ function volumes(d,c){   // volume (sum of daily flow) of each complete water ye
   if(nt){ const b=mean("base"); nt.textContent=c.comp?(()=>{ const m=mean("comp"); return `Annual volume (sum of daily flow), ${c.cn} − ${c.bn}, for the ${y.length} water years complete in both: mean ${fx(G(b))} → ${fx(G(m))} GL a year (${sgn(G(m-b))} GL, ${b?sgn(100*(m-b)/b,1,"%"):"–"}). Grey bars: more or less water is not by itself better or worse.`; })()
     :`Annual volume (sum of daily flow) of each of the ${y.length} complete water years: mean ${fx(G(b))} GL a year.`; }
 }
-S.ev={open:false,ewr:"",view:"year"}; S.sp={open:false,thr:""}; let EVTOKEN=0, SPTOKEN=0;
-const EVVIEWS=[["year","By year"],["events","Events"],["timing","Timing"],["gaps","Gaps vs MRIP"]];
+S.ev={ewr:""}; S.sp={thr:""}; let EVTOKEN=0, SPTOKEN=0, RGTOKEN=0;
 async function ewrsAt(g){ if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await flowGet("/api/ewrs?gauge="+encodeURIComponent(g))).ewrs); }catch(e){ EWRLIST.set(g,[]); } } return EWRLIST.get(g); }
-function ewrPanel(){
-  const c=flowCtx(); if(!c||!c.ok) return "";
-  return `<details id="evDet" class="flowp"${S.ev.open?" open":""}><summary>EWR performance · ${esc(gaugeName(S.sel.i))}</summary>
-    <div class="mxbar"><div class="seg"><span class="lbl">EWR</span><select id="evEwr"><option>loading …</option></select></div>
-      <div class="seg"><span class="lbl">View</span><span class="tabs sm" id="evTabs">${EVVIEWS.map(([k,l])=>`<button data-ev="${k}" class="${S.ev.view===k?"on":""}">${l}</button>`).join("")}</span></div></div>
-    <div id="evMsg" class="note"></div><div id="evPlot"></div><div id="evTbl"></div></details>`;
-}
-function wireEwr(){
-  const d=$("evDet"); if(!d) return;
-  d.addEventListener("toggle",()=>{ S.ev.open=d.open; if(d.open) drawEwr(); });
-  $("evTabs").onclick=e=>{ const b=e.target.closest("[data-ev]"); if(!b) return; S.ev.view=b.dataset.ev; $("evTabs").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); drawEwr(); };
-  $("evEwr").onchange=e=>{ S.ev.ewr=e.target.value; drawEwr(); };
-  if(S.ev.open) drawEwr();
-}
 // water years an EWR's statistics are taken over: one scenario, its complete years; two, the years complete in both
 function keptYears(d,D){ const own=k=>{ const y=d.scenarios[k].years; return new Set(y.wy.filter((_,i)=>y.complete[i])); };
   if(!D) return {base:own("base")}; const p=new Set(d.paired.wy); return {base:p,comp:p}; }
@@ -594,7 +597,7 @@ function ewrDef(e,d){   // the EWR's rule as the EWR tool applies it
     `${d.target!=null?`; target ${d.target}% of years`:""}${d.mrip_days?`; max inter-event period ${+(d.mrip_days/365).toFixed(2)} yr`:""}.`;
 }
 async function drawEwr(){
-  const c=flowCtx(); if(!c||!c.ok||!S.ev.open||!$("evPlot")) return;
+  const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("evPlot")) return;
   const msg=$("evMsg"), tok=++EVTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
   if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
   const list=[...await ewrsAt(c.gauge)].sort((a,b)=>/^VF/i.test(b.code)-/^VF/i.test(a.code)); if(tok!==EVTOKEN) return;
@@ -608,8 +611,9 @@ async function drawEwr(){
     const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(c.base)}${D?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(e.code)}&pu=${encodeURIComponent(e.pu)}`); if(tok!==EVTOKEN) return;
     Plotly.purge($("evPlot"));
     const K=keptYears(d,D), none=!K.base.size, def=ewrDef(e,d);
-    if(none&&S.ev.view!=="gaps"&&S.ev.view!=="year"){ msg.textContent=`${def}\n${D?"No assessment year is complete in both scenarios":"No assessment year is complete"} (every day of the timing window observed), so there is nothing to summarise.`; return; }
-    ({year:evYears,events:evEvents,timing:evTiming,gaps:evGaps})[S.ev.view](d,c,e,def,msg);
+    const view=S.flow.chart.slice(3);
+    if(none&&view!=="gaps"&&view!=="year"){ msg.textContent=`${def}\n${D?"No assessment year is complete in both scenarios":"No assessment year is complete"} (every day of the timing window observed), so there is nothing to summarise.`; return; }
+    ({year:evYears,events:evEvents,timing:evTiming,gaps:evGaps})[view](d,c,e,def,msg);
   }catch(er){ if(tok===EVTOKEN) msg.textContent="Could not draw: "+er.message; }
 }
 function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment year (the EWR tool's verdict), and how close each year came
@@ -657,7 +661,7 @@ function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how
   const rows=[[`${yr} counted`,b.yrs,D?q.yrs:null,null],["Successful events",b.n,D?q.n:null,ch("n",0)],["… per 10 years",fx(b.per10),D?fx(q.per10):null,ch("per10",1)],
     ["Median length (days)",fx(b.dur),D?fx(q.dur):null,ch("dur",1)],["Median peak (ML/d)",fx(b.peak,0),D?fx(q.peak,0):null,ch("peak",0)],
     ["Median volume",fmtML(b.vol),D?fmtML(q.vol):null,D&&q.vol!=null&&b.vol!=null?(q.vol>=b.vol?"+":"−")+fmtML(Math.abs(q.vol-b.vol)):null]];
-  msg.textContent=`${def}\nEach dot is one event the EWR tool found in the timing window: filled = successful (at least ${ms} days), hollow = too short. Length runs from the event's first to its last day${d.gap_tol?" (bridged dips included)":""}; volume = sum of the daily flows over those days (ML), not only the part above the threshold. Whether a year is achieved also depends on the annual rule (By year). `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
+  msg.textContent=`${def}\nEach dot is one event the EWR tool found in the timing window: filled = successful (at least ${ms} days), hollow = too short. Length runs from the event's first to its last day${d.gap_tol?" (bridged dips included)":""}; volume = sum of the daily flows over those days (ML), not only the part above the threshold. Whether a year is achieved also depends on the annual rule (EWR achievement by year). `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
   $("evTbl").innerHTML=statTbl(rows,D,c);
 }
 function evTiming(d,c,e,def,msg){   // in which months the successful events start, per 10 years
@@ -693,21 +697,8 @@ function evGaps(d,c,e,def,msg){   // gaps between successful events against the 
     (nos.length?` ${nos.join(" and ")}: no successful event in the whole record, so the record is one gap.`:"");
   $("evTbl").innerHTML=statTbl(rows,D,c);
 }
-function spellPanel(){
-  const c=flowCtx(); if(!c||!c.ok) return "";
-  return `<details id="spDet" class="flowp"${S.sp.open?" open":""}><summary>Low-flow spells · ${esc(gaugeName(S.sel.i))}</summary>
-    <div class="mxbar"><div class="seg"><span class="lbl">Spell = consecutive days with flow below (ML/d)</span><input id="spThr" type="number" min="0" step="any" value="${esc(S.sp.thr)}" placeholder="1"></div><div class="seg" id="spQuick"></div></div>
-    <div id="spMsg" class="note"></div><div id="spPlot"></div><div id="spTbl"></div></details>`;
-}
-function wireSpells(){
-  const d=$("spDet"); if(!d) return;
-  d.addEventListener("toggle",()=>{ S.sp.open=d.open; if(d.open) drawSpells(); });
-  $("spThr").onchange=e=>{ S.sp.thr=e.target.value.trim(); drawSpells(); };
-  $("spQuick").onclick=e=>{ const b=e.target.closest("[data-thr]"); if(!b) return; S.sp.thr=b.dataset.thr; $("spThr").value=S.sp.thr; drawSpells(); };
-  if(S.sp.open) drawSpells();
-}
 async function drawSpells(){
-  const c=flowCtx(); if(!c||!c.ok||!S.sp.open||!$("spPlot")) return;
+  const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("spPlot")) return;
   const msg=$("spMsg"), tok=++SPTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
   if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
   const list=await ewrsAt(c.gauge); if(tok!==SPTOKEN) return;
@@ -733,22 +724,38 @@ async function drawSpells(){
     $("spTbl").innerHTML=statTbl(rows,D,c);
   }catch(er){ if(tok===SPTOKEN) msg.textContent="Could not draw: "+er.message; }
 }
-// ---- monthly differential flow duration: its own panel under Flow analysis (differential mode, uploaded scenarios) ----------------
-S.mflow={open:false,xlim:"",yr:null,xr:null}; let MTOKEN=0, MTIMER=0;
-function monthlyPanel(){
-  const c=flowCtx(); if(!c||!c.ok||!isDiff()) return "";
-  return `<details id="mflowDet" class="flowp"${S.mflow.open?" open":""}><summary>Monthly differential flow duration · ${esc(gaugeName(S.sel.i))}</summary>
-    <div class="mxbar"><div class="seg"><span class="lbl">Max flow (ML/d)</span><input id="mXlim" type="number" min="10" step="10" value="${esc(S.mflow.xlim)}" placeholder="auto"></div></div>
-    <div id="mflowMsg" class="note"></div><div id="mflowPlot"></div></details>`;
+async function drawRegimes(){   // flow regime components: thresholds from the EWR tool's parameter sheet, counted over each whole water year
+  const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("rgPlot")) return;
+  const msg=$("rgMsg"), tok=++RGTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
+  if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
+  msg.textContent="Loading …"; $("rgTbl").innerHTML="";
+  try{
+    const d=await flowGet(`/api/regimes?base=${encodeURIComponent(c.base)}${D?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}`); if(tok!==RGTOKEN) return;
+    if(!d.regimes.length){ msg.textContent="None of this gauge's flow EWRs maps to a flow regime."; return; }
+    const ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, Y0=d.scenarios.base.years;
+    const keep=D?new Set(d.paired.wy):new Set(Y0.wy.filter((_,i)=>Y0.complete[i]));
+    if(!keep.size){ msg.textContent=D?"No water year is complete in both scenarios.":"No complete water year."; return; }
+    const stat=Y=>{ const ix=Y.wy.map((w,i)=>keep.has(w)?i:-1).filter(i=>i>=0), n=ix.length, sum=f=>ix.reduce((a,i)=>a+Y[f][i],0);
+      return {any:100*ix.filter(i=>Y.days[i]>0).length/n,days:sum("days")/n,ev:sum("n")/n,lg:med(ix.map(i=>Y.longest[i]).filter(x=>x>0))}; };
+    const st={}; ks.forEach(k=>st[k]=d.scenarios[k].regimes.map(stat));
+    const lab=d.regimes.map(r=>`${r.regime} ≥${r.thr.toLocaleString()}`);
+    const M=[["any","Years with any day at or above (%)",0],["days","Days a year at or above",1],["ev","Events a year",2]], dom=[[0,0.3],[0.35,0.65],[0.7,1]];
+    const tr=[]; M.forEach(([f,t,j])=>[...ks].reverse().forEach(k=>tr.push({type:"bar",orientation:"h",x:st[k].map(z=>z[f]),y:lab,xaxis:j?"x"+(j+1):"x",name:nm[k],legendgroup:k,legendrank:k==="base"?1:2,showlegend:D&&j===0,   // horizontal groups stack upwards: base drawn last so it sits on top
+      marker:{color:D?SCOL[k]:"#1f4e8c"},customdata:d.regimes.map(r=>r.at_thr.join(", ")),hovertemplate:`<b>%{y} ML/d</b> (%{customdata})<br>${esc(nm[k])}: %{x:,.1f}<extra>${t}</extra>`})));
+    const lay=pLay({height:110+d.regimes.length*(D?46:32),barmode:"group",bargap:0.25,showlegend:D,legend:{orientation:"h",x:0,y:-0.22,yanchor:"top"},margin:{t:40,r:20,b:D?80:30,l:10},
+      yaxis:{automargin:true,showline:true,linecolor:"black",ticks:""},annotations:M.map(([f,t,j])=>({xref:"paper",yref:"paper",x:(dom[j][0]+dom[j][1])/2,y:1.02,text:`<b>${t}</b>`,showarrow:false,xanchor:"center",yanchor:"bottom",font:{size:11}}))});
+    M.forEach(([f,t,j])=>{ lay[j?"xaxis"+(j+1):"xaxis"]=Object.assign(pAx("",{domain:dom[j],rangemode:"tozero",anchor:"y"}),f==="any"?{range:[0,100]}:{}); });
+    Plotly.newPlot("rgPlot",tr,lay,PCFG);
+    const cell=(r,f,dp,u)=>{ const b=st.base[r][f]; if(!D) return fx(b,dp)+(b!=null&&u?u:""); const q=st.comp[r][f]; return b==null&&q==null?"–":`${fx(b,dp)} → ${fx(q,dp)}${u||""} <small>(${sgn(q!=null&&b!=null?q-b:null,dp)})</small>`; };
+    $("rgTbl").innerHTML=`<table class="ewrtbl"><tr><th>Flow regime</th><th>Threshold (ML/d)</th><th>From EWR</th><th>Years with any day (%)</th><th>Days a year</th><th>Events a year</th><th>Median longest event (days)</th></tr>`+
+      d.regimes.map((r,i)=>`<tr><td style="text-align:left">${esc(r.regime)}</td><td>${r.thr.toLocaleString()}</td><td style="text-align:left" title="All ${esc(r.regime)} EWRs here: ${esc(r.codes.join(", "))}">${esc(r.at_thr.join(", "))}</td><td>${cell(i,"any",0)}</td><td>${cell(i,"days",1)}</td><td>${cell(i,"ev",2)}</td><td>${cell(i,"lg",0)}</td></tr>`).join("")+`</table>`;
+    msg.textContent=`Each flow regime's threshold is the lowest flow threshold among this gauge's EWRs in that regime (the EWR tool's parameter sheet; EWR codes are assigned to regimes as in the MDBA pipeline). Days and events are counted over the whole water year, not each EWR's timing window or duration, so this describes the flow regime, not EWR achievement. An event is a run of consecutive days at or above the threshold. `+(D?`Over the ${keep.size} water years complete in both (${c.bn} → ${c.cn}).`:`Over the ${keep.size} complete water years.`);
+  }catch(er){ if(tok===RGTOKEN) msg.textContent="Could not draw: "+er.message; }
 }
-function wireMonthly(){
-  const d=$("mflowDet"); if(!d) return;
-  d.addEventListener("toggle",()=>{ S.mflow.open=d.open; if(d.open) drawMonthly(); });
-  $("mXlim").onchange=e=>{ S.mflow.xlim=e.target.value.trim(); S.mflow.yr=null; S.mflow.xr=null; drawMonthly(); };
-  if(S.mflow.open) drawMonthly();
-}
+// ---- monthly differential flow duration (differential mode, uploaded scenarios) ----------------------------------------------
+S.mflow={xlim:"",yr:null,xr:null}; let MTOKEN=0, MTIMER=0;
 async function drawMonthly(){
-  const c=flowCtx(); if(!c||!c.ok||!S.mflow.open||!$("mflowPlot")) return;
+  const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("mflowPlot")) return;
   const msg=$("mflowMsg"), tok=++MTOKEN; if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
   msg.textContent="Loading …";
   try{
@@ -778,6 +785,7 @@ let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): 
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 async function drawFlow(){
+  const fam=famOf(S.flow.chart); if(fam==="ev") return drawEwr(); if(fam==="sp") return drawSpells(); if(fam==="m") return drawMonthly(); if(fam==="rg") return drawRegimes();
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("flowPlot")) return;
   if(typeof Plotly==="undefined"){ $("flowMsg").textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
   const f=S.flow, D=isDiff(), tok=++FLOWTOKEN, msg=$("flowMsg"), base=`base=${encodeURIComponent(c.base)}${c.comp?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}`;
@@ -979,7 +987,7 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 
 // ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
 (function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
-  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","flowPlot2","mflowPlot","evPlot","spPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
+  const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","flowPlot2","mflowPlot","evPlot","spPlot","rgPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
   try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) pn.style.width=w+"px"; }catch(e){}
   if(window.ResizeObserver) new ResizeObserver(()=>map.invalidateSize()).observe($("map")); else addEventListener("resize",()=>map.invalidateSize());   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
   map.invalidateSize(); addEventListener("load",()=>map.invalidateSize()); setTimeout(()=>map.invalidateSize(),300);   // after fonts / layout settle
