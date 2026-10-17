@@ -65,7 +65,7 @@ function sequenceStats(years, window = ROLLING_YEARS) {
 
 // One retained view per analytical selection. Sorting, expanding existing matrices and changing
 // scatter scales preserve this node, its charts, in-flight work and lazy caches.
-let performanceView = null, performanceRevision = 0, lockJointScale = true;
+let performanceView = null, performanceRevision = 0;
 function performanceKey() {
   return JSON.stringify([S.src, S.sel, S.pol, S.cli, S.mode, isDiff() ? [S.bpol, S.bcli] : null, S.ethr, S.fbthr, performanceRevision, FLOWGEN]);
 }
@@ -102,8 +102,6 @@ function performancePanels(view) {
   return `<section id="performancePanel">
     <div id="jointContent">
     <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
-    <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]}</span></div>`).join('')}</div>
-    <div class="mxbar"><label class="seg"><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> <span class="lbl">Lock frequency axis to 0–2</span></label></div>
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
     <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
     </div>
@@ -118,7 +116,6 @@ function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
-  $('lockJointScale').onchange = e => { lockJointScale = e.target.checked; drawJointPlot(view); };
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
@@ -196,7 +193,7 @@ function jointRegimeOrder(rows) {
   return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
 }
 function drawJointPlot(view) {
-  const g = jointGeometry(view.rows,view.i,view.base,lockJointScale);
+  const g = jointGeometry(view.rows,view.i,view.base,false);
   if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
@@ -235,7 +232,7 @@ function drawJointPlot(view) {
       if (g.arrows.length) Plotly.relayout(plot, updates);
     });
   });
-  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Unlock the axis to show higher frequency ratios. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
+  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
 }
 
 async function performanceJSON(url, signal) {

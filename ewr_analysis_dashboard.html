@@ -639,8 +639,8 @@ function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment
     tr.push({type:"heatmap",x,y:["Change"],z:[ch],zmin:-1,zmax:1,yaxis:"y2",colorscale:[[0,DNC],[0.34,DNC],[0.34,"#f5f6f8"],[0.66,"#f5f6f8"],[0.66,UPC],[1,UPC]],showscale:false,xgap:1,hoverongaps:false,
       text:[ch.map(v=>v==null?"":v>0?`achieved in ${c.cn} only`:v<0?`achieved in ${c.bn} only`:"no change")],customdata:[lab],hovertemplate:"<b>%{customdata}</b><br>%{text}<extra></extra>"});
     const dv=all.map((w,i)=>P.has(w)&&mb[i]!=null&&mc[i]!=null?mc[i]-mb[i]:null);
-    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]} → ${esc(c.cn)} %{customdata[2]}<br>Change: <b>%{y:+.2~f}</b><extra></extra>`});
-  } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:"#b8bfca")},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y}<extra></extra>`});
+    tr.push({type:"bar",x,y:dv,yaxis:"y3",marker:{color:dv.map(v=>v>0?UPC:DNC)},customdata:all.map((w,i)=>[lab[i],mb[i],mc[i]]),hovertemplate:`<b>%{customdata[0]}</b><br>${esc(c.bn)} %{customdata[1]:,.1f} → ${esc(c.cn)} %{customdata[2]:,.1f}<br>Change: <b>%{y:+,.1f}</b><extra></extra>`});
+  } else tr.push({type:"bar",x,y:mb,yaxis:"y3",marker:{color:rows[0].map(v=>v?UPC:"#b8bfca")},customdata:lab,hovertemplate:`<b>%{customdata}</b><br>${mName}: %{y:,.1f}<extra></extra>`});
   const lay=pLay({height:D?480:420,bargap:0.1,showlegend:false,xaxis:pAx(ayName(ys),{type:"date",anchor:"y3"}),
     yaxis:{domain:D?[0.78,1]:[0.8,1],showgrid:false,ticks:"",automargin:true,fixedrange:true,autorange:"reversed"},   // base on top
     yaxis3:pAx(D?`Change: ${mName[0].toLowerCase()+mName.slice(1)}`:mName,{domain:[0,D?0.6:0.68],zeroline:true,zerolinecolor:"#9aa3b0"}),
@@ -674,7 +674,7 @@ function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how
 function evTiming(d,c,e,def,msg){   // in which months the successful events start, per 10 years
   const D=!!c.comp, K=keptYears(d,D), ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, ys=d.ystart, ord=Array.from({length:12},(_,i)=>(ys-1+i)%12+1), ml=ord.map(m=>MONTHS[m-1]), per={};
   ks.forEach(k=>{ const ev=d.scenarios[k].events.filter(x=>x.ok&&K[k].has(x.wy)), n=K[k].size; per[k]=ord.map(m=>ev.filter(x=>+x.start.slice(5,7)===m).length/n*10); per[k].tot=ev.length/n*10; });
-  const tr=ks.map(k=>({type:"bar",name:nm[k],x:ml,y:per[k],marker:{color:D?SCOL[k]:"#1f4e8c"},hovertemplate:`<b>${esc(nm[k])}</b> · %{x}<br>%{y:.2f} events per 10 years<extra></extra>`}));
+  const tr=ks.map(k=>({type:"bar",name:nm[k],x:ml,y:per[k],marker:{color:D?SCOL[k]:"#1f4e8c"},hovertemplate:`<b>${esc(nm[k])}</b> · %{x}<br>%{y:.1f} events per 10 years<extra></extra>`}));
   const inWin=m=>d.sm<=d.em?m>=d.sm&&m<=d.em:m>=d.sm||m<=d.em;
   const shapes=ord.every(inWin)?[]:ord.map((m,i)=>inWin(m)?{type:"rect",xref:"x",x0:i-0.5,x1:i+0.5,yref:"paper",y0:0,y1:1,fillcolor:"rgba(31,78,140,.07)",line:{width:0},layer:"below"}:null).filter(Boolean);
   Plotly.newPlot("evPlot",tr,pLay({height:360,barmode:"group",bargap:0.25,bargroupgap:0.08,showlegend:D,legend:{orientation:"h",x:0,y:1.1},xaxis:pAx(`Month the event starts (${ys===7?"water year":"assessment year"} order)`,{type:"category"}),yaxis:pAx("Events per 10 years",{rangemode:"tozero"}),shapes}),PCFG);
@@ -686,7 +686,7 @@ function evTiming(d,c,e,def,msg){   // in which months the successful events sta
 function evGaps(d,c,e,def,msg){   // gaps between successful events against the maximum inter-event period
   const D=!!c.comp, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, M=d.mrip_days, tr=[], st={};
   ks.forEach(k=>{ const g=d.scenarios[k].gaps, seg=(a,col,name,dash)=>{ if(!a.length) return; const x=[], y=[], cd=[]; a.forEach(z=>{ const t=[z.start,z.end,z.days,z.censored?"length unknown: missing days inside":z.excess?`${z.excess.toLocaleString()} days beyond the maximum`:"",z.boundary?"<br>runs from the start or to the end of the record":""]; x.push(z.start,z.end,null); y.push(z.days/365,z.days/365,null); cd.push(t,t,null); });
-      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.2f} years)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
+      tr.push({type:"scatter",mode:"lines+markers",name,x,y,customdata:cd,connectgaps:false,line:{color:col,width:2.5,dash:dash||"solid"},marker:{size:5,color:col},hovertemplate:`<b>${esc(nm[k])}</b><br>%{customdata[0]} to %{customdata[1]}<br><b>%{customdata[2]:,} days</b> (%{y:.1f} years)<br>%{customdata[3]}%{customdata[4]}<extra></extra>`}); };
     const known=g.filter(z=>!z.censored), unk=g.filter(z=>z.censored);
     if(D) seg(known,SCOL[k],nm[k]); else { seg(known.filter(z=>!z.excess),"#9ca3af","within the maximum"); seg(known.filter(z=>z.excess),DNC,"longer than the maximum"); }
     seg(unk,"#9ca3af",`${D?nm[k]+" · ":""}length unknown (missing data)`,"dot");
@@ -718,7 +718,7 @@ async function drawSpells(){
     const B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, keep=D?new Set(d.paired.wy):new Set(B.wy.filter((_,i)=>B.complete[i]));
     const pick=Y=>{ const m=new Map(Y.wy.map((w,i)=>[w,i])); return [...keep].sort((a,b)=>a-b).map(w=>({w,...(i=>({longest:Y.longest[i],below:Y.below[i],n:Y.n[i]}))(m.get(w))})); };
     const pb=pick(B), pc=D?pick(C):null, x=pb.map(r=>wyMid(r.w));
-    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br>Change: <b>%{y:+.2~f} days</b><extra></extra>`}]
+    const tr=D?[{type:"bar",x,y:pb.map((r,i)=>pc[i].longest-r.longest),marker:{color:pb.map((r,i)=>pc[i].longest-r.longest>0?DNC:UPC)},customdata:pb.map((r,i)=>[wyl(r.w),r.longest,pc[i].longest]),hovertemplate:`<b>%{customdata[0]}</b><br>longest spell ${esc(c.bn)} %{customdata[1]} d → ${esc(c.cn)} %{customdata[2]} d<br>Change: <b>%{y:+,.1f} days</b><extra></extra>`}]
       :[{type:"bar",x,y:pb.map(r=>r.longest),marker:{color:"#1f4e8c"},customdata:pb.map(r=>[wyl(r.w),r.below,r.n]),hovertemplate:"<b>%{customdata[0]}</b><br>longest spell <b>%{y} days</b><br>%{customdata[1]} days below in the year · %{customdata[2]} spells start in it<extra></extra>"}];
     Plotly.newPlot("spPlot",tr,pLay({height:320,bargap:0.1,showlegend:false,xaxis:pAx("Water year (July–June)",{type:"date"}),yaxis:pAx(D?"Change in the longest spell (days)":"Longest spell in the year (days)",{zeroline:true,zerolinecolor:"#9aa3b0"})}),PCFG);
     const sm=(a,f)=>{ const v=a.map(f); return {mean:v.length?v.reduce((s,z)=>s+z,0)/v.length:null,med:med(v),max:v.length?Math.max(...v):null,any:v.filter(z=>z>0).length}; };
@@ -774,7 +774,7 @@ async function drawMonthly(){
     const [zlo,zhi]=fitZ();
     const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
     await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,colorscale:divScale(zlo,zhi),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})`,side:"right"}},
-        hovertemplate:"Change: <b>%{z:+.2f} pts</b> of days<br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
+        hovertemplate:"Change: <b>%{z:+.1f} pts</b> of days<br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
       {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category",range:S.mflow.xr||undefined}),yaxis:ax("Flow (ML/day)",{range:S.mflow.yr||undefined}),showlegend:false},{responsive:true,displaylogo:false});
     const mp=$("mflowPlot"); if(mp.removeAllListeners) mp.removeAllListeners("plotly_relayout");
     mp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to the cells in view, and fetch finer flow steps for the zoomed flow range
@@ -791,6 +791,8 @@ const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), o
 let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
 const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
+const heatCols=()=>{ const w=($("flowPlot")&&$("flowPlot").clientWidth)||600; return Math.max(60,Math.min(1200,Math.round((w-150)/3/20)*20)); };   // ~3 px per heat-map column, bucketed so small drags don't refetch
+const r0=v=>v==null||!isFinite(v)?"–":Math.round(v).toLocaleString(), r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: whole flows, one-decimal percentages
 async function drawFlow(keepZoom){
   if(S.flow.chart==="joint"){
     const view=performanceView;
@@ -811,7 +813,7 @@ async function drawFlow(keepZoom){
     if(f.chart==="heat"){
       if(f.ewr&&!EWRLIST.has(c.gauge)) await fillEwrSelect();
       if(!keepZoom) f.zoom=null;
-      const zm=f.zoom, ew=curEwr(), q=`/api/heatmap?${base}&xlim=${zm?zm.x[1]:encodeURIComponent(f.xlim)}&dmax=${zm?zm.y[1]:f.dmax}${zm?`&xmin=${zm.x[0]}&dmin=${zm.y[0]}`:""}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
+      const zm=f.zoom, ew=curEwr(); f.cols=heatCols(); const q=`/api/heatmap?${base}&cols=${f.cols}&xlim=${zm?zm.x[1]:encodeURIComponent(f.xlim)}&dmax=${zm?zm.y[1]:f.dmax}${zm?`&xmin=${zm.x[0]}&dmin=${zm.y[0]}`:""}&sm=${f.sm}&em=${f.em}&days=${f.days}${ew?`&mthr=${ew.thr}&mdur=${ew.dur}`:""}`, d0=await flowGet(q); if(tok!==FLOWTOKEN) return;
       let d=d0; f.xlimAuto=d.xlim; const inp=document.querySelector('input[data-fl="xlim"]'); if(inp&&!f.xlim) inp.placeholder="auto ("+d.xlim+")";
       const kind=D?f.show:"base", diff=D&&kind==="diff"; let z=d[kind]||d.base;
       // colour range follows the cells in view, snapped to 5% steps (symmetric about 0 for differences)
@@ -820,8 +822,8 @@ async function drawFlow(keepZoom){
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
       const title=diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`;
-      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(2);
-        hvt=D?`${esc(c.bn)} <b>${m[0]}%</b> → ${esc(c.cn)} <b>${m[1]}%</b> (${+df>=0?"+":""}${df} pts)`:`<b>${m[0]}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
+      let hvt=""; if(ew&&d.mark){ const m=d.mark, df=(m[1]-m[0]).toFixed(1);
+        hvt=D?`${esc(c.bn)} <b>${r1(m[0])}%</b> → ${esc(c.cn)} <b>${r1(m[1])}%</b> (${+df>=0?"+":""}${df} pts)`:`<b>${r1(m[0])}%</b> of years achieved`; if(ew.target!=null) hvt+=`<br>EWR target ${ew.target}%`; }
       // outline of the heat-map cell this EWR falls in (width = threshold step, height = 1 day)
       const shapesFor=()=>{ const x0=d.xmin||0, cx=ew?x0+Math.round((ew.thr-x0)/d.spacing)*d.spacing:0; return ew&&ew.dur>=d0.durations[0]&&ew.dur<=d0.durations[d0.durations.length-1]?[
         {type:"rect",xref:"x",yref:"y",x0:cx-d.spacing/2,x1:cx+d.spacing/2,y0:ew.dur-.5,y1:ew.dur+.5,line:{color:"white",width:4},fillcolor:"rgba(0,0,0,0)"},
@@ -831,10 +833,10 @@ async function drawFlow(keepZoom){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"Change: <b>%{z:+.2f} pts</b> of years":"<b>%{z:.0f}%</b> of years")+"<br>Flow ≥ %{x:,} ML/d for %{y} days<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"Change: <b>%{z:+.1f} pts</b> of years":"<b>%{z:.1f}%</b> of years")+"<br>Flow ≥ %{x:,.0f} ML/d for %{y:.0f} days<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
-        lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim]}),yaxis:ax("Duration (days)",zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{}),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
+        lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim],hoverformat:",.0f"}),yaxis:ax("Duration (days)",Object.assign({hoverformat:".0f"},zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{})),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
         break; }catch(er){ if(!/call stack/i.test(String(er&&er.message))||ck>=16) throw er; ck*=2; d=coarsen(d0,ck); z=d[kind]||d.base; [zmin,zmax]=fitScale(); coarseNote=` Drawn at 1/${ck} of the resolution (the full grid was too large for the browser).`; } }
       if(!zm) f.full=[d0.xlim,d0.durations.length];
       const hp=$("flowPlot"); if(hp.removeAllListeners) hp.removeAllListeners("plotly_relayout");
@@ -903,8 +905,8 @@ async function drawFlow(keepZoom){
         const pad=Math.max((hi-lo)*0.12,1), xr=f.xlog?[Math.log10(d.x[0]),Math.log10(xm)]:[0,xm], yr=[lo-pad,hi+pad];
         const vl=thr.map((e,k)=>({type:"line",xref:"x",x0:e.thr,x1:e.thr,yref:"paper",y0:0,y1:1,line:{color:TCOLS[k%TCOLS.length],width:1.5,dash:"dash"}}));
         const pts=thr.map((e,k)=>{ const m=(d.marks||[]).find(x=>x.thr===e.thr)||{}, dv=(m.comp-m.base).toFixed(2); return {type:"scatter",mode:"markers+text",x:[e.thr],y:[dv],text:[`${e.code} ${+dv>=0?"+":""}${dv}`],textposition:"top right",textfont:{size:10,color:TCOLS[k%TCOLS.length]},
-          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${m.base}% → ${esc(c.cn)} ${m.comp}%<br><b>${+dv>=0?"+":""}${dv} pts</b> of time<extra></extra>`}; });
-        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"Change: <b>%{y:+.2f} pts</b> of time<br>Flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
+          marker:{size:8,color:TCOLS[k%TCOLS.length]},showlegend:false,hovertemplate:`<b>${esc(e.code)}</b> ≥${e.thr.toLocaleString()} ML/d<br>${esc(c.bn)} ${r1(m.base)}% → ${esc(c.cn)} ${r1(m.comp)}%<br><b>${+dv>=0?"+":""}${(+dv).toFixed(1)} pts</b> of time<extra></extra>`}; });
+        Plotly.newPlot("flowPlot",[{type:"scatter",mode:"lines",x:d.x,y:d.diff,line:{color:"#1f4e8c",width:2},fill:"tozeroy",fillcolor:"rgba(31,78,140,.12)",showlegend:false,hovertemplate:"Change: <b>%{y:+.1f} pts</b> of time<br>Flow ≥ %{x:,.0f} ML/d<extra></extra>"}].concat(pts),
           lay({xaxis:ax("Flow (ML/day)",{type:f.xlog?"log":"linear",range:xr}),yaxis:ax("Change in % of time flow is equalled or exceeded",{zeroline:true,zerolinecolor:"#000",range:yr}),showlegend:false,shapes:vl}),cfg);
         msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: change in the % of time flow is at or above each flow (positive = more time at or above that flow). `+(thr.length?`Only days in the EWR timing window (${MONTHS[thr[0].sm-1]}–${MONTHS[thr[0].em-1]}) are used.`:"All days of the year are used; select EWRs to restrict the curve to their timing window.")+markNote();
       }
@@ -1010,6 +1012,8 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 (function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
   const apply=w=>{ pn.style.width=w+"px"; map.invalidateSize(); ["flowPlot","flowPlot2","mflowPlot","evPlot","spPlot","rgPlot"].forEach(id=>{ const fp=$(id); if(fp&&fp.data&&window.Plotly) Plotly.Plots.resize(fp); }); };
   try{ const w=+localStorage.getItem("ewrPanelW"); if(w>=260) pn.style.width=w+"px"; }catch(e){}
+  { let rt; const regrid=()=>{ clearTimeout(rt); rt=setTimeout(()=>{ const f=S.flow; if(f&&f.open&&f.chart==="heat"&&$("flowPlot")&&$("flowPlot").data&&f.cols!==heatCols()) drawFlow(true); },300); };   // resizing the panel or window re-fetches the heat map on a grid that matches its new width
+    if(window.ResizeObserver) new ResizeObserver(regrid).observe(pn); addEventListener("resize",regrid); }
   if(window.ResizeObserver) new ResizeObserver(()=>map.invalidateSize()).observe($("map")); else addEventListener("resize",()=>map.invalidateSize());   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
   map.invalidateSize(); addEventListener("load",()=>map.invalidateSize()); setTimeout(()=>map.invalidateSize(),300);   // after fonts / layout settle
   dv.onpointerdown=e=>{ dv.setPointerCapture(e.pointerId); dv.classList.add("drag");
@@ -1181,7 +1185,7 @@ function sequenceStats(years, window = ROLLING_YEARS) {
 
 // One retained view per analytical selection. Sorting, expanding existing matrices and changing
 // scatter scales preserve this node, its charts, in-flight work and lazy caches.
-let performanceView = null, performanceRevision = 0, lockJointScale = true;
+let performanceView = null, performanceRevision = 0;
 function performanceKey() {
   return JSON.stringify([S.src, S.sel, S.pol, S.cli, S.mode, isDiff() ? [S.bpol, S.bcli] : null, S.ethr, S.fbthr, performanceRevision, FLOWGEN]);
 }
@@ -1218,8 +1222,6 @@ function performancePanels(view) {
   return `<section id="performancePanel">
     <div id="jointContent">
     <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
-    <div class="tiles">${q.counts.map((n,k) => `<div class="tile"><b style="color:${jointColours[k]}">${n}</b><span>${jointNames[k]}</span></div>`).join('')}</div>
-    <div class="mxbar"><label class="seg"><input id="lockJointScale" type="checkbox" ${lockJointScale ? 'checked' : ''}> <span class="lbl">Lock frequency axis to 0–2</span></label></div>
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
     <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
     </div>
@@ -1234,7 +1236,6 @@ function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
-  $('lockJointScale').onchange = e => { lockJointScale = e.target.checked; drawJointPlot(view); };
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
@@ -1312,7 +1313,7 @@ function jointRegimeOrder(rows) {
   return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
 }
 function drawJointPlot(view) {
-  const g = jointGeometry(view.rows,view.i,view.base,lockJointScale);
+  const g = jointGeometry(view.rows,view.i,view.base,false);
   if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
@@ -1351,7 +1352,7 @@ function drawJointPlot(view) {
       if (g.arrows.length) Plotly.relayout(plot, updates);
     });
   });
-  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Unlock the axis to show higher frequency ratios. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
+  $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
 }
 
 async function performanceJSON(url, signal) {
