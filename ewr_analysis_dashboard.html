@@ -111,7 +111,7 @@ const FAM={fr:"f",ach:"f",fb:"f",et:"e",mz:"e"}, inFam=k=>["ach","fb","mz"].incl
 const METRICS=["fr","et","ach","mz","fb"], LOWER={et:1,fb:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
 // per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (|change| under 1 point)
 function cnts(rows,m){ const o={up:0,dn:0,same:0,n:0}; for(const r of rows){ const d=val(r,m); if(d==null) continue; const g=LOWER[m]?-d:d; o.n++; if(g>0.01) o.up++; else if(g<-0.01) o.dn++; else o.same++; } return o; }
-function val(r,m,i){ const a=m==="et"||m==="mz"?r[7]:r[6], one=k=>{ const v=a[k]; return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; };   // "ach": FR >= threshold; "mz": ETP <= threshold (0 = MRIP never exceeded)
+function val(r,m,i){ const a=m==="et"||m==="mz"?r[7]:r[6], one=k=>{ const raw=a[k], v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw; return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; };   // "ach": FR >= threshold; "mz": ETP <= threshold (0 = MRIP never exceeded)
   if(!isDiff()) return one(i);
   const x=one(scnIdx()), b=one(scnIdx(S.bpol,S.bcli)); return x==null||b==null?null:x-b; }   // differential: comparison - base
 const KEYF={pu:r=>r[0],gauge:r=>r[2]};
@@ -1338,6 +1338,23 @@ async function boundedMap(items, limit, signal, work) {
   await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));
   return results;
 }
+function selectedAnnualRules(inventory, rows) {
+  const selected = new Map();
+  for (const e of inventory.ewrs) for (const row of rows) {
+    const pu = rulePU(row);
+    if (ruleCode(row) === e.code && e.pus.includes(pu)) {
+      // The selector groups equivalent definitions under a canonical PU; evaluate each actual selected asset.
+      selected.set(JSON.stringify([e.code,pu]), {...e,pu});
+    }
+  }
+  return [...selected.values()];
+}
+function freshChart(parent) {
+  parent.querySelectorAll('.js-plotly-plot').forEach(el => Plotly.purge(el));
+  const chart = document.createElement('div');
+  parent.replaceChildren(chart);
+  return chart;
+}
 async function loadSequences(view) {
   if (!currentPerformance(view) || !view.ctx?.ok) return;
   view.sequence?.abort();
@@ -1348,7 +1365,7 @@ async function loadSequences(view) {
   try {
     if (typeof Plotly === 'undefined') throw Error('Plotly is unavailable; annual charts require the chart library.');
     const inv = await abortable(inventoryFor(view.gauge),controller.signal); if (!active()) return;
-    const list = inv.ewrs.filter(e => view.rows.some(r => ruleCode(r) === e.code && e.pus.includes(rulePU(r))));
+    const list = selectedAnnualRules(inv,view.rows);
     if (!list.length) { note.textContent = 'No supported annual rules in this selection.'; return; }
     const c = view.ctx; let completed = 0;
     const results = await boundedMap(list,4,controller.signal,async e => {
@@ -1361,7 +1378,7 @@ async function loadSequences(view) {
     results.forEach((result,i) => {
       if (result.error) { errors.push(list[i].code+': '+result.error.message); return; }
       const {e,data:d} = result.value;
-      const r = view.rows.find(r => ruleCode(r) === e.code && e.pus.includes(rulePU(r)));
+      const r = view.rows.find(r => ruleCode(r) === e.code && rulePU(r) === e.pu);
       const group = r ? [...new Set(r[4].map(o => META.themes[META.objTheme[o]]))].sort().join(' / ') : 'Unclassified';
       for (const [key,s] of Object.entries(d.scenarios)) {
         const name = `${group} · ${e.code} · ${e.pu} · ${key === 'base' ? c.bn : c.cn} · ${ayName(d.ystart)}`;
@@ -1388,13 +1405,13 @@ async function loadSequences(view) {
 async function plotSequences(series, active) {
   const years = [...new Set(series.flatMap(s => s.years.wy))].sort((a,b) => a-b);
   const aligned = (s,v) => { const m = new Map(s.years.wy.map((w,i) => [w,v[i]])); return years.map(w => m.get(w) ?? null); };
-  // Capture DOM elements rather than string IDs: a late Plotly promise cannot target a replacement view.
-  const raster = $('sequenceRaster'), since = $('sequenceSince'), rolling = $('sequenceRolling');
+  // Each run owns its chart nodes, including retries within the SAME analytical selection.
+  const raster = freshChart($('sequenceRaster')), since = freshChart($('sequenceSince')), rolling = freshChart($('sequenceRolling'));
   await Plotly.newPlot(raster,[{type:'heatmap',x:years,y:series.map(s => s.name),z:series.map(s => aligned(s,s.years.achieved.map((a,i) => s.years.complete[i] ? (a ? 1 : 0) : null))),zmin:0,zmax:1,colorscale:[[0,'#eee'],[1,'#207a65']],hoverongaps:false,xgap:1,ygap:2,colorbar:{tickvals:[0,1],ticktext:['Failed','Achieved']}}],{height:Math.max(250,series.length*30),margin:{l:230,r:90,t:20,b:40},xaxis:{title:'Assessment start year (windows shown in row labels)',dtick:1}},PCFG);
-  if (!active()) return;
+  if (!active()) { Plotly.purge(raster); return; }
   for (const [el,key,title] of [[since,'since','Years since last successful assessment year'],[rolling,'rolling',`${ROLLING_YEARS}-year rolling achievement proportion`]]) {
     await Plotly.newPlot(el,series.map(s => ({type:'scatter',mode:'lines+markers',name:s.name,x:years,y:aligned(s,s.stats[key]),connectgaps:false})),{height:280,margin:{l:70,r:20,t:20,b:45},showlegend:false,xaxis:{title:'Assessment start year'},yaxis:{title,...(key === 'rolling' ? {range:[0,1]} : {})}},PCFG);
-    if (!active()) return;
+    if (!active()) { Plotly.purge(el); return; }
   }
 }
 
@@ -1466,7 +1483,10 @@ async function loadConditions(file, view) {
     const traces = columns.map(([k,name],i) => ({type:'scatter',mode:'lines',name,x:expanded.map(r => r.date),y:expanded.map(r => r[k] ?? null),yaxis:i ? 'y'+(i+1) : 'y',connectgaps:false}));
     const layout = {height:640,margin:{l:80,r:20,t:25,b:45},showlegend:false,xaxis:{type:'date',title:'Date'}};
     columns.forEach(([k,name],i) => { layout[i ? 'yaxis'+(i+1) : 'yaxis'] = {title:name,domain:[1-(i+1)*.25+.04,1-i*.25-.02]}; });
-    await Plotly.newPlot(plot,traces,layout,PCFG); if (!active()) return;
+    // A prior Plotly promise may still finish after abort; never let it share this run's target.
+    const chart = freshChart(plot);
+    await Plotly.newPlot(chart,traces,layout,PCFG);
+    if (!active()) { Plotly.purge(chart); return; }
     note.textContent = `${file.name} · gauge ${view.gauge} · ${data[0].date} – ${data.at(-1).date}. ${rates.n} adjacent daily stage pairs. Maximum rise ${rates.n ? rates.rise.toFixed(3) : 'unavailable'} m/day; maximum recession ${rates.n ? rates.fall.toFixed(3) : 'unavailable'} m/day. User-supplied observations for this selection.`;
   } catch (error) { if (active()) { note.textContent = error.message; plot.innerHTML = ''; } }
 }

@@ -20,7 +20,9 @@ function harness() {
     const flowCtx=()=>({ok:true,base:'test',gauge:META.gauges[0],bn:'Test record'});
     const ayName=()=> 'July–June';
     var nodes=new Map();
-    const $=id=>{if(!nodes.has(id))nodes.set(id,{id,innerHTML:'',textContent:'',disabled:false,hidden:false,querySelectorAll:()=>[]});return nodes.get(id);};
+    const makeNode=id=>({id,innerHTML:'',textContent:'',disabled:false,hidden:false,children:[],querySelectorAll:()=>[],replaceChildren(...items){this.children=items;}});
+    const document={createElement:()=>makeNode('chart')};
+    const $=id=>{if(!nodes.has(id))nodes.set(id,makeNode(id));return nodes.get(id);};
     var plotCalls=[];
     var Plotly={newPlot:async (...args)=>{plotCalls.push(args);},purge:()=>{}};
   `,ctx);
@@ -176,4 +178,44 @@ test('explicit custom registration does not hide a fifth built-in policy',()=>{
   const h=harness();h.run(template.match(/const isCustom=.*?;/)[0]);
   h.run("META.policies.push('Fifth policy')");assert.equal(h.run('isCustom(4)'),false);
   h.run("CUSTOM.push({P:5,name:'uploaded',removed:true})");assert.equal(h.run('isCustom(5)'),true);
+});
+test('annual requests use selected planning units, not a grouped canonical unit',async()=>{
+  const h=harness(),a=row('F1'),b=row('F1');b[0]=1;h.ctx.v=h.view([a,b]);
+  const selected=[h.run('META.pus[0]'),h.run('META.pus[1]')],requests=[];
+  h.ctx.fetch=async url=>{
+    if(url.startsWith('/api/ewrs?'))return response({ewrs:[{code:'F1',pu:'Unselected canonical asset',pus:['Unselected canonical asset',...selected]}],inventory:[]});
+    requests.push(new URL('http://test'+url).searchParams.get('pu'));return response(annual);
+  };
+  await h.run('loadSequences(v)');assert.deepEqual(requests.sort(),selected.sort());
+  for(const pu of selected)assert.ok(h.run("$('performanceCoverage').textContent").includes(pu));
+});
+test('a late Plotly completion cannot overwrite a newer CSV chart in the same view',async()=>{
+  const h=harness(),d=deferred();h.ctx.v=h.view();
+  h.ctx.firstPlot=d.promise;
+  h.run('Plotly.newPlot=async (node,traces)=>{ if(!plotCalls.length){plotCalls.push(node);await firstPlot;} else plotCalls.push(node);node.textContent=String(traces[0].y[0]);}');
+  h.ctx.file={name:'old.csv',size:100,text:async()=> 'date,stage_m\n2000-01-01,1'};
+  const old=h.run('loadConditions(file,v)');await flush();
+  h.ctx.file={name:'new.csv',size:100,text:async()=> 'date,stage_m\n2000-01-01,9'};
+  await h.run('loadConditions(file,v)');d.resolve();await old;
+  assert.equal(h.run("$('conditionPlot').children[0].textContent"),'9');
+  assert.match(h.run("$('conditionNote').textContent"),/new.csv/);
+  assert.notEqual(h.run('plotCalls[0]'),h.run('plotCalls[1]'));
+});
+test('a late annual plot cannot overwrite a retry in the same view',async()=>{
+  const h=harness(),d=deferred();h.ctx.v=h.view();h.ctx.fetch=async url=>response(url.startsWith('/api/ewrs?')?invFor(h):annual);
+  h.ctx.firstPlot=d.promise;
+  h.run("Plotly.newPlot=async node=>{const old=plotCalls.length===0;plotCalls.push(node);if(old)await firstPlot;node.textContent=old?'old':'new';}");
+  const first=h.run('loadSequences(v)');await flush();h.run('v.sequence.abort()');
+  await h.run('loadSequences(v)');d.resolve();await first;
+  assert.equal(h.run("$('sequenceRaster').children[0].textContent"),'new');
+  assert.equal(h.run("$('loadSequence').disabled"),false);
+});
+test('existing metric tiles cap ETP from legacy saved uploads consistently',()=>{
+  const h=harness();
+  h.run(template.slice(template.indexOf('function val('),template.indexOf('const KEYF=')));
+  h.ctx.legacy=row('F1',[1,1],[1.2,.5]);
+  assert.equal(h.run("val(legacy,'et',0)"),1);
+  assert.equal(h.run("S.ethr=1;val(legacy,'mz',0)"),1);
+  h.run("S.mode='diff'; S.bpol=0; S.bcli=1");
+  assert.equal(h.run("val(legacy,'et')"),.5);
 });

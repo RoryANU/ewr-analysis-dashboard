@@ -229,7 +229,8 @@ The matrix separately reports incomplete rules and assessed/expected climate cou
 metadata and therefore receive a record comparison, not inferred climate robustness.
 
 At an uploaded gauge, **Load annual raster** evaluates all supported selected rules
-through the existing py_ewr annual endpoint. Rows are grouped by ecological theme;
+through the existing py_ewr annual endpoint, using each selected planning unit even
+when the event selector groups equivalent definitions. Rows are grouped by ecological theme;
 assessment windows are labelled because they may differ. Time since success is
 unknown before the first observed success or following incomplete years. Rolling
 frequency requires ten consecutive complete assessment years. Dates, missing days,
@@ -256,7 +257,8 @@ choose 1.0 and copy the link again if needed.
 Routine sorting, matrix expansion and scatter-scale changes retain the performance
 panel and its in-flight work. New selections cancel stale annual requests. Annual
 loading uses at most four concurrent requests, offers cancellation and restores its
-controls on failure. Inventory requests and server parameter metadata are cached;
+controls on failure. Each chart render owns a separate DOM node, so a delayed render
+cannot overwrite a newer upload or retry. Inventory requests and server parameter metadata are cached;
 failed requests can be retried. Matrix contents and exact rule strings are built on
 opening/interaction and memoised for the current selection.
 

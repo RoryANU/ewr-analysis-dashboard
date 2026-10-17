@@ -111,7 +111,7 @@ const FAM={fr:"f",ach:"f",fb:"f",et:"e",mz:"e"}, inFam=k=>["ach","fb","mz"].incl
 const METRICS=["fr","et","ach","mz","fb"], LOWER={et:1,fb:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
 // per-EWR classification of a set of rows for metric m (differential mode): improved / declined / unchanged (|change| under 1 point)
 function cnts(rows,m){ const o={up:0,dn:0,same:0,n:0}; for(const r of rows){ const d=val(r,m); if(d==null) continue; const g=LOWER[m]?-d:d; o.n++; if(g>0.01) o.up++; else if(g<-0.01) o.dn++; else o.same++; } return o; }
-function val(r,m,i){ const a=m==="et"||m==="mz"?r[7]:r[6], one=k=>{ const v=a[k]; return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; };   // "ach": FR >= threshold; "mz": ETP <= threshold (0 = MRIP never exceeded)
+function val(r,m,i){ const a=m==="et"||m==="mz"?r[7]:r[6], one=k=>{ const raw=a[k], v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw; return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; };   // "ach": FR >= threshold; "mz": ETP <= threshold (0 = MRIP never exceeded)
   if(!isDiff()) return one(i);
   const x=one(scnIdx()), b=one(scnIdx(S.bpol,S.bcli)); return x==null||b==null?null:x-b; }   // differential: comparison - base
 const KEYF={pu:r=>r[0],gauge:r=>r[2]};
