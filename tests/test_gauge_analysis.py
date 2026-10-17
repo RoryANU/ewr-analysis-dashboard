@@ -1,7 +1,6 @@
-"""Regression tests for the per-gauge analyses in server.py: low-flow spells, date pairing of the duration curves and hydrograph
+"""Regression tests for the per-gauge analyses in ewr_engine.py: low-flow spells, date pairing of the duration curves and hydrograph
 volumes, duplicate dates in stored flows, and year-by-year pairing of EWR achievement."""
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,28 +8,23 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import server  # noqa: E402
+import ewr_engine as engine  # noqa: E402
 
 G = "400001"
 BK1 = dict(gauge="416001", ewr="BK1", pu="Macintyre River and Boomi River floodplain")   # >= 7,900 ML/d, MinSpell 5, Jul-Jun, max inter-event 4 yr
 
 
 class StoredFlows(unittest.TestCase):
-    """Each test writes scenarios into a temporary store; caches are cleared around it."""
+    """Each test registers scenarios' flows in memory; caches are cleared around it."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        old = server.STORE
-        self.addCleanup(setattr, server, "STORE", old)
-        server.STORE = Path(self.tmp.name)
-        server.FLOWS.clear()
-        server._EVAL_CACHE.clear()
-        self.addCleanup(server.FLOWS.clear)
-        self.addCleanup(server._EVAL_CACHE.clear)
+        engine.FLOWS.clear()
+        engine._EVAL_CACHE.clear()
+        self.addCleanup(engine.FLOWS.clear)
+        self.addCleanup(engine._EVAL_CACHE.clear)
 
     def store(self, sid, idx, flow, gauge=G):
-        pd.DataFrame({gauge: np.asarray(flow, dtype=float)}, index=pd.DatetimeIndex(idx, name="Date")).to_csv(server.STORE / f"{sid}.csv")
+        engine.register_flows(sid, pd.DataFrame({gauge: np.asarray(flow, dtype=float)}, index=pd.DatetimeIndex(idx, name="Date")))
 
 
 class SpellTest(StoredFlows):
@@ -44,7 +38,7 @@ class SpellTest(StoredFlows):
         f[21] = np.nan        # missing day between two low days: two runs of 1, not one of 3
         f[22] = 0
         self.store("a", idx, f)
-        out = server.spells({"base": "a", "gauge": G, "thr": "1"})["scenarios"]["base"]
+        out = engine.spells({"base": "a", "gauge": G, "thr": "1"})["scenarios"]["base"]
         self.assertEqual(out["n_runs"], 4)
         self.assertEqual(sorted(r["days"] for r in out["longest_runs"]), [1, 1, 1, 2])
         self.assertEqual(sum(r["censored"] for r in out["longest_runs"]), 2)   # the two runs beside the missing day
@@ -57,7 +51,7 @@ class SpellTest(StoredFlows):
         f = np.full(len(idx), 10.0)
         f[(idx >= "2001-06-26") & (idx <= "2001-07-03")] = 0      # 8 low days across 30 June: 5 in WY2000, 3 in WY2001
         self.store("a", idx, f)
-        out = server.spells({"base": "a", "gauge": G, "thr": "1"})["scenarios"]["base"]
+        out = engine.spells({"base": "a", "gauge": G, "thr": "1"})["scenarios"]["base"]
         y = out["years"]
         self.assertEqual(y["wy"], [2000, 2001])
         self.assertEqual(y["below"], [5, 3])
@@ -72,7 +66,7 @@ class SpellTest(StoredFlows):
         g[(idx >= "2001-08-01") & (idx <= "2001-08-03")] = np.nan  # WY2001 incomplete in the comparison only
         self.store("a", idx, f)
         self.store("b", idx, g)
-        out = server.spells({"base": "a", "comp": "b", "gauge": G, "thr": "1"})
+        out = engine.spells({"base": "a", "comp": "b", "gauge": G, "thr": "1"})
         self.assertEqual(out["paired"]["wy"], [2000, 2002])
 
 
@@ -81,9 +75,9 @@ class PairingTest(StoredFlows):
         idx = pd.date_range("2000-01-01", periods=4)
         self.store("a", idx, [0, 1, 2, 3])
         self.store("b", idx, [0, 1, 2, np.nan])      # the comparison is missing the highest-flow date
-        one = server.curves({"base": "a", "gauge": G, "kind": "fdc", "thr": "3"})
+        one = engine.curves({"base": "a", "gauge": G, "kind": "fdc", "thr": "3"})
         self.assertEqual(one["marks"][0]["base"], 25.0)                  # 1 of 4 days >= 3
-        two = server.curves({"base": "a", "comp": "b", "gauge": G, "kind": "dfdc", "thr": "2"})
+        two = engine.curves({"base": "a", "comp": "b", "gauge": G, "kind": "dfdc", "thr": "2"})
         self.assertEqual(two["marks"][0]["base"], two["marks"][0]["comp"])  # the date is dropped from both: 1 of 3 days >= 2 in each
         self.assertAlmostEqual(two["marks"][0]["base"], 100 / 3, places=3)
 
@@ -94,7 +88,7 @@ class PairingTest(StoredFlows):
         b[400] = np.nan                               # one missing day in WY2001
         self.store("a", idx, a)
         self.store("b", idx, b)
-        h = server.curves({"base": "a", "comp": "b", "gauge": G, "kind": "hydro"})
+        h = engine.curves({"base": "a", "comp": "b", "gauge": G, "kind": "hydro"})
         self.assertEqual([r["wy"] for r in h["years"]], [2000])
         self.assertEqual(h["years"][0]["base"], 365.0)
         self.assertEqual(h["years"][0]["comp"], 730.0)
@@ -104,17 +98,16 @@ class PairingTest(StoredFlows):
     def test_repeated_dates(self):
         idx = pd.DatetimeIndex(["2000-01-01", "2000-01-02", "2000-01-02", "2000-01-03"])
         self.store("same", idx, [1, 2, 2, 3])
-        self.assertEqual(len(server.load_flows("same")), 3)             # an exact repeat is dropped
-        self.store("clash", idx, [1, 2, 5, 3])
+        self.assertEqual(len(engine.load_flows("same")), 3)             # an exact repeat is dropped
         with self.assertRaises(ValueError):
-            server.load_flows("clash")                                  # the same date with two flows is an error
+            self.store("clash", idx, [1, 2, 5, 3])                      # the same date with two flows is an error
 
 
 class SpellLeapYearTest(StoredFlows):
     def test_leap_water_year_is_complete_with_366_days(self):
         idx = pd.date_range("2003-07-01", "2004-06-30")       # holds 29 Feb 2004
         self.store("a", idx, np.zeros(len(idx)))
-        y = server.spells({"base": "a", "gauge": G, "thr": "1"})["scenarios"]["base"]["years"]
+        y = engine.spells({"base": "a", "gauge": G, "thr": "1"})["scenarios"]["base"]["years"]
         self.assertEqual((y["complete"], y["below"], y["longest"]), ([1], [366], [366]))
 
 
@@ -123,7 +116,7 @@ class MonthlyPairingTest(StoredFlows):
         idx = pd.date_range("2000-07-01", "2000-07-04")
         self.store("a", idx, [10, 10, 10, 50])
         self.store("b", idx, [10, 10, 10, np.nan])
-        m = server.curves({"base": "a", "comp": "b", "gauge": G, "kind": "mdfdc", "ymax": "40"})
+        m = engine.curves({"base": "a", "comp": "b", "gauge": G, "kind": "mdfdc", "ymax": "40"})
         jul = m["months"].index(7)
         self.assertEqual(m["diff"][-1][jul], 0.0)             # the 50 ML/d day is not in the comparison, so it leaves the base too
 
@@ -133,7 +126,19 @@ class EwrWithPyEwrTest(StoredFlows):
 
     def run_bk1(self, flow, idx):
         self.store("a", idx, flow, gauge=BK1["gauge"])
-        return server.ewr_years({"base": "a", **BK1})
+        return engine.ewr_years({"base": "a", **BK1})
+
+    def test_ewr_list_does_not_depend_on_what_ran_before(self):
+        # py_ewr edits its own cached parameter sheet while it runs
+        g = BK1["gauge"]
+        before = engine.ewr_list(g)
+        idx = pd.date_range("2000-07-01", "2004-06-30")
+        self.store("a", idx, np.full(len(idx), 9000.0), gauge=g)
+        for e in before:
+            engine.ewr_years({"base": "a", "gauge": g, "ewr": e["code"], "pu": e["pu"]})
+        self.assertEqual(engine.ewr_list(g), before)
+        # BF-FD2 has no target frequency: None, not 0
+        self.assertIsNone(next(e for e in before if e["code"] == "BF-FD2")["target"])
 
     def test_no_event_at_all_does_not_fail_and_is_one_long_gap(self):
         idx = pd.date_range("2000-07-01", "2010-06-30")
@@ -170,7 +175,7 @@ class EwrWithPyEwrTest(StoredFlows):
         days = len(idx) - mid["days"]
         self.assertAlmostEqual(sc["etp"], sum(g["excess"] for g in known) / days, places=4)
         self.assertLessEqual(sc["etp"], 1.0)                  # a share of the observed time
-        ie = server.interevents({"scn": "a", **{k: v for k, v in BK1.items()}})
+        ie = engine.interevents({"scn": "a", **{k: v for k, v in BK1.items()}})
         self.assertNotIn("2000-09-08", [g["start"] for g in ie["exceed"]])
         self.assertEqual(ie["n_censored"], 1)
 
@@ -181,7 +186,7 @@ class EwrWithPyEwrTest(StoredFlows):
         f[idx == "2001-01-15"] = np.nan                       # outside Jun-Nov
         f[idx == "2002-07-15"] = np.nan                       # inside the window of the year starting June 2002
         self.store("a", idx, f, gauge="404216")
-        out = server.ewr_years({"base": "a", "gauge": "404216", "ewr": "F1_b"})
+        out = engine.ewr_years({"base": "a", "gauge": "404216", "ewr": "F1_b"})
         self.assertEqual(out["ystart"], 6)
         y = out["scenarios"]["base"]["years"]
         self.assertEqual(dict(zip(y["wy"], y["complete"])), {2000: 1, 2001: 1, 2002: 0})
@@ -193,7 +198,7 @@ class EwrWithPyEwrTest(StoredFlows):
         pulse = (idx >= "2000-08-01") & (idx <= "2000-08-03") | (idx >= "2000-08-06") & (idx <= "2000-08-08")
         f[pulse] = 30000
         self.store("a", idx, f, gauge="410001")
-        ev = server.ewr_years({"base": "a", "gauge": "410001", "ewr": "W-LF7"})["scenarios"]["base"]["events"]
+        ev = engine.ewr_years({"base": "a", "gauge": "410001", "ewr": "W-LF7"})["scenarios"]["base"]["events"]
         e = [x for x in ev if x["start"] == "2000-08-01"][0]
         self.assertEqual((e["end"], e["days"], e["qual"]), ("2000-08-08", 8, 6))
         self.assertEqual(e["vol"], 6 * 30000 + 2 * 100)        # every day from start to end, the dip days included
@@ -207,10 +212,10 @@ class RegimeTest(StoredFlows):
         f[10:15] = 600                                       # two 5-day runs at or above 540
         f[30:35] = 600
         self.store("a", idx, f, gauge="416001")
-        out = server.regimes({"base": "a", "gauge": "416001"})
+        out = engine.regimes({"base": "a", "gauge": "416001"})
         lowest = {}
         from flow_regime_mappings import regimes_for
-        for e in server.ewr_list("416001"):
+        for e in engine.ewr_list("416001"):
             for rg in regimes_for(e["code"], e["state"]):
                 lowest[rg] = min(lowest.get(rg, np.inf), e["thr"])
         self.assertEqual({r["regime"]: r["thr"] for r in out["regimes"]}, {k: v for k, v in lowest.items() if k != "excluded"})
@@ -223,8 +228,8 @@ class EwrYearPairingTest(unittest.TestCase):
     """ewr_years compares achievement year by year over the water years complete in both scenarios."""
 
     def setUp(self):
-        old = server.ewr_eval
-        self.addCleanup(setattr, server, "ewr_eval", old)
+        old = engine.ewr_eval
+        self.addCleanup(setattr, engine, "ewr_eval", old)
 
     def fake(self, achieved, missing_years=()):
         """Stand-in for ewr_eval: py_ewr's yearly verdicts for water years 2000-2009, and flows with no data in `missing_years`."""
@@ -241,15 +246,15 @@ class EwrYearPairingTest(unittest.TestCase):
     def test_equal_totals_still_show_changed_years(self):
         base = self.fake([1] * 6 + [0] * 4)                     # years 1-6
         comp = self.fake([0] * 2 + [1] * 6 + [0] * 2)           # years 3-8
-        server.ewr_eval = lambda sid, *a: base if sid == "a" else comp
-        p = server.ewr_years({"base": "a", "comp": "b", "gauge": G, "ewr": "X"})["paired"]
+        engine.ewr_eval = lambda sid, *a: base if sid == "a" else comp
+        p = engine.ewr_years({"base": "a", "comp": "b", "gauge": G, "ewr": "X"})["paired"]
         self.assertEqual((p["n"], p["base"], p["comp"], p["gained"], p["lost"]), (10, 6, 6, 2, 2))
 
     def test_incomplete_years_leave_the_denominator(self):
         base = self.fake([1] * 6 + [0] * 4, missing_years=(2008, 2009))   # 6 achieved of 8 complete years
         comp = self.fake([1] * 6 + [0] * 4)
-        server.ewr_eval = lambda sid, *a: base if sid == "a" else comp
-        out = server.ewr_years({"base": "a", "comp": "b", "gauge": G, "ewr": "X"})
+        engine.ewr_eval = lambda sid, *a: base if sid == "a" else comp
+        out = engine.ewr_years({"base": "a", "comp": "b", "gauge": G, "ewr": "X"})
         self.assertEqual(out["scenarios"]["base"]["years"]["complete"], [1] * 8 + [0, 0])
         self.assertEqual(out["paired"]["n"], 8)
         self.assertEqual(out["paired"]["pct_base"], 75.0)       # 6 / 8, not 6 / 10

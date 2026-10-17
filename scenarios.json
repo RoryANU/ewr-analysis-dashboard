@@ -1,0 +1,15 @@
+{
+  "open_in": "demo",
+  "scenarios": [
+    {
+      "name": "Example A (made-up flows)",
+      "format": "Standard time-series",
+      "path": ["data/example_scenarios/dummy_broken_scenario_A.csv", "data/example_scenarios/dummy_goulburn_scenario_A.csv"]
+    },
+    {
+      "name": "Example B, wetter (made-up flows)",
+      "format": "Standard time-series",
+      "path": ["data/example_scenarios/dummy_broken_scenario_B_wetter.csv", "data/example_scenarios/dummy_goulburn_scenario_B_wetter.csv"]
+    }
+  ]
+}

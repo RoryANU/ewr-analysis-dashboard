@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest
+ruff==0.6.9
+mini-racer  # runs src/flow_engine.js in tests/test_flow_engine_parity.py (skipped without it)

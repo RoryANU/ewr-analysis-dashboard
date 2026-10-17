@@ -1,124 +1,25 @@
-"""Local server for the EWR analysis dashboard: serves the page and runs py_ewr on an uploaded scenario.
+"""The EWR calculations behind the dashboard's "Your data" scenarios and flow charts, run at BUILD time (src/build_dashboard.py).
 
-    python3 src/server.py [port]        (default 8792, localhost only; then open http://localhost:8792/)
+Nothing here runs in the browser: the build runs py_ewr on each scenario file (run_scenario), keeps its daily flows in memory
+(register_flows) and precomputes what needs py_ewr (ewr_list, ewr_years, the flow regime thresholds). Everything is written into
+the page, and src/flow_engine.js redoes the rest (heat map, curves, spells, regimes) in the browser from the embedded flows.
+The analysis functions here (heatmap, curves, spells, regimes, ewr_years, interevents) take the same query dicts as the page's
+flow engine and are the reference it is tested against (tests/test_flow_engine_parity.py).
 
-Endpoints (used by ewr_analysis_dashboard.html):
-    GET  /api/ping                     -> {"ok": true}
-    POST /api/run                      body = a model output file in one of the EWR tool's formats (FORMATS below)
-                                       headers X-Format (model_format), X-Filename, X-Scn-Id, X-Merge (1 = add the flows to the scenario stored under X-Scn-Id), X-Gauges (gauge ids to look for in the file)
-                                       -> {"job": id}
-    GET  /api/job?id=<id>              -> {"status": "running" | "done" | "error", ...}
-
-    GET  /api/heatmap?base=<id>[&comp=<id>]&gauge=<g>&xlim=&dmax=&sm=&em=   threshold x duration achievement heat map data
-    GET  /api/ewrs?gauge=<g>                                               EWRs at a gauge handled by flow_handle / lowflow_handle
-    GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
-    GET  /api/ewryears?base=<id>[&comp=<id>]&gauge=<g>&ewr=<code>&pu=<name> one EWR by water year: achievement, events (duration, volume, timing), gaps vs MRIP
-    GET  /api/spells?base=<id>[&comp=<id>]&gauge=<g>&thr=<ML/d>            low-flow spells (consecutive days below thr) by water year
-    GET  /api/regimes?base=<id>[&comp=<id>]&gauge=<g>                     flow regime components (thresholds from the EWR tool) by water year
-    GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymin=][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
-    POST /api/forget?id=<id>           delete a stored scenario
-
-An uploaded scenario's daily flows are kept in .user_scenarios/<id>.csv (repository root) so the flow charts can be drawn later.
-
-For each EWR in the uploaded scenario the job returns the two metrics the tool uses:
+For each EWR in a scenario the run returns the two metrics the tool uses:
     FR  = Frequency / TargetFrequency                    (py_ewr summary results, as in the MDBA outputs)
     ETP = L / TotalDays, where L = sum over the gaps between successful events of max(0, gap days - MRIP days)
           and MRIP days = MaxInterEventYears x 365       (py_ewr successful inter-events)
 """
-import io
-import ipaddress
-import json
 import math
-import re
-import sys
-import threading
-import time
-import traceback
-import uuid
 import warnings
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse, urlsplit
 
 HERE = Path(__file__).parent
-ROOT = HERE.parent                            # repository root: the page is served from here; py_ewr comes from pip (pip install -r requirements.txt)
+ROOT = HERE.parent                            # repository root; py_ewr comes from pip (pip install -r requirements.txt)
 warnings.filterwarnings("ignore")
 
-JOBS = {}
-STORE = ROOT / ".user_scenarios"
 FLOWS = {}          # scenario id -> flow DataFrame (date index, one column per gauge)
-MAX_BYTES = 400 * 1024 * 1024
-
-
-def _authority(hostport, default_port=None):
-    """Parse and normalize a Host-style authority into (host, port), or return None if invalid."""
-    if not hostport:
-        return None
-    try:
-        parsed = urlsplit("//" + hostport)
-        if parsed.username is not None or parsed.password is not None or parsed.path or parsed.query or parsed.fragment:
-            return None
-        host = parsed.hostname
-        port = parsed.port if parsed.port is not None else default_port
-    except ValueError:
-        return None
-    if not host:
-        return None
-    host = host.rstrip(".").lower()
-    try:
-        host = ipaddress.ip_address(host).compressed
-    except ValueError:
-        pass
-    return host, port
-
-
-def _loopback_host(host):
-    if host == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
-
-
-def _state_change_allowed(origin, host, server_address):
-    """Allow absent Origin; otherwise require same authority, including loopback aliases."""
-    bind_host, server_port = server_address[0], server_address[1]
-    try:
-        loopback_bind = bind_host.lower() == "localhost" or ipaddress.ip_address(bind_host).is_loopback
-    except ValueError:
-        loopback_bind = False
-
-    request_authority = _authority(host, server_port)
-    if loopback_bind and host:
-        if request_authority is None or not _loopback_host(request_authority[0]) or request_authority[1] != server_port:
-            return False
-    if not origin:
-        return True
-
-    try:
-        parsed_origin = urlsplit(origin)
-        if (parsed_origin.scheme.lower() not in ("http", "https") or parsed_origin.path
-                or parsed_origin.query or parsed_origin.fragment):
-            return False
-        origin_authority = _authority(parsed_origin.netloc, 80 if parsed_origin.scheme.lower() == "http" else 443)
-    except ValueError:
-        return False
-    if origin_authority is None:
-        return False
-
-    if loopback_bind:
-        origin_host, origin_port = origin_authority
-        if not _loopback_host(origin_host) or origin_port != server_port:
-            return False
-        return request_authority is None or request_authority[1] == origin_port
-
-    if request_authority is None:
-        return False
-    # For proxied/external binds, Host is the authority the browser connected to.
-    request_authority = _authority(host, origin_authority[1])
-    return request_authority == origin_authority
-
 
 # Model output formats, as named in the EWR tool (ScenarioHandler model_format). 'All Bigmod' needs many files, so it is not offered.
 FORMATS = ["Standard time-series", "Bigmod - MDBA", "FIRM - MDBA", "res.csv - MDBA", "Source - NSW (res.csv)", "IQQM - netcdf", "ten thousand year", "Northern connectivity"]
@@ -162,7 +63,8 @@ def load_frames(fmt, path, sub=""):
 
 
 def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series", filename="", sub="", merge=False):
-    """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats)."""
+    """py_ewr on one model output file (only the gauges the review needs); returns (rows, stats). With scn_id, the file's daily flows
+    are kept in memory under that id (register_flows) for the flow charts; merge=True adds them to the flows already kept there."""
     import tempfile
     import numpy as np
     import pandas as pd
@@ -204,14 +106,11 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
         raise ValueError("No gauge in the file could be evaluated: " + "; ".join(f"{g} ({m})" for g, m in skipped.items()))
     flow_gauges = sorted({str(g) for g in df_F.columns} & set(sdl_gauges))
     if scn_id and flow_gauges and isinstance(df_F.index, pd.DatetimeIndex):      # flows are kept for the flow charts (not for 10,000-year runs)
-        STORE.mkdir(exist_ok=True)
         new = df_F[[g for g in df_F.columns if str(g) in flow_gauges]]
-        old_path = STORE / f"{scn_id}.csv"
-        if merge and old_path.exists():                                              # add to an existing scenario: keep its other gauges, replace overlapping ones
-            old = pd.read_csv(old_path, index_col=0, parse_dates=True)
+        if merge and scn_id in FLOWS:                                                # add to an existing scenario: keep its other gauges, replace overlapping ones
+            old = FLOWS[scn_id]
             new = old.drop(columns=[c for c in old.columns if c in new.columns]).join(new, how="outer")
-        new.to_csv(old_path)
-        forget_cached(scn_id)
+        register_flows(scn_id, new)
     sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
     res = sh.get_ewr_results()
@@ -244,39 +143,34 @@ def run_scenario(csv_bytes, sdl_gauges, scn_id=None, fmt="Standard time-series",
     return rows, stats
 
 
-def worker(job_id, body, gauges, scn_id=None, fmt="Standard time-series", filename="", sub="", merge=False):
-    job = JOBS[job_id]
-    try:
-        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge)
-        job["status"] = "done"
-    except Exception as e:                                    # reported to the page
-        job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"
-        traceback.print_exc()
-    job["elapsed"] = round(time.time() - job["t0"], 1)
-
-
-# ---- flow analysis on stored scenario flows -------------------------------------------------------------------------------
-def load_flows(scn_id):
+# ---- flow analysis on a scenario's daily flows ----------------------------------------------------------------------------
+def register_flows(scn_id, df):
+    """Keep a scenario's daily flows (date index, one column per gauge) under scn_id for the analyses below. One row per day: the
+    completeness checks count rows, so a repeated date would pass for a missing one. Exact repeats are dropped; a date given twice
+    with different flows is an error rather than a silent pick."""
     import pandas as pd
-    scn_id = re.sub(r"[^A-Za-z0-9_-]", "", scn_id or "")
+    df = df.copy()
+    df.index = pd.DatetimeIndex(df.index)
+    df.columns = [str(c) for c in df.columns]
+    df = df.sort_index()
+    dup = df.index.duplicated(keep=False)
+    if dup.any():
+        if (df[dup].groupby(level=0).nunique(dropna=False) > 1).any().any():
+            raise ValueError("the time series has dates repeated with different flows")
+        df = df[~df.index.duplicated()]
+    forget_cached(scn_id)
+    FLOWS[scn_id] = df
+    return df
+
+
+def load_flows(scn_id):
     if scn_id not in FLOWS:
-        path = STORE / f"{scn_id}.csv"
-        if not path.exists():
-            raise ValueError("the time series for this scenario is not on the server (re-upload it)")
-        df = pd.read_csv(path, index_col=0, parse_dates=True).sort_index()
-        # one row per day: the completeness checks count rows, so a repeated date would pass for a missing one. Exact repeats are
-        # dropped; a date given twice with different flows is an error rather than a silent pick.
-        dup = df.index.duplicated(keep=False)
-        if dup.any():
-            if (df[dup].groupby(level=0).nunique(dropna=False) > 1).any().any():
-                raise ValueError("the stored time series has dates repeated with different flows (re-upload it)")
-            df = df[~df.index.duplicated()]
-        FLOWS[scn_id] = df
+        raise ValueError(f"no daily flows are kept for scenario {scn_id!r}")
     return FLOWS[scn_id]
 
 
 def forget_cached(scn_id):
-    """Drop everything computed from a scenario's stored flows (after it is replaced, merged or deleted)."""
+    """Drop everything computed from a scenario's flows (before they are replaced)."""
     FLOWS.pop(scn_id, None)
     for k in [k for k in _EVAL_CACHE if k[0] == scn_id]:
         _EVAL_CACHE.pop(k, None)
@@ -380,15 +274,25 @@ def achievement_frequencies(flows, index, thresholds, durations, sm, em, consecu
 _EWR_CACHE = {}
 
 
+def parameter_sheet():
+    """The EWR tool's parameter sheet as read from py_ewr, in a private copy. py_ewr's own get_EWR_table() returns one cached
+    table that its ScenarioHandler later edits in place (get_all_successful_interEvents writes 0 into blank TargetFrequency
+    cells), so reading EWR definitions from it would depend on what ran before."""
+    from py_ewr import data_inputs
+    if "table" not in _EWR_CACHE:
+        read = getattr(data_inputs.get_EWR_table, "__wrapped__", data_inputs.get_EWR_table)     # bypass py_ewr's cache
+        _EWR_CACHE["table"] = read(None).copy(deep=True)
+    return _EWR_CACHE["table"]
+
+
 def ewr_list(gauge):
     """EWRs at a gauge that the EWR tool evaluates with flow_handle (consecutive days) or lowflow_handle (non-consecutive days)."""
     import pandas as pd
     from py_ewr import data_inputs
-    if not _EWR_CACHE:
+    if "handler" not in _EWR_CACHE:
         cfg = data_inputs.get_ewr_calc_config(None)
         _EWR_CACHE["handler"] = {k: h for h in ("flow_handle", "lowflow_handle") for k in cfg.get(h, [])}
-        _EWR_CACHE["table"] = data_inputs.get_EWR_table(None)
-    t = _EWR_CACHE["table"]
+    t = parameter_sheet()
     t = t[t.Gauge.astype(str) == gauge]
     out = []
     mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"))}
@@ -431,11 +335,11 @@ def ewr_eval(scn_id, gauge, code, pu=""):
     key = (scn_id, gauge, code, pu)
     if key in _EVAL_CACHE:
         return _EVAL_CACHE[key]
-    table = data_inputs.get_EWR_table(None)
+    table = parameter_sheet()
     sel = table[(table.Gauge.astype(str) == gauge) & (table.Code == code) & ((table.PlanningUnitName == pu) if pu else True)]
     if sel.empty:
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
-    sel = sel.iloc[:1]
+    sel = sel.iloc[:1].copy()                               # py_ewr gets its own copy to change
     pu = sel.PlanningUnitName.iloc[0]
     num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]
     df_F = daily_series(scn_id, gauge).to_frame(gauge)
@@ -640,13 +544,10 @@ def spells(q):
     return _pair_years(out)
 
 
-def regimes(q):
-    """Flow regime components at a gauge (baseflow, freshes, bankfull, overbank, ...). Each regime's threshold comes from the EWR
-    tool's parameter sheet: the lowest flow threshold among the gauge's flow EWRs in that regime, with EWR codes assigned to regimes
-    by the MDBA pipeline mapping (flow_regime_mappings). For each threshold and complete water year (whole year, not each EWR's
-    timing window): days at or above it, events (runs of consecutive days at or above) starting in the year and the longest one."""
+def regime_components(gauge):
+    """The flow regimes at a gauge, each with its threshold: the lowest flow threshold among the gauge's flow EWRs in that regime
+    (EWR codes assigned to regimes by flow_regime_mappings), lowest first."""
     from flow_regime_mappings import regimes_for
-    gauge = q["gauge"]
     by = {}
     for e in ewr_list(gauge):
         for rg in regimes_for(e["code"], e.get("state") or ""):
@@ -658,6 +559,16 @@ def regimes(q):
         comps.append({"regime": rg, "thr": thr, "codes": sorted({e["code"] for e in es}),
                       "at_thr": sorted({e["code"] for e in es if e["thr"] == thr})})
     comps.sort(key=lambda c: c["thr"])
+    return comps
+
+
+def regimes(q):
+    """Flow regime components at a gauge (baseflow, freshes, bankfull, overbank, ...). Each regime's threshold comes from the EWR
+    tool's parameter sheet: the lowest flow threshold among the gauge's flow EWRs in that regime, with EWR codes assigned to regimes
+    by the MDBA pipeline mapping (flow_regime_mappings). For each threshold and complete water year (whole year, not each EWR's
+    timing window): days at or above it, events (runs of consecutive days at or above) starting in the year and the longest one."""
+    gauge = q["gauge"]
+    comps = regime_components(gauge)
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
     out = {"gauge": gauge, "regimes": comps, "scenarios": {}}
     for k, sid in ids:
@@ -821,92 +732,3 @@ def curves(q):
     raise ValueError(f"unknown curve kind {kind!r}")
 
 
-class Handler(SimpleHTTPRequestHandler):
-    def __init__(self, *a, **k):
-        super().__init__(*a, directory=str(ROOT), **k)
-
-    def _json(self, obj, code=200, headers=None):
-        data = json.dumps(_json_safe(obj), allow_nan=False).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        for name, value in (headers or {}).items():
-            self.send_header(name, value)
-        self.end_headers()
-        self.wfile.write(data)
-
-    def do_GET(self):
-        u = urlparse(self.path)
-        if u.path == "/api/forget":
-            return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
-        if u.path == "/api/ping":
-            return self._json({"ok": True, "formats": FORMATS})
-        if u.path == "/api/job":
-            job = JOBS.get(parse_qs(u.query).get("id", [""])[0])
-            if not job:
-                return self._json({"status": "error", "message": "unknown job"}, 404)
-            out = {k: v for k, v in job.items() if k != "t0"}
-            if job["status"] == "running":
-                out["elapsed"] = round(time.time() - job["t0"], 1)
-            return self._json(out)
-        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents", "/api/ewryears", "/api/spells", "/api/regimes"):
-            q = {k: v[0] for k, v in parse_qs(u.query).items()}
-            try:
-                if u.path == "/api/interevents":
-                    return self._json(interevents(q))
-                if u.path == "/api/ewrs":
-                    return self._json({"ewrs": ewr_list(q.get("gauge", ""))})
-                if u.path == "/api/ewryears":
-                    return self._json(ewr_years(q))
-                if u.path == "/api/spells":
-                    return self._json(spells(q))
-                if u.path == "/api/regimes":
-                    return self._json(regimes(q))
-                return self._json(heatmap(q) if u.path == "/api/heatmap" else curves(q))
-            except Exception as e:
-                traceback.print_exc()
-                return self._json({"error": f"{type(e).__name__}: {e}"}, 400)
-        return super().do_GET()
-
-    def do_POST(self):
-        u = urlparse(self.path)
-        if u.path == "/api/forget":
-            if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
-                return self._json({"message": "origin or host not allowed"}, 403)
-            sid = re.sub(r"[^A-Za-z0-9_-]", "", parse_qs(u.query).get("id", [""])[0])
-            forget_cached(sid)
-            (STORE / f"{sid}.csv").unlink(missing_ok=True)
-            return self._json({"ok": True})
-        if u.path != "/api/run":
-            return self._json({"message": "not found"}, 404)
-        if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
-            return self._json({"message": "origin or host not allowed"}, 403)
-        n = int(self.headers.get("Content-Length") or 0)
-        if not 0 < n <= MAX_BYTES:
-            return self._json({"message": "file is empty or too large"}, 400)
-        body = self.rfile.read(n)
-        gauges = [g for g in re.split(r"[,\s]+", self.headers.get("X-Gauges", "")) if g]
-        if not gauges:
-            return self._json({"message": "no gauges given"}, 400)
-        jid = uuid.uuid4().hex[:10]
-        JOBS[jid] = {"status": "running", "t0": time.time()}
-        threading.Thread(target=worker, args=(jid, body, gauges, re.sub(r"[^A-Za-z0-9_-]", "", self.headers.get("X-Scn-Id", "")) or None,
-                                           self.headers.get("X-Format", "Standard time-series"), self.headers.get("X-Filename", ""), self.headers.get("X-Subscenario", ""), self.headers.get("X-Merge") == "1"), daemon=True).start()
-        self._json({"job": jid})
-
-    def end_headers(self):
-        if not self.path.startswith("/api/"):
-            self.send_header("Cache-Control", "no-cache")
-        super().end_headers()
-
-    def log_message(self, fmt, *args):
-        if "/api/job" not in str(args[0] if args else ""):
-            super().log_message(fmt, *args)
-
-
-if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8792
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"EWR analysis tool on http://localhost:{port}/ewr_analysis_dashboard.html")
-    srv.serve_forever()
