@@ -237,7 +237,10 @@ def run_scenario(
     sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
     res = sh.get_ewr_results()
-    inter = sh.get_all_successful_interEvents()
+    # py_ewr's inter-event summary fails (KeyError 'Gauge') when no EWR in the file has any event at all, e.g. a completely dry
+    # scenario: with no events there are no gaps between successful events, so use an empty table (as ewr_eval does for one EWR).
+    has_events = any(lst for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
+    inter = sh.get_all_successful_interEvents() if has_events else pd.DataFrame()
     res = res.copy()
     freq = pd.to_numeric(res["Frequency"], errors="coerce")
     target = pd.to_numeric(res["TargetFrequency"], errors="coerce")
