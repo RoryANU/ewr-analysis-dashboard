@@ -13,7 +13,7 @@ Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/ewrs?gauge=<g>                                               EWRs at a gauge handled by flow_handle / lowflow_handle
     GET  /api/interevents?scn=<id>&gauge=<g>&ewr=<code>&pu=<name>          gaps between successful events longer than the EWR's max inter-event period
     GET  /api/curves?base=<id>[&comp=<id>]&gauge=<g>&kind=hydro|fdc|dfdc|mdfdc[&thr=400,2000][&ymin=][&ymax=]   hydrograph, flow duration curve, differential flow duration curve, monthly differential flow duration
-    GET  /api/forget?id=<id>           delete a stored scenario
+    POST /api/forget?id=<id>           delete a stored scenario
 
 An uploaded scenario's daily flows are kept in .user_scenarios/<id>.csv (repository root) so the flow charts can be drawn later.
 
@@ -23,6 +23,7 @@ For each EWR in the uploaded scenario the job returns the two metrics the tool u
           and MRIP days = MaxInterEventYears x 365       (py_ewr successful inter-events)
 """
 import io
+import ipaddress
 import json
 import math
 import re
@@ -34,7 +35,7 @@ import uuid
 import warnings
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlsplit
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent                            # repository root: the page is served from here; py_ewr comes from pip (pip install -r requirements.txt)
@@ -44,6 +45,76 @@ JOBS = {}
 STORE = ROOT / ".user_scenarios"
 FLOWS = {}          # scenario id -> flow DataFrame (date index, one column per gauge)
 MAX_BYTES = 400 * 1024 * 1024
+
+
+def _authority(hostport, default_port=None):
+    """Parse and normalize a Host-style authority into (host, port), or return None if invalid."""
+    if not hostport:
+        return None
+    try:
+        parsed = urlsplit("//" + hostport)
+        if parsed.username is not None or parsed.password is not None or parsed.path or parsed.query or parsed.fragment:
+            return None
+        host = parsed.hostname
+        port = parsed.port if parsed.port is not None else default_port
+    except ValueError:
+        return None
+    if not host:
+        return None
+    host = host.rstrip(".").lower()
+    try:
+        host = ipaddress.ip_address(host).compressed
+    except ValueError:
+        pass
+    return host, port
+
+
+def _loopback_host(host):
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _state_change_allowed(origin, host, server_address):
+    """Allow absent Origin; otherwise require same authority, including loopback aliases."""
+    bind_host, server_port = server_address[0], server_address[1]
+    try:
+        loopback_bind = bind_host.lower() == "localhost" or ipaddress.ip_address(bind_host).is_loopback
+    except ValueError:
+        loopback_bind = False
+
+    request_authority = _authority(host, server_port)
+    if loopback_bind and host:
+        if request_authority is None or not _loopback_host(request_authority[0]) or request_authority[1] != server_port:
+            return False
+    if not origin:
+        return True
+
+    try:
+        parsed_origin = urlsplit(origin)
+        if (parsed_origin.scheme.lower() not in ("http", "https") or parsed_origin.path
+                or parsed_origin.query or parsed_origin.fragment):
+            return False
+        origin_authority = _authority(parsed_origin.netloc, 80 if parsed_origin.scheme.lower() == "http" else 443)
+    except ValueError:
+        return False
+    if origin_authority is None:
+        return False
+
+    if loopback_bind:
+        origin_host, origin_port = origin_authority
+        if not _loopback_host(origin_host) or origin_port != server_port:
+            return False
+        return request_authority is None or request_authority[1] == origin_port
+
+    if request_authority is None:
+        return False
+    # For proxied/external binds, Host is the authority the browser connected to.
+    request_authority = _authority(host, origin_authority[1])
+    return request_authority == origin_authority
 
 
 # Model output formats, as named in the EWR tool (ScenarioHandler model_format). 'All Bigmod' needs many files, so it is not offered.
@@ -207,6 +278,24 @@ def nice_ceiling(x):
     return int(math.ceil(x / k) * k)
 
 
+def _json_safe(obj):
+    """Recursively replace non-finite floats (NaN, +-inf) with None so the response is strict JSON (null in the browser)."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
+
+
+def _window_days(wy_label, sm, em):
+    """Calendar days of the timing window (months sm..em, may wrap the year end) inside water year `wy_label` (1 Jul - 30 Jun)."""
+    import pandas as pd
+    m = pd.date_range(f"{wy_label - 1}-07-01", f"{wy_label}-06-30").month.to_numpy()
+    return int(((m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)).sum())
+
+
 def achievement_frequencies(flows, index, thresholds, durations, sm, em, consecutive=False):
     """% of water years in which each threshold is exceeded for at least `duration` days within the timing window.
     flows: (days, scenarios). Same result as the numba reference (non-consecutive days): the d-th largest in-window flow of a year
@@ -220,29 +309,44 @@ def achievement_frequencies(flows, index, thresholds, durations, sm, em, consecu
     n_years = year_lookup.max() + 1
     mask = (months >= sm) & (months <= em) if sm <= em else (months >= sm) | (months <= em)
     fl = np.where(mask[:, None] & ~np.isnan(flows), flows, -np.inf)
-    window_len = int(np.ceil(mask.sum() / n_years)) + 2
     bounds = np.searchsorted(year_lookup, np.arange(n_years + 1))
+    # Denominator: only water years whose timing window is fully observed count. A water year is complete for a scenario when
+    # every calendar day of the window (Jul-Jun water year, as above) is in the index with a non-NaN flow. Partial first/last
+    # years and years with no (or incomplete) data are excluded rather than scored as failures; a complete year that simply
+    # stays below the threshold is still an unsuccessful year.
+    # All scenarios use the SAME years: the intersection of every scenario's complete years, so base/comparison rates (and
+    # their difference) are paired over one year set. That shared count is returned as the number of years. No shared complete
+    # year -> NaN. (No separate cap on the duration is needed: days outside the window are -inf, so a duration longer than
+    # the window's days in a year can never be met, in either mode.)
+    expected = np.array([_window_days(wl, sm, em) for wl in np.unique(wy)])
+    complete = np.stack([(np.bincount(year_lookup, weights=mask & ~np.isnan(flows[:, s]), minlength=n_years) == expected) & (expected > 0)
+                         for s in range(flows.shape[1])])
+    counted = complete.all(axis=0)
+    n_counted = int(counted.sum())
     out = np.zeros((flows.shape[1], len(thresholds), len(durations)), dtype=np.float32)
     for s in range(flows.shape[1]):
         annual = np.full((len(durations), n_years), -np.inf)
-        for y in range(n_years):
+        for y in np.flatnonzero(counted):
             x = fl[bounds[y]:bounds[y + 1], s]
             if consecutive:
                 m, cur = x.copy(), 1                       # m[i] = min(x[i : i + cur])
                 for k, d in enumerate(durations):
                     while cur < d and len(m) > 1:
                         m, cur = np.minimum(m[:-1], x[cur:]), cur + 1
-                    if d <= window_len and d <= len(x) and cur == d and len(m):
+                    if d <= len(x) and cur == d and len(m):
                         annual[k, y] = m.max()
             else:
                 vals = np.sort(x)[::-1]
                 for k, d in enumerate(durations):
-                    if d <= window_len and d <= len(vals):
+                    if d <= len(vals):
                         annual[k, y] = vals[d - 1]
         for k in range(len(durations)):
-            n_unsuccessful = np.searchsorted(np.sort(annual[k]), thresholds, side="left")
-            out[s, :, k] = (n_years - n_unsuccessful) * 100.0 / n_years
-    return out, int(n_years)
+            if not n_counted:
+                out[s, :, k] = np.nan
+                continue
+            n_unsuccessful = np.searchsorted(np.sort(annual[k][counted]), thresholds, side="left")
+            out[s, :, k] = (n_counted - n_unsuccessful) * 100.0 / n_counted
+    return out, n_counted
 
 
 _EWR_CACHE = {}
@@ -339,7 +443,9 @@ def heatmap(q):
         out["comp"], out["diff"] = z(af[1]), z(af[1] - af[0])
     if q.get("mthr") and q.get("mdur"):               # exact % of years at one (threshold, duration), e.g. an EWR's own requirement
         one, _ = achievement_frequencies(df.to_numpy(dtype=float), df.index, np.array([float(q["mthr"])]), np.array([int(float(q["mdur"]))]), sm, em, consec)
-        out["mark"] = [round(float(v), 3) for v in one[:, 0, 0]]
+        mark = [round(float(v), 3) for v in one[:, 0, 0]]
+        if all(math.isfinite(v) for v in mark):       # no complete shared year -> no mark (the page then shows no EWR table)
+            out["mark"] = mark
     out["consecutive"] = consec
     return out
 
@@ -435,17 +541,21 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(ROOT), **k)
 
-    def _json(self, obj, code=200):
-        data = json.dumps(obj).encode()
+    def _json(self, obj, code=200, headers=None):
+        data = json.dumps(_json_safe(obj), allow_nan=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/api/forget":
+            return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
         if u.path == "/api/ping":
             return self._json({"ok": True, "formats": FORMATS})
         if u.path == "/api/job":
@@ -456,14 +566,9 @@ class Handler(SimpleHTTPRequestHandler):
             if job["status"] == "running":
                 out["elapsed"] = round(time.time() - job["t0"], 1)
             return self._json(out)
-        if u.path in ("/api/heatmap", "/api/curves", "/api/forget", "/api/ewrs", "/api/interevents"):
+        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents"):
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             try:
-                if u.path == "/api/forget":
-                    sid = re.sub(r"[^A-Za-z0-9_-]", "", q.get("id", ""))
-                    FLOWS.pop(sid, None)
-                    (STORE / f"{sid}.csv").unlink(missing_ok=True)
-                    return self._json({"ok": True})
                 if u.path == "/api/interevents":
                     return self._json(interevents(q))
                 if u.path == "/api/ewrs":
@@ -475,8 +580,18 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/run":
+        u = urlparse(self.path)
+        if u.path == "/api/forget":
+            if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
+                return self._json({"message": "origin or host not allowed"}, 403)
+            sid = re.sub(r"[^A-Za-z0-9_-]", "", parse_qs(u.query).get("id", [""])[0])
+            FLOWS.pop(sid, None)
+            (STORE / f"{sid}.csv").unlink(missing_ok=True)
+            return self._json({"ok": True})
+        if u.path != "/api/run":
             return self._json({"message": "not found"}, 404)
+        if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), self.server.server_address):
+            return self._json({"message": "origin or host not allowed"}, 403)
         n = int(self.headers.get("Content-Length") or 0)
         if not 0 < n <= MAX_BYTES:
             return self._json({"message": "file is empty or too large"}, 400)

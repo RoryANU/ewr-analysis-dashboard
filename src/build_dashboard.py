@@ -29,6 +29,18 @@ PROXY_LOC = {"A4261002": ("A4260527", 0.012, -0.012)}
 PROXY_NAME = {"A4261002": "Barrages near the Murray Mouth (total barrage flow, virtual gauge; position approximate)"}
 KEY = ["PlanningUnitName", "SWSDLName", "Gauge", "EWR"]
 
+
+def detect_variant_conflicts(df, key_columns, value_column):
+    """Return groups keyed by key_columns that contain multiple distinct non-null metric values."""
+    conflicts = []
+    for key, group in df.groupby(key_columns, dropna=False, sort=False):
+        values = sorted(group[value_column].dropna().unique().tolist())
+        if len(values) > 1:
+            key = key if isinstance(key, tuple) else (key,)
+            conflicts.append({**dict(zip(key_columns, key)), "values": values})
+    return conflicts
+
+
 fr = pd.read_csv(ROOT / "data/results/frequency_ratio.csv", dtype={"Gauge": str},
                  usecols=KEY + ["EcoObj", "Target", "FlowRegime", "Policy", "ClimateModel", "FR"])
 et = pd.read_csv(ROOT / "data/results/etp.csv", dtype={"Gauge": str},
@@ -39,6 +51,16 @@ for d in (fr, et):
     d["Target"] = d.Target.fillna("Unclassified").replace({"Other species": "Other Species"})
     d["scn"] = d.Policy.map(POLICIES.index) * len(CLIMATES) + d.ClimateModel.map(CLIMATES.index)
     assert d.scn.notna().all()
+
+# Report source variants without changing the existing aggregation or writing an additional artifact.
+variant_keys = KEY + ["Policy", "ClimateModel"]
+for metric, data in (("FR", fr), ("ETP", et)):
+    conflicts = detect_variant_conflicts(data, variant_keys, metric)
+    print(f"{metric}: {len(conflicts)} variant conflict groups; aggregation remains the existing mean.")
+    for conflict in conflicts[:10]:
+        key = {name: conflict[name] for name in KEY}
+        scenario = (conflict["Policy"], conflict["ClimateModel"])
+        print(f"  key={key}, scenario={scenario}, distinct {metric} values={conflict['values']}")
 
 # one row per (planning unit, SDL unit, gauge, EWR): both files repeat each EWR once per ecological objective
 rows = {}

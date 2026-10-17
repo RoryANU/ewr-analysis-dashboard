@@ -1,9 +1,11 @@
 """Flow-regime mapping used by the MDBA's EWR_analysis_pipeline (confirmed source of truth for this dashboard).
 
-Copied verbatim from `0.shared mappings and paths.ipynb` (cell defining `flow_mappings`) and the matching rule from
-`3.post_processing/10.frequency analysis.ipynb` (`map_and_explode_flow_regime`):
+Copied from `0.shared mappings and paths.ipynb` (cell defining `flow_mappings`) and the matching rule from
+`3.post_processing/10.frequency analysis.ipynb` (`map_and_explode_flow_regime`), with overlapping keys resolved
+by specificity:
   * the EWR's State (parameter sheet) picks the sub-dictionary;
-  * keys are tried in dictionary order and the FIRST key that is a substring of the EWR Code wins (`key in code`);
+  * the longest key that is a substring of the EWR Code wins (`key in code`);
+  * this specificity rule deliberately diverges from the upstream first-match rule to resolve overlapping keys correctly;
   * a list value means the EWR belongs to every listed regime (the pipeline explodes it into one row per regime);
   * no key matching -> no regime (the pipeline leaves FlowRegime empty).
 https://github.com/MDBAuth/EWR_analysis_pipeline
@@ -105,7 +107,9 @@ flow_mappings = {
 
 def regimes_for(code, state):
     """Pipeline flow regimes (list of names) for an EWR code in a state; [] when the pipeline gives none."""
-    for key, val in flow_mappings.get(state, {}).items():
-        if key in code:
-            return list(val) if isinstance(val, list) else [val]
-    return []
+    matches = ((key, val) for key, val in flow_mappings.get(state, {}).items() if key in code)
+    match = max(matches, key=lambda item: len(item[0]), default=None)
+    if match is None:
+        return []
+    val = match[1]
+    return list(val) if isinstance(val, list) else [val]
