@@ -201,7 +201,35 @@ class TestRunScenario:
         dry = pd.DataFrame({"Date": idx.strftime("%Y-%m-%d"), "405201_flow": 0.0})
         rows, stats = server.run_scenario(dry.to_csv(index=False).encode(), ["405201"], None, "Standard time-series", "dry.csv")
         assert stats["ewr_rows"] == len(rows) == 6
-        assert [(r["ewr"], r["fr"], r["et"]) for r in rows] == [(e, 0.0, 0.0) for e in ("BF1", "BK1", "F1", "F2", "F3", "OB1")]
+        assert [(r["ewr"], r["fr"]) for r in rows] == [(e, 0.0) for e in ("BF1", "BK1", "F1", "F2", "F3", "OB1")]
+
+    def test_only_events_shorter_than_min_spell_are_evaluated_not_a_crash(self):
+        """409003: every EWR needs a spell of at least 3 days, so a single one-day spike gives events but no successful event."""
+        idx = pd.date_range("2000-07-01", "2010-06-30")
+        f = np.zeros(len(idx))
+        f[400] = 1e7
+        df = pd.DataFrame({"Date": idx.strftime("%Y-%m-%d"), "409003_flow": f})
+        rows, stats = server.run_scenario(df.to_csv(index=False).encode(), ["409003"], None, "Standard time-series", "spike.csv")
+        assert stats["ewr_rows"] == len(rows) == 2 and stats["skipped"] == {}
+        assert all(r["fr"] == 0.0 for r in rows)
+
+    def test_empty_successful_event_summary_is_tolerated(self, monkeypatch):
+        """If py_ewr's successful-inter-event summary fails on an empty ledger, run_scenario carries on with no gaps; other errors still surface."""
+        from py_ewr.scenario_handling import ScenarioHandler as SH
+
+        def empty(self):
+            raise KeyError("Gauge")
+
+        monkeypatch.setattr(SH, "get_all_successful_interEvents", empty)
+        rows, _ = server.run_scenario(GOULBURN_A.read_bytes(), ["405201"], None, "Standard time-series", "a.csv")
+        assert len(rows) == 6 and all(r["et"] == 0.0 for r in rows)  # no gaps recorded
+
+        def other(self):
+            raise KeyError("Something else")
+
+        monkeypatch.setattr(SH, "get_all_successful_interEvents", other)
+        with pytest.raises(KeyError, match="Something else"):
+            server.run_scenario(GOULBURN_A.read_bytes(), ["405201"], None, "Standard time-series", "a.csv")
 
     @pytest.mark.xfail(
         strict=True,
@@ -346,7 +374,7 @@ class TestEwrEvalAgainstPyEwr:
         assert [e for e in sc["events"]] == [
             {"wy": 2002, "start": "2002-09-10", "end": "2002-09-15", "days": 6, "qual": 6, "vol": 60000.0, "peak": 10000.0, "ok": True}
         ]
-        y = dict(zip(sc["years"]["wy"], sc["years"]["achieved"]))
+        y = dict(zip(sc["years"]["wy"], sc["years"]["achieved"], strict=False))
         assert sum(y.values()) == 1 and y[2002] == 1
         assert sc["years"]["complete"] == [1] * 10
         # gaps: record start to the event (2000-07-01 .. 2002-09-09), then event end to record end

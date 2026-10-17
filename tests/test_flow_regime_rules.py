@@ -70,7 +70,7 @@ class TestMappingTable:
         test_flow_regime_mappings); a new tie in the data would fail here."""
         d = pd.read_csv(ROOT / "data/results/frequency_ratio.csv", dtype=str, usecols=["EWR", "State"]).drop_duplicates()
         ties = set()
-        for code, state in zip(d.EWR, d.State):
+        for code, state in zip(d.EWR, d.State, strict=False):
             hits = [(k, str(v)) for k, v in flow_mappings.get(state, {}).items() if k in code]
             if not hits:
                 continue

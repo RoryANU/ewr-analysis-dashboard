@@ -453,7 +453,7 @@ class TestCurves:
         assert out["base"][0] == 10.0  # flow exceeded 0% of the time = the maximum
         assert out["base"][-1] == 1.0  # exceeded 100% of the time = the minimum
         assert out["base"][200] == 5.5  # median of 1..10
-        assert all(a >= b for a, b in zip(out["base"], out["base"][1:]))  # non-increasing with exceedance
+        assert all(a >= b for a, b in zip(out["base"], out["base"][1:], strict=False))  # non-increasing with exceedance
         # marks: % of days at or above the flow: >= 5 -> 6 of 10 days; >= 10 -> 1 of 10; >= 11 -> 0
         assert out["marks"] == [{"thr": 5.0, "base": 60.0}, {"thr": 10.0, "base": 10.0}, {"thr": 11.0, "base": 0.0}]
         assert "comp" not in out and "diff" not in out
@@ -489,11 +489,13 @@ class TestCurves:
         out = server.curves({"base": "a", "comp": "b", "gauge": G, "kind": "dfdc", "thr": "5"})
         assert len(out["x"]) == len(out["base"]) == len(out["comp"]) == len(out["diff"]) == 500
         assert out["x"][0] == 1.0 and out["x"][-1] == 11.0  # smallest positive flow to the largest flow of either scenario
-        assert all(a < b for a, b in zip(out["x"], out["x"][1:]))  # strictly increasing log axis
+        assert all(a < b for a, b in zip(out["x"], out["x"][1:], strict=False))  # strictly increasing log axis
         assert out["marks"] == [{"thr": 5.0, "base": 60.0, "comp": 70.0}]
         assert out["base"][0] == 100.0 and out["comp"][0] == 100.0 and out["comp"][-1] == 100 / 10  # at 11: only the comparison's maximum (11) reaches it
         assert out["base"][-1] == 0.0
-        assert all(abs(d - (c - b)) < 1.5e-3 for d, c, b in zip(out["diff"], out["comp"], out["base"]))  # rounding of the three series to 3 places
+        assert all(
+            abs(d - (c - b)) < 1.5e-3 for d, c, b in zip(out["diff"], out["comp"], out["base"], strict=False)
+        )  # rounding of the three series to 3 places
         assert all(-100.0 <= v <= 100.0 for v in out["diff"])
 
     def test_dfdc_needs_two_scenarios_and_a_positive_flow(self, store):
@@ -547,7 +549,11 @@ class TestCurves:
         assert out["diff"][i15] == [100.0] * 12  # only the comparison reaches 15
         assert out["base"][i15] == [0.0] * 12 and out["comp"][i15] == [100.0] * 12
         # difference = comparison - base at every cell
-        assert all(d == pytest.approx(c - b, abs=1e-9) for dr, cr, br in zip(out["diff"], out["comp"], out["base"]) for d, c, b in zip(dr, cr, br))
+        assert all(
+            d == pytest.approx(c - b, abs=1e-9)
+            for dr, cr, br in zip(out["diff"], out["comp"], out["base"], strict=False)
+            for d, c, b in zip(dr, cr, br, strict=False)
+        )
 
     def test_mdfdc_needs_two_scenarios_and_a_positive_range(self, store):
         idx = pd.date_range("2000-07-01", "2001-06-30")

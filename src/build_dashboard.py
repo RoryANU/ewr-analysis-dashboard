@@ -54,7 +54,7 @@ def detect_variant_conflicts(df: pd.DataFrame, key_columns: list[str], value_col
         values = sorted(group[value_column].dropna().unique().tolist())
         if len(values) > 1:
             key = key if isinstance(key, tuple) else (key,)
-            conflicts.append({**dict(zip(key_columns, key)), "values": values})
+            conflicts.append({**dict(zip(key_columns, key, strict=True)), "values": values})
     return conflicts
 
 

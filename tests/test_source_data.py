@@ -48,7 +48,7 @@ class TestFrequencyRatioFile:
 
     def test_scenarios_are_known_and_the_expected_grid_cells_are_present(self, fr):
         assert set(fr.Policy) <= set(bd.POLICIES) and set(fr.ClimateModel) <= set(bd.CLIMATES)
-        cells = {bd.scenario_index(p, c) for p, c in zip(fr.Policy, fr.ClimateModel)}
+        cells = {bd.scenario_index(p, c) for p, c in zip(fr.Policy, fr.ClimateModel, strict=False)}
         assert len(cells) == 10  # the review ran 10 of the 28 policy x climate combinations
         assert bd.scenario_index("Pre Basin Plan", "Historical Climate") in cells
 
@@ -70,20 +70,20 @@ class TestEtpFile:
         """L (days beyond the maximum inter-event period) cannot exceed the 47,117-day record, so ETP > 1 is impossible.
         The MDBA pipeline output has 340 such rows at gauges 422001 and 422025 (LF1_P, OB2, OB3); pinned here, reported in the PR."""
         over = et[et.ETP > 1]
-        assert set(zip(over.Gauge, over.EWR)) == {("422001", "LF1_P"), ("422001", "OB2"), ("422001", "OB3"), ("422025", "LF1_P")}
+        assert set(zip(over.Gauge, over.EWR, strict=False)) == {("422001", "LF1_P"), ("422001", "OB2"), ("422001", "OB3"), ("422025", "LF1_P")}
         assert len(over) == 340
         assert over.ETP.max() < 1.5
         assert (et[~et.index.isin(over.index)].ETP <= 1).all()
 
     def test_scenarios_are_known(self, et):
         assert set(et.Policy) <= set(bd.POLICIES) and set(et.ClimateModel) <= set(bd.CLIMATES)
-        assert len({bd.scenario_index(p, c) for p, c in zip(et.Policy, et.ClimateModel)}) == 10
+        assert len({bd.scenario_index(p, c) for p, c in zip(et.Policy, et.ClimateModel, strict=False)}) == 10
 
 
 class TestBothFiles:
     def test_union_of_ewr_keys_is_the_dashboard_row_count(self, fr, et):
-        a = set(zip(fr.PlanningUnitName, fr.SWSDLName, fr.Gauge.replace(bd.REKEY), fr.EWR))
-        b = set(zip(et.PlanningUnitName, et.SWSDLName, et.Gauge.replace(bd.REKEY), et.EWR))
+        a = set(zip(fr.PlanningUnitName, fr.SWSDLName, fr.Gauge.replace(bd.REKEY), fr.EWR, strict=False))
+        b = set(zip(et.PlanningUnitName, et.SWSDLName, et.Gauge.replace(bd.REKEY), et.EWR, strict=False))
         assert len(a | b) == 2277  # the number of rows in the dashboard: an EWR present in only one file still gets a row
         assert a - b and b - a  # ... and each file has EWRs the other lacks (their other metric is null in the page)
 

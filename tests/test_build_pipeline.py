@@ -132,7 +132,7 @@ class TestLoadResults:
 
     def test_theme_tidying(self):
         fr, _ = bd.load_results(MINI)
-        by_obj = dict(zip(fr.EcoObj, fr.Target))
+        by_obj = dict(zip(fr.EcoObj, fr.Target, strict=False))
         assert by_obj["SA-W1"] == "Unclassified"  # missing Target
         assert by_obj["N-OT1"] == "Other Species"  # spelling variant folded
         assert by_obj["V-NF1"] == "Native Fish"

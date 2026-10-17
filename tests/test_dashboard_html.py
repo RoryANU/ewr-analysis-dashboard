@@ -194,7 +194,7 @@ def expected() -> dict[str, dict[tuple[str, str, str, str], dict[int, float]]]:
     for name, d, col in (("fr", fr, "FR"), ("et", et, "ETP")):
         d = d.copy()
         d["Gauge"] = d["Gauge"].replace(bd.REKEY)
-        d["scn"] = [bd.scenario_index(p, c) for p, c in zip(d.Policy, d.ClimateModel)]
+        d["scn"] = [bd.scenario_index(p, c) for p, c in zip(d.Policy, d.ClimateModel, strict=False)]
         piv = d.pivot_table(index=bd.KEY, columns="scn", values=col, aggfunc="mean")
         cells: dict[tuple, dict[int, float]] = defaultdict(dict)
         for key, row in piv.iterrows():
@@ -235,7 +235,7 @@ class TestRowsMatchSourceData:
         for d in (fr, et):
             d = d.dropna(subset=["EcoObj"]).copy()
             d["Gauge"] = d["Gauge"].replace(bd.REKEY)
-            for k, o in zip(zip(d.PlanningUnitName, d.SWSDLName, d.Gauge, d.EWR), d.EcoObj):
+            for k, o in zip(zip(d.PlanningUnitName, d.SWSDLName, d.Gauge, d.EWR, strict=False), d.EcoObj, strict=False):
                 objs[k].add(o)
         assert {r["key"]: set(r["objs"]) for r in decoded} == {k: v for k, v in objs.items()} | {r["key"]: set() for r in decoded if r["key"] not in objs}
 
@@ -249,7 +249,7 @@ def in_australia(lon: float, lat: float) -> bool:
 
 def ring_area(ring: list[list[float]]) -> float:
     """Shoelace area (degrees squared); non-zero for a real polygon."""
-    return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(ring, ring[1:]))) / 2
+    return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(ring, ring[1:], strict=False))) / 2
 
 
 class TestMapLayers:

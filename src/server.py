@@ -238,9 +238,15 @@ def run_scenario(
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
     res = sh.get_ewr_results()
     # py_ewr's inter-event summary fails (KeyError 'Gauge') when no EWR in the file has any event at all, e.g. a completely dry
-    # scenario: with no events there are no gaps between successful events, so use an empty table (as ewr_eval does for one EWR).
+    # scenario (or none has a successful event): with no successful events there are no gaps, so use an empty table (as ewr_eval does).
     has_events = any(lst for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
-    inter = sh.get_all_successful_interEvents() if has_events else pd.DataFrame()
+    inter = pd.DataFrame()
+    if has_events:
+        try:
+            inter = sh.get_all_successful_interEvents()
+        except KeyError as e:  # events exist but none succeeded (all shorter than MinSpell): py_ewr's summary is empty and fails the same way
+            if e.args != ("Gauge",):
+                raise
     res = res.copy()
     freq = pd.to_numeric(res["Frequency"], errors="coerce")
     target = pd.to_numeric(res["TargetFrequency"], errors="coerce")
@@ -254,7 +260,7 @@ def run_scenario(
         for k, g in inter.groupby(["Gauge", "PlanningUnit", "Code"]):
             gaps[k] = g.interEventLength.dropna().to_numpy()
     etp: list[float | None] = []
-    for k, m, d in zip(zip(res.Gauge, res.PlanningUnit, res.Code), mrip, days):
+    for k, m, d in zip(zip(res.Gauge, res.PlanningUnit, res.Code, strict=True), mrip, days, strict=False):
         if not (m > 0 and d > 0):
             etp.append(None)
             continue
@@ -445,12 +451,12 @@ def ewr_list(gauge: str) -> list[dict[str, Any]]:
     t = _EWR_CACHE["table"]
     t = t[t.Gauge.astype(str) == gauge]
     out = []
-    mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"))}
+    mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"), strict=True)}
     for r in t.itertuples():
         multi = isinstance(r.Multigauge, str) and r.Multigauge.strip()
         maxint = mi.get((r.Code, r.PlanningUnitName))
         h = _EWR_CACHE["handler"].get(f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}")
-        num = lambda v: pd.to_numeric(v, errors="coerce")
+        num = lambda v: pd.to_numeric(v, errors="coerce")  # noqa: E731
         thr, dur, sm, em, tgt = num(r.FlowThresholdMin), num(r.Duration), num(r.StartMonth), num(r.EndMonth), num(r.TargetFrequency)
         if h is None or multi or pd.isna(thr) or pd.isna(dur) or pd.isna(sm) or pd.isna(em):
             continue
@@ -505,7 +511,7 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
     sel = sel.iloc[:1]
     pu = sel.PlanningUnitName.iloc[0]
-    num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]
+    num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]  # noqa: E731
     df_F = daily_series(scn_id, gauge).to_frame(gauge)
     df_F.index.name = "Date"
     df_L = pd.DataFrame(index=df_F.index)
@@ -513,7 +519,7 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
     sh = ScenarioHandler("scenario.csv", "Standard time-series")
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": {gauge: results}}, {"scenario": {gauge: events}}, df_F, df_L
     cols = ["startDate", "endDate", "interEventLength", "eventDuration"]
-    pick = lambda d: d[(d.Gauge == gauge) & (d.Code == code) & (d.PlanningUnit == pu)].copy() if len(d) and "Gauge" in d else pd.DataFrame(columns=cols)
+    pick = lambda d: d[(d.Gauge == gauge) & (d.Code == code) & (d.PlanningUnit == pu)].copy() if len(d) and "Gauge" in d else pd.DataFrame(columns=cols)  # noqa: E731
     if any(lst for lst in events[pu][code].values()):
         inter = pick(sh.get_all_successful_interEvents())
         succ = pick(sh.get_all_successful_events())
@@ -536,7 +542,7 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
         "em": int(num("EndMonth")),
         "target": None if pd.isna(num("TargetFrequency")) else float(num("TargetFrequency")),
     }
-    opt = lambda c, f: None if pd.isna(num(c)) else f(num(c))
+    opt = lambda c, f: None if pd.isna(num(c)) else f(num(c))  # noqa: E731
     out.update(
         {
             "min_spell": opt("MinSpell", int),
@@ -564,10 +570,10 @@ def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
     import pandas as pd
 
     flow, mrip = ev["flow"], ev["mrip_days"]
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")  # noqa: E731
     first, last = flow.index[0], flow.index[-1]
     inter = ev["inter"]
-    rows = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in zip(inter.startDate, inter.endDate)] if len(inter) else []
+    rows = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in zip(inter.startDate, inter.endDate, strict=True)] if len(inter) else []
     nosucc = not len(ev["succ"])
     if nosucc:
         rows = [(first, last)]
@@ -618,17 +624,17 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
 
     gauge, code, pu = q["gauge"], q["ewr"], q.get("pu", "")
     ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")  # noqa: E731
     out: dict[str, Any] = {"code": code, "gauge": gauge, "scenarios": {}}
     for k, sid in ids:
         ev = ewr_eval(sid, gauge, code, pu)
         y, flow = ev["years"], ev["flow"]
-        col = lambda c: pd.to_numeric(y[c], errors="coerce").fillna(0).astype(int).tolist() if c in y else [0] * len(y)  # noqa: B023 (called in this iteration)
+        col = lambda c: pd.to_numeric(y[c], errors="coerce").fillna(0).astype(int).tolist() if c in y else [0] * len(y)  # noqa: B023, E731
         wy = [int(v) for v in y.index]
         # a year counts when every day of the EWR's timing window in that assessment year has a flow (a missing day elsewhere in the
         # year does not matter); the window's days are taken from the calendar, so a window cut off by the record's ends is incomplete
         ys, sm, em = ev["ystart"], ev["sm"], ev["em"]
-        in_win = lambda m: (m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)  # noqa: B023 (called in this iteration)
+        in_win = lambda m: (m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)  # noqa: B023, E731
         complete = []
         for w in wy:
             days = pd.date_range(pd.Timestamp(w, ys, 1), pd.Timestamp(w + 1, ys, 1) - pd.Timedelta(days=1))
@@ -681,8 +687,8 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             "n": n,
             "base": int(sum(pb)),
             "comp": int(sum(pc)),
-            "gained": sum(1 for x, z in zip(pb, pc) if not x and z),
-            "lost": sum(1 for x, z in zip(pb, pc) if x and not z),
+            "gained": sum(1 for x, z in zip(pb, pc, strict=True) if not x and z),
+            "lost": sum(1 for x, z in zip(pb, pc, strict=True) if x and not z),
             "pct_base": round(100 * sum(pb) / n, 3) if n else None,
             "pct_comp": round(100 * sum(pc) / n, 3) if n else None,
         }
@@ -705,7 +711,7 @@ def _runs_by_year(s: Any, hit: Any) -> tuple[dict[str, list[Any]], list[dict[str
     import numpy as np
     import pandas as pd
 
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")
+    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")  # noqa: E731
     v = s.to_numpy(dtype=float)
     miss = np.isnan(v)
     hit = hit & ~miss
@@ -751,8 +757,8 @@ def _pair_years(out: dict[str, Any]) -> dict[str, Any]:
     """Two scenarios: the water years complete in both."""
     if "comp" in out["scenarios"]:
         b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
-        bi = {w for w, k in zip(b["wy"], b["complete"]) if k}
-        ci = {w for w, k in zip(c["wy"], c["complete"]) if k}
+        bi = {w for w, k in zip(b["wy"], b["complete"], strict=True) if k}
+        ci = {w for w, k in zip(c["wy"], c["complete"], strict=True) if k}
         out["paired"] = {"wy": sorted(bi & ci)}
     return out
 
@@ -825,7 +831,7 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
     thresholds = np.arange(0, xlim + 1, spacing)
     durations = np.arange(1, dmax + 1)
     af, n_years = achievement_frequencies(df.to_numpy(dtype=float), df.index, thresholds, durations, sm, em, consec)
-    z = lambda a: np.round(a.T, 3).tolist()  # (durations x thresholds), as plotted
+    z = lambda a: np.round(a.T, 3).tolist()  # (durations x thresholds), as plotted  # noqa: E731
     out = {
         "thresholds": thresholds.tolist(),
         "durations": durations.tolist(),
@@ -930,7 +936,7 @@ def curves(q: dict[str, str]) -> dict[str, Any]:
             if len(by["comp"][m]):
                 comp[:, j] = exceed_pct(by["comp"][m], flows)
         diff = comp - base
-        z = lambda a: [[None if np.isnan(v) else round(float(v), 3) for v in row] for row in a]
+        z = lambda a: [[None if np.isnan(v) else round(float(v), 3) for v in row] for row in a]  # noqa: E731
         return {"kind": "mdfdc", "months": order, "flows": np.round(flows, 2).tolist(), "diff": z(diff), "base": z(base), "comp": z(comp), "ymax": ymax}
     sm, em = int(q.get("sm") or 0), int(q.get("em") or 0)  # optional timing window (months, may wrap the year end): only days in it are used
 

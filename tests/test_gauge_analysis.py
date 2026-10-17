@@ -185,7 +185,7 @@ class EwrWithPyEwrTest(StoredFlows):
         out = server.ewr_years({"base": "a", "gauge": "404216", "ewr": "F1_b"})
         self.assertEqual(out["ystart"], 6)
         y = out["scenarios"]["base"]["years"]
-        self.assertEqual(dict(zip(y["wy"], y["complete"])), {2000: 1, 2001: 1, 2002: 0})
+        self.assertEqual(dict(zip(y["wy"], y["complete"], strict=False)), {2000: 1, 2001: 1, 2002: 0})
 
     def test_event_length_and_volume_cover_bridged_days(self):
         # W-LF7 at 410001: >= 28,000 ML/d, MinSpell 3, dips of up to 90 days are bridged within an event
@@ -216,7 +216,7 @@ class RegimeTest(StoredFlows):
             for rg in regimes_for(e["code"], e["state"]):
                 lowest[rg] = min(lowest.get(rg, np.inf), e["thr"])
         self.assertEqual({r["regime"]: r["thr"] for r in out["regimes"]}, {k: v for k, v in lowest.items() if k != "excluded"})
-        by = {r["regime"]: y for r, y in zip(out["regimes"], out["scenarios"]["base"]["regimes"])}
+        by = {r["regime"]: y for r, y in zip(out["regimes"], out["scenarios"]["base"]["regimes"], strict=False)}
         self.assertEqual((by["Small fresh"]["days"], by["Small fresh"]["n"], by["Small fresh"]["longest"]), ([10], [2], [5]))
         self.assertEqual(by["Very low flow"]["days"], [365])  # 45 ML/d: every day
 

@@ -188,7 +188,7 @@ mypy                     # type-checks src/ and tests/
 pre-commit run --all-files
 ```
 
-The hooks (`.pre-commit-config.yaml`) run syntax and file checks, ruff, mypy and the fast tests. The tools are configured in `pyproject.toml`; `ruff` is pinned to the same version in `requirements-dev.txt` and the hook, because formatter output changes between releases.
+The hooks (`.pre-commit-config.yaml`) run syntax and file checks, ruff, mypy and the fast tests. Some hooks fix files in place (ruff, whitespace, end-of-file), so a commit can fail after rewriting them: review the changes, `git add` them and commit again. The tools are configured in `pyproject.toml`; `ruff` is pinned to the same version in `requirements-dev.txt` and the hook, because formatter output changes between releases.
 <!-- VALIDATION_FRAMEWORK_END -->
 
 ## Notes
