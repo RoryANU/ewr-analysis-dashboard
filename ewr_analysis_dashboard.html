@@ -69,6 +69,12 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .swl{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:#374151;margin:4px 0}.swl span{display:inline-flex;align-items:center;gap:5px}.swl i{display:inline-block;width:14px;height:12px;border-radius:2px;border:1px solid #0003;font-style:normal;font-size:10px;line-height:11px;text-align:center;color:#fff}
 .sersel{position:relative;display:inline-block;margin:4px 0}.sersel summary{cursor:pointer;border:1px solid #c5ccd6;border-radius:6px;padding:2px 8px;background:#fff;list-style:none;font-size:12px}.sersel .pop{position:absolute;z-index:20;background:#fff;border:1px solid #9aa3b0;border-radius:8px;padding:6px 8px;max-height:260px;overflow:auto;min-width:260px;max-width:min(560px,90cqw);box-shadow:0 4px 14px #0003}.sersel label{display:flex;align-items:flex-start;gap:6px;padding:1px 0;font-size:12px}
 .performance{border-top:2px solid var(--line);margin-top:18px;padding-top:12px}.performance h2{margin-top:18px!important}.performance details{margin:10px 0}.performance summary{cursor:pointer;font-weight:600}.performance footer{border-top:1px solid var(--line);padding-top:10px}.performance svg circle:focus{stroke:#111;stroke-width:2}
+.tip{display:inline-block;margin-left:4px;color:var(--acc);cursor:help;font-style:normal;font-weight:600}
+.summary{margin:6px 0 10px;padding:7px 10px;background:#f1f6fc;border-left:3px solid var(--acc);border-radius:4px;font-size:12.5px;line-height:1.45}
+.belowt{display:block;font-size:11.5px;font-weight:600;color:#374151;margin-top:2px}
+.nodata{color:#9ca3af;text-align:center;font-style:italic}
+#glossDlg{border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(620px,92vw);font-size:13px;max-height:86vh;overflow:auto}#glossDlg::backdrop{background:#0004}#glossDlg h3{margin:0 0 6px;font-size:15px}#glossDlg h4{margin:12px 0 4px;font-size:12.5px}#glossDlg dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:3px 12px}#glossDlg dt{font-weight:700}#glossDlg dd{margin:0}#glossClose{position:absolute;top:8px;right:10px;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#4b5563}
+.perfleg .ramp{height:10px;width:160px;border:1px solid #0004;margin:3px 0}
 </style></head><body><div id="app">
 <div id="bar">
   <h1>EWR analysis tool</h1><button id="barTog" class="ghost" aria-expanded="false" aria-controls="bar">Controls ▾</button>
@@ -76,16 +82,21 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and % of record beyond MRIP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
   <button id="swapBC" title="Swap base and comparison" style="display:none">⇄ Reverse</button>
-  <label id="bandL" style="display:none" title="Differential: an EWR's frequency counts as changed when it gains or loses at least this many achieved years over the record (crossing the target always counts)">Change band ≥ <select id="band"><option>1</option><option selected>2</option><option>3</option><option>5</option></select> achieved years</label>
+  <label id="bandL" style="display:none" title="Differential: an EWR's frequency counts as changed when it gains or loses at least this many achieved years over the record (crossing the target always counts)">Change band ≥ <select id="band"><option>1</option><option selected>2</option><option>3</option><option>5</option></select> achieved years<span class="tip" tabindex="0" title="Changes smaller than this count as 'no change', unless they cross the frequency target.">ⓘ</span></label>
   <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
   <label id="perL" title="Metrics over a drought window (water years, July–June) instead of the whole record">Period <select id="period"><option value="">Full record</option></select><span id="perNote" class="pnote">Compare in Differential mode: overbank EWRs fail in droughts even without development.</span></label>
-  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="MRIP exceedance time proportion: the share of the record that lies beyond the maximum recommended inter-event period, i.e. inside a gap between successful events, after its first MRIP days (lower is better)">% of record beyond MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button><button id="mDR" title="Duration ratio: how long the events last against the required duration (1 = long enough; capped at 2). Your data: the median over complete years of each year's best event ÷ the required duration (volume EWRs: the best accumulated volume ÷ the volume threshold). Review results: the mean event length ÷ the required duration, an approximation">Duration ratio</button><button id="mSV" title="Longest gap between successful events (not counting the gaps from the start or to the end of the record) ÷ the MRIP: the worst EWR sets each cell (lower is better). Uploaded scenarios only">Worst gap (× MRIP)</button></div></details></span></label>
+  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="Share of the record that lies beyond the maximum recommended interval between events (MRIP), i.e. inside a gap between successful events, after its first MRIP days (lower is better)">% of record beyond MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mFQ" title="Achieved frequency: the share of years in which the EWR is achieved (frequency ratio × the EWR's target % of years). Not capped at the target">Achieved frequency (% of years)</button><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button><button id="mDR" title="Duration ratio: how long the events last against the required duration (1 = long enough; capped at 2). Your data: the median over complete years of each year's best event ÷ the required duration (volume EWRs: the best accumulated volume ÷ the volume threshold). Review results: the mean event length ÷ the required duration, an approximation">Duration ratio</button><button id="mSV" title="Longest gap between successful events (not counting the gaps from the start or to the end of the record) ÷ the MRIP: the worst EWR sets each cell (lower is better). Uploaded scenarios only">Worst gap (× MRIP)</button></div></details></span></label>
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its % of record beyond MRIP is at or below this value, otherwise 0">MRIP achieved when % of record beyond MRIP ≤ <input id="ethr" type="number" min="0" max="100" step="1" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Frequency threshold (target = 1.0) ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="1.0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
+ <button id="glossBtn" class="ghost" title="What the abbreviations mean">ⓘ Glossary</button>
   <button id="share" class="ghost" title="Copy a link to this exact view">🔗 <span id="shareT"></span></button>
 </div>
+<dialog id="glossDlg"><button id="glossClose" aria-label="Close" title="Close">×</button><h3>Glossary</h3>
+  <h4>Flow regimes</h4><dl><dt>BF</dt><dd>Base Flow</dd><dt>F</dt><dd>Freshes</dd><dt>OB</dt><dd>Overbank</dd><dt>BK</dt><dd>Bankfull</dd></dl>
+  <h4>Objective themes</h4><dl><dt>EF</dt><dd>Ecosystem Functions</dd><dt>NF</dt><dd>Native Fish</dd><dt>NV</dt><dd>Native Vegetation</dd><dt>OS</dt><dd>Other Species</dd><dt>WB</dt><dd>Waterbirds</dd><dt>FC</dt><dd>Flows &amp; Connectivity</dd></dl>
+  <h4>Other terms</h4><dl><dt>V-NF4</dt><dd>Victorian native fish objective 4 (flow cues that stimulate fish movement)</dd><dt>Freq</dt><dd>Frequency: how often an EWR's target is achieved</dd><dt>Dur</dt><dd>Duration: how long the events last against the required duration</dd><dt>EWR</dt><dd>Environmental Watering Requirement</dd><dt>FR</dt><dd>Frequency ratio: achieved frequency ÷ target frequency (1 = target met)</dd><dt>MRIP</dt><dd>Maximum recommended interval between events</dd><dt>SDL</dt><dd>Sustainable Diversion Limit (resource unit)</dd></dl></dialog>
 <dialog id="scnDlg"><button id="scnClose" class="ghost" title="Close" aria-label="Close">×</button><h3>Add your own scenario</h3>
   <div class="hint">Runs the EWR tool (py_ewr) on your model output. Choose the format of your file, using the EWR tool's own format names. The file is scanned for every gauge in this review, so a file can cover more than one SDL unit. The scenario then appears in the Scenario / Base / Comparison pickers (Historical only).</div>
   <label class="fld"><span>Data format</span><select id="scnFmt"></select></label>
@@ -123,9 +134,9 @@ const S={src:"demo",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"
 const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c;
 const isDiff=()=>S.mode==="diff";
 const FAMN={fr:"FR",et:"% of record beyond MRIP",sev:"Worst gap ÷ MRIP",dr:"Duration ratio"};   // the ETP (0-1 time proportion) is shown as a % of the record; stored and coloured as a proportion
-const MN={fr:"mean FR",et:"mean % of record beyond MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly",sev:"worst gap (× MRIP)",dr:"mean duration ratio"}, MS={fr:"FR",et:"% of record beyond MRIP",sev:"worst gap",dr:"duration ratio",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
-const FAM={fr:"f",ach:"f",fb:"f",dr:"f",et:"e",mz:"e",sev:"e"}, inFam=k=>["ach","fb","mz","sev","dr"].includes(S.metric)||k===S.metric||(k==="sev"&&S.metric==="et")||(k==="dr"&&S.metric==="fr");   // FR or % beyond MRIP selected: only that metric is shown; a metric from the "More" menu: all of them are shown
-const METRICS=["fr","et","ach","mz","fb","sev","dr"], LOWER={et:1,fb:1,sev:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
+const MN={fr:"mean FR",fq:"mean achieved frequency (% of years)",et:"mean % of record beyond MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly",sev:"worst gap (× MRIP)",dr:"mean duration ratio"}, MS={fr:"FR",fq:"achieved frequency",et:"% of record beyond MRIP",sev:"worst gap",dr:"duration ratio",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
+const FAM={fr:"f",fq:"f",ach:"f",fb:"f",dr:"f",et:"e",mz:"e",sev:"e"}, inFam=k=>["fq","ach","fb","mz","sev","dr"].includes(S.metric)||k===S.metric||(k==="sev"&&S.metric==="et")||(k==="dr"&&S.metric==="fr");   // FR or % beyond MRIP selected: only that metric is shown; a metric from the "More" menu: all of them are shown
+const METRICS=["fr","fq","et","ach","mz","fb","sev","dr"], LOWER={et:1,fb:1,sev:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb"||m==="fq";   // LOWER: a lower value is better
 const FR_T=1, MET_OUT=true;   // FR_T: FR at the target frequency. MET_OUT: differential means and ▲/▼ counts leave out EWRs that meet the target in both scenarios (false: they stay in as a change of 0)
 // one scenario's value of metric m: FR, ETP (capped at 1), or 1 / 0 for the binary metrics ("ach": FR >= threshold; "fb": FR < floor; "mz": ETP <= threshold, 0 = MRIP never exceeded)
 // the stored value behind metric m: the whole record (r[6], r[7], r[10], r[11]) or, with a drought period, that window's (r[12]; none for the review results)
@@ -136,7 +147,8 @@ function src(r,m,i){ const k=m==="et"||m==="mz"?"et":m==="sev"||m==="dr"?m:"fr";
 // a window too short to expect one achieved year (n < 100 / T): its FR is shown as "k of n years" and kept out of the means
 const shortWin=(r,i)=>{ const w=win(r), T=r[8]&&r[8].T; return !!w&&T>0&&w.n&&w.n[i]!=null&&w.n[i]<100/T; };
 function valOne(r,m,i){ if(m==="sev"||m==="dr") return src(r,m,i);   // worst gap ÷ MRIP; duration ratio
-  if((m==="fr"||m==="ach"||m==="fb")&&shortWin(r,i)) return null;
+  if((m==="fr"||m==="fq"||m==="ach"||m==="fb")&&shortWin(r,i)) return null;
+  if(m==="fq"){ const raw=src(r,m,i), T=r[8]&&r[8].T; return Number.isFinite(raw)&&T>0?raw*T/100:null; }   // achieved frequency = FR x target % of years, as a proportion
   const raw=src(r,m,i), v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw;
   return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; }
 const nyFull=(r,i)=>r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null;   // record years (an upload's own)
@@ -203,10 +215,10 @@ const scopeLevels=()=>LEVELS[S.sel.type]||[];
 // differential values: an FR difference is in achieved years per century; a difference of shares (of EWRs, or of the record beyond MRIP) is in percentage points (+14 pts)
 const signed=(t,v)=>(+t===0?"":v>0?"+":v<0?"−":"")+t.replace("-","");   // a value that rounds to 0 has no sign; minus is a true minus sign
 const pct=v=>signed(String(Math.abs(Math.round(v*100))),v)+" pts", dfr=m=>isDiff()&&isBin(m);
-const pa=v=>Math.round(v*100)+"%";
+const pa=v=>Math.round(v*100)+"%", pa1=v=>(v*100).toFixed(1)+"%", pct1=v=>signed((Math.abs(v)*100).toFixed(1),v)+" pts";
 const sg=v=>isDiff()&&v>0?"+":"", num=(v,dp)=>isDiff()?signed(Math.abs(v).toFixed(dp),v):v.toFixed(dp);
 const dyc=m=>isDiff()&&m==="fr";   // differential FR is in achieved years per century of record
-const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"?(isDiff()?pct(v):pa(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,1)+"×":m==="et"?(isDiff()?pct(v):pa(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
+const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"||m==="fq"?(isDiff()?pct1(v):pa1(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,1)+"×":m==="et"||m==="fq"?(isDiff()?pct1(v):pa1(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
 const mn=m=>dyc(m)?"mean change in achieved years per century":MN[m], msn=m=>dyc(m)?"change in achieved yrs/century":MS[m];   // differential FR labels
 
 // ---- selection ---------------------------------------------------------------------------------------------------
@@ -223,7 +235,7 @@ const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
 const RYB=[[215,48,39],[252,141,89],[254,224,144],[145,191,219],[69,117,180]], ryb=s=>{ const x=Math.max(0,Math.min(1,s))*(RYB.length-1), i=Math.min(RYB.length-2,Math.floor(x)); return `rgb(${mixc(RYB[i],RYB[i+1],x-i)})`; };
 const ramp=s=>ryb(s);   // 0 worst (red) .. 1 best (blue)
 const MET_FILL="#e5e7eb", MET_IN=MET_OUT?"not in the means":"in the means as no change", metTip=(r,m)=>{ const k=diffClass(r,m); return `meets the target in both scenarios (${MET_IN})${k&&k.sur!=null?`; surplus ${m==="et"?pct(k.sur):signed(Math.abs(k.sur).toFixed(2),k.sur)}`:""}`; };   // differential: every EWR meets the target in both scenarios
-const ETP_MAX=0.5, DIV={fr:10,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1,dr:0.5};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
+const ETP_MAX=0.5, DIV={fr:10,fq:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1,dr:0.5};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,v/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
@@ -231,7 +243,7 @@ function colour(v,m){ if(v==null) return "#bbb";
     return `rgb(${x<=0.9?mixc([215,48,39],w,x/0.9):mixc(w,[33,102,172],(x-0.9)/0.1)})`; }
   if(m==="sev") return ryb(v<=1+1e-9?1:v<=2?.5:v<3?.25:0);   // worst gap ÷ MRIP: blue within it, yellow 1-2, orange 2-3, red 3 or more
   if(m==="et") return ryb(1-Math.max(0,Math.min(1,v)));   // % of record beyond the MRIP: 0 blue (best), 50% pale yellow, 100% red
-  return m==="ach"||m==="mz"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
+  return m==="ach"||m==="mz"||m==="fq"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
 
 // text drawn on a coloured fill: near-black or white, whichever has the higher WCAG contrast ratio against the fill
 const rgbOf=c=>{ c=String(c).trim(); if(c[0]==="#"){ const h=c.length===4?c.slice(1).split("").map(x=>x+x).join(""):c.slice(1,7); return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)); } const m=c.match(/[\d.]+/g); return m?m.slice(0,3).map(Number):[255,255,255]; };
@@ -241,7 +253,10 @@ const textOnColour=bg=>contrast(bg,"#111111")>=contrast(bg,"#ffffff")?"#111111":
 
 // ---- map (same look as the original SDL map) ---------------------------------------------------------------------
 const colours={NSW:"#4e79a7",VIC:"#59a14f",QLD:"#e15759",SA:"#f28e2b",ACT:"#b07aa1"};
-const map=L.map("map").fitBounds([[-39,138],[-24.5,153]]);
+const MDB=L.latLngBounds([[-39,138],[-24.5,153]]), MDB_MAX=MDB.pad(0.6);   // the Murray-Darling Basin, and how far the view may stray from it
+const map=L.map("map",{maxBounds:MDB_MAX,maxBoundsViscosity:1,zoomSnap:0.25}).fitBounds(MDB);
+/** Refresh the map size and minimum zoom for MDB_MAX; fit the basin bounds when no area is selected. */
+function basinFit(){ map.invalidateSize(); map.setMinZoom(0); map.setMinZoom(map.getBoundsZoom(MDB_MAX)); if(S.sel.type==="none") map.fitBounds(MDB); }   // never zoom out past the basin, even on a narrow viewport
 const ESRI="Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors | SDL units: MDBA (CC BY 4.0) | Rivers: HydroSHEDS | Gauges: BoM";
 const gray=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,attribution:ESRI}).addTo(map);
 map.createPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
@@ -249,8 +264,18 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_L
 const activeSdl=i=>i>=0&&(S.src!=="user"||CUSTOM.some(c=>!c.removed&&c.sdls.includes(META.sdls[i])));   // demo: every SDL unit in the review; your data: units you have added a scenario for
 const inReview=f=>activeSdl(f.properties.sdl);
 const clickable=f=>!(f.properties.state==="SA"&&!inReview(f));   // other SA units are drawn but not interactive
-const style=f=>({color:"#333",weight:1,fillColor:colours[f.properties.state]||"#888",fillOpacity:inReview(f)?0.6:0.2,dashArray:inReview(f)?null:"4",interactive:clickable(f)});
-const sdlRows={}; ROWS.forEach(r=>(sdlRows[r[1]]??=[]).push(r));
+const sdlRows={}, gaugeRows={}; ROWS.forEach(r=>{ (sdlRows[r[1]]??=[]).push(r); (gaugeRows[r[2]]??=[]).push(r); });
+// map fills show the selected measure's performance (the hierarchical mean of the SDL unit / gauge); grey = no result
+const PERF={sdl:{},gauge:{}};
+/**
+ * Replace PERF's SDL and gauge fill colors for the current metric, period, and scenario or differential comparison.
+ * Use hierarchical SDL aggregates and flat gauge aggregates (maxima for worst gap); missing aggregates are gray.
+ */
+function computePerf(){ const i=scnIdx(), m=S.metric; PERF.sdl={}; PERF.gauge={};
+  for(const k of Object.keys(sdlRows)){ const v=agg(sdlRows[k],["pu","gauge"],m,i).mean; PERF.sdl[k]=v==null?"#bbb":colour(v,m); }
+  for(const k of Object.keys(gaugeRows)){ const v=agg(gaugeRows[k],[],m,i).mean; PERF.gauge[k]=v==null?"#bbb":colour(v,m); } }
+const style=f=>({color:"#333",weight:1,fillColor:inReview(f)?(PERF.sdl[f.properties.sdl]||"#bbb"):"#888",fillOpacity:inReview(f)?0.75:0.2,dashArray:inReview(f)?null:"4",interactive:clickable(f)});
+computePerf();
 const units=L.geoJSON(DATA,{style,onEachFeature:(f,l)=>{
   const p=f.properties; if(!clickable(f)) return;
   l.bindTooltip(()=>{ if(p.sdl<0) return esc(p.name); return esc(p.name); },{sticky:true});
@@ -272,10 +297,10 @@ const riverW=o=>({3:0.7,4:1.1,5:1.6,6:2.2}[o]??3);
 const riverR=L.canvas({pane:"rivers"});   // one canvas: a pale casing under the blue line keeps rivers readable over the state fills (NSW is blue too) and the grey basemap
 L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:riverR,style:f=>({color:"#ffffff",weight:riverW(f.properties.o)+2,opacity:0.75})}).addTo(map);
 L.geoJSON(RIVERS,{pane:"rivers",interactive:false,renderer:riverR,style:f=>({color:"#0b5a9c",weight:riverW(f.properties.o),opacity:0.95})}).addTo(map);
-const GM={}, gaugeRows={}; ROWS.forEach(r=>(gaugeRows[r[2]]??=[]).push(r));
+const GM={}; computePerf();
 GAUGES.forEach(g=>{
-  const mk=L.circleMarker([g.lat,g.lon],{pane:"gauges",radius:4.5,weight:1,color:"#111",fillColor:"#ffd92f",fillOpacity:.95});
-  mk.bindTooltip(()=>`${esc(g.id)} – ${esc(g.name)}`);
+  const mk=L.circleMarker([g.lat,g.lon],{pane:"gauges",radius:4.5,weight:1,color:"#111",fillColor:PERF.gauge[g.i]||"#bbb",fillOpacity:.95});
+  mk.bindTooltip(()=>`${esc(g.id)} – ${esc(niceGaugeName(g.name))}`);
   mk.on("click",e=>{ L.DomEvent.stopPropagation(e); if(S.src!=="user"||gaugeHasUser(g.i)) gaugeFromMap(g.i); });
   mk.addTo(map); GM[g.i]=mk;
 });
@@ -289,38 +314,59 @@ function gaugeFromMap(gi){   // keep the SDL / planning-unit context if the gaug
   select(trail(ROWS.filter(r=>r[2]===gi)));
 }
 const gaugeHasUser=gi=>(gaugeRows[gi]||[]).some(r=>CUSTOM.some(c=>!c.removed&&(r[6][c.P*NC]!=null||r[7][c.P*NC]!=null)));
-function paintMap(){   // map look is fixed; only the selection is highlighted
-  units.setStyle(style);
+/**
+ * Refresh map fills, legend, and selection highlights from S, adjusting gauge emphasis for the selection and data source.
+ * In user mode, hide gauges without uploaded results outside active SDL units; keep those inside visible but dimmed.
+ */
+function paintMap(){   // fills follow the selected measure and scenario; the selection is outlined
+  computePerf(); units.setStyle(style); paintLegend();
   const s=S.sel, sdlSel=s.type==="sdl"?s.i:(s.type==="pu"||s.type==="gauge")&&s.sdl!=null?s.sdl:null;
   units.eachLayer(l=>{ const p=l.feature.properties; if(!activeSdl(p.sdl)) return; const sel=sdlSel===p.sdl; l.setStyle({weight:sel?3:1,color:sel?"#000":"#333"}); });
   const scope=new Set(selRows().map(r=>r[2]));
   for(const g of GAUGES){ const on=(S.src!=="user"||gaugeHasUser(g.i))&&(s.type==="none"||s.type==="gauge"||scope.has(g.i)), sel=s.type==="gauge"&&s.i===g.i;
     const nodata=S.src==="user"&&!gaugeHasUser(g.i), hide=nodata&&!(gaugeRows[g.i]||[]).some(r=>activeSdl(r[1]));   // your data: gauges in an SDL unit you have data for stay visible (transparent) if nothing was read in for them; gauges elsewhere are hidden
     if(hide){ if(map.hasLayer(GM[g.i])) map.removeLayer(GM[g.i]); continue; } if(!map.hasLayer(GM[g.i])) GM[g.i].addTo(map);
-    GM[g.i].setStyle({fillOpacity:on?.95:nodata?.4:.25,opacity:on?1:nodata?.6:.3,weight:sel?3:1,radius:sel?7:4.5,color:sel?"#d1495b":"#111"}); if(sel) GM[g.i].bringToFront(); }
+    GM[g.i].setStyle({fillColor:PERF.gauge[g.i]||"#bbb",fillOpacity:on?.95:nodata?.4:.25,opacity:on?1:nodata?.6:.3,weight:sel?3:1,radius:sel?7:4.5,color:sel?"#d1495b":"#111"}); if(sel) GM[g.i].bringToFront(); }
 }
 const lg=L.control({position:"topright"});   // top right: clear of the attribution, which wraps across the bottom of a narrow map
 lg.onAdd=()=>{ const d=L.DomUtil.create("div","legend"); L.DomEvent.disableClickPropagation(d);
   const btn=L.DomUtil.create("button","",d); btn.type="button"; btn.textContent="Legend ▸"; btn.style.cssText="border:0;background:none;font:600 12px system-ui;cursor:pointer;padding:0";
   const body=L.DomUtil.create("div","",d); body.style.display="none";
   const sq=(fill,op,dash)=>`<svg width="16" height="12"><rect x="1" y="1" width="14" height="10" fill="${fill}" fill-opacity="${op}" stroke="#333" stroke-dasharray="${dash||""}"/></svg>`;
-  body.innerHTML=`<b>SDL units (by state)</b>`+Object.entries(colours).map(([st,c])=>`<div class="row2">${sq(c,.6)}${st}</div>`).join("")+
-    `<div class="row2">${sq("#888",.2,"3 2")}not in this view (no data)</div>`+
+  body.innerHTML=`<div class="perfleg" id="perfLeg"></div>`+
+    `<div class="row2">${sq("#bbb",.75)}no result for this measure</div><div class="row2">${sq("#888",.2,"3 2")}not in this view (no data)</div>`+
     `<b style="display:block;margin-top:4px">Gauges and rivers</b>`+
-    `<div class="row2"><svg width="16" height="14"><circle cx="8" cy="7" r="4.5" fill="#ffd92f" stroke="#111"/></svg>gauge (click for its EWRs)</div>`+
-    `<div class="row2"><svg width="16" height="16"><circle cx="8" cy="8" r="6.5" fill="#ffd92f" stroke="#d1495b" stroke-width="2.5"/></svg>selected gauge</div>`+
-    `<div class="row2"><svg width="16" height="14"><circle cx="8" cy="7" r="4.5" fill="#ffd92f" fill-opacity=".25" stroke="#111" stroke-opacity=".3"/></svg>gauge outside the selection</div>`+
+    `<div class="row2"><svg width="16" height="14"><circle cx="8" cy="7" r="4.5" fill="#bbb" stroke="#111"/></svg>gauge, coloured like the map (click for its EWRs)</div>`+
+    `<div class="row2"><svg width="16" height="16"><circle cx="8" cy="8" r="6.5" fill="#bbb" stroke="#d1495b" stroke-width="2.5"/></svg>selected gauge</div>`+
+    `<div class="row2"><svg width="16" height="14"><circle cx="8" cy="7" r="4.5" fill="#bbb" fill-opacity=".25" stroke="#111" stroke-opacity=".3"/></svg>gauge outside the selection</div>`+
     `<div class="row2"><svg width="16" height="10"><line x1="0" y1="5" x2="16" y2="5" stroke="#fff" stroke-width="5"/><line x1="0" y1="5" x2="16" y2="5" stroke="#0b5a9c" stroke-width="3"/></svg>river (wider = larger)</div>`+
     `<label class="row2" style="cursor:pointer"><input type="checkbox" id="conToggle" checked style="margin:0"><svg width="16" height="16"><rect x="4" y="4" width="8" height="8" fill="#d1495b" stroke="#fff" transform="rotate(45 8 8)"/></svg>constraint sites</label>`;
   setTimeout(()=>{ const t=document.getElementById("conToggle"); if(t) t.onchange=()=>t.checked?conLayer.addTo(map):map.removeLayer(conLayer); },0);
   btn.onclick=()=>{ const open=body.style.display==="none"; body.style.display=open?"block":"none"; btn.textContent=open?"Legend ▾":"Legend ▸"; body.style.marginTop=open?"4px":"0"; };
   return d; };
 lg.addTo(map);
-function paintLegend(){}
+/** Replace the map's metric color scale and labels for the current mode, or do nothing if its container is absent. */
+function paintLegend(){   // the colour key follows the selected measure
+  const el=document.getElementById("perfLeg"); if(!el) return;
+  const m=S.metric, D=isDiff(), lo=D?-DIV[m]:0, hi=D?DIV[m]:m==="sev"?4:1, stops=Array.from({length:11},(_,k)=>`${colour(lo+(hi-lo)*k/10,m)} ${k*10}%`).join(",");
+  el.innerHTML=`<b>Colour = ${esc(D?mn(m):MN[m])}</b><div class="ramp" style="background:linear-gradient(90deg,${stops})"></div><div class="ends"><span>${fs2(lo,m)}</span><span>${fs2(hi,m)}</span></div><div style="color:#4b5563">${D?"blue = improvement, red = decline":LOWER[m]?"blue = better (lower is better)":"blue = better, red = worse"}</div>`; }
+paintLegend();
 
 // ---- panel -------------------------------------------------------------------------------------------------------
 const sdlOf=()=>{ const s=S.sel; return s.type==="sdl"?s.i:s.sdl; };
-function gaugeName(i){ const g=GAUGES.find(x=>x.i===i); return META.gauges[i]+(g?" · "+g.name:""); }
+// BoM station names arrive in capitals with abbreviations and the odd typo: "GOULBURB R MCCOYS BR" -> "Goulburn River at McCoys Bridge"
+const GAUGE_WORDS={GOULBURB:"Goulburn",R:"River",RIV:"River",BR:"Bridge",BRDG:"Bridge",CK:"Creek",CR:"Creek",CRK:"Creek",RD:"Road",HWY:"Highway",WR:"Weir",CH:"Channel","D/S":"downstream","U/S":"upstream",DS:"downstream",US:"upstream",ST:"St",MT:"Mount",NR:"near",ABV:"above",BLW:"below",JCN:"Junction",JN:"Junction",LK:"Lake",RES:"Reservoir",TL:"Tail",HW:"Headworks"};
+/**
+ * Return a trimmed station name, expanding known abbreviations and adjusting capitalization only for all-uppercase input.
+ * For those names, insert 'at' after River/Creek when a following location lacks a recognized linking word.
+ * Return an empty string for null, undefined, or empty input; preserve the case and wording of other names.
+ */
+function niceGaugeName(n){ if(n==null||n==="") return ""; const raw=String(n).trim(); if(raw!==raw.toUpperCase()) return raw;   // already mixed case: leave it
+  let w=raw.split(/\s+/).map(x=>{ const k=x.toUpperCase(); if(GAUGE_WORDS[k]) return GAUGE_WORDS[k]; let t=x.charAt(0)+x.slice(1).toLowerCase(); t=t.replace(/^(Mc)([a-z])/,(_,a,b)=>a+b.toUpperCase()).replace(/^(O')([a-z])/,(_,a,b)=>a+b.toUpperCase()); return t; });
+  const i=w.findIndex(x=>/^(River|Creek)$/.test(x)); if(i>=0&&i<w.length-1&&!w.some(x=>/^(at|near|above|below|downstream|upstream|to|off|in|from)$/i.test(x))) w.splice(i+1,0,"at");
+  return w.join(" "); }
+/** Return the gauge ID at META.gauges index i, appending a normalized station name when the gauge is mapped. */
+function gaugeName(i){ const g=GAUGES.find(x=>x.i===i); return META.gauges[i]+(g?" · "+niceGaugeName(g.name):""); }
 const periodLab=()=>{ const d=META.droughts&&META.droughts.find(x=>x.k===S.period); return d?`${d.name} drought (${wyl(d.w0)} to ${wyl(d.w1)})`:""; };
 function title(){ const p=periodLab(); return (p?p+" · ":"")+title0(); }
 function title0(){
@@ -336,30 +382,61 @@ function crumbHtml(){
   if(s.type==="gauge"){ if(s.pu!=null) c.push(`<a data-act="pu" data-i="${s.pu}" data-sdl="${s.sdl}">${esc(META.pus[s.pu])}</a>`); c.push(esc(META.gauges[s.i])); }
   return c.join(" ▸ ");
 }
+// plain-English helpers: the first use of MRIP in a panel is spelled out, later uses are the abbreviation
+const MRIP_LONG="maximum recommended interval between events (MRIP)"; let mripSeen=false;
+/** Spell out MRIP once after render resets mripSeen, marking it seen; return the abbreviation on subsequent calls. */
+const mr=()=>{ if(mripSeen) return "MRIP"; mripSeen=true; return MRIP_LONG; };
+const tip=t=>`<span class="tip" tabindex="0" title="${esc(t)}">ⓘ</span>`;
+const scnLabel=(p,c)=>{ const pn=META.policies[p], cn=META.climates[c]; return `${POL_L[pn]||pn}, ${CLI_L[cn]||cn}`.replace(/, (Historical)$/,", $1"); };
+const LEVEL_NAME={none:"basin",sdl:"SDL unit",pu:"planning unit",gauge:"gauge"};
+// one sentence at the top of every level: how many EWRs meet their target, and (differential) how the scenarios compare
+/**
+ * Return a frequency-target summary with escaped scenario labels, or an empty string if the current scenario has no usable FR.
+ * Differential change counts require paired results and use the change band, with target crossings always counted.
+ */
+function summaryLine(rows){
+  const i=scnIdx(), rs=rows.filter(r=>valOne(r,"fr",i)!=null), x=rs.length; if(!x) return "";
+  const y=rs.filter(r=>valOne(r,"fr",i)>=FR_T-1e-9).length, lvl=LEVEL_NAME[S.sel.type]||"basin", a=scnLabel(S.pol,S.cli);
+  if(!isDiff()) return `Of ${x} EWRs at this ${lvl}, ${y} meet their frequency target under ${esc(a)}.`;
+  const c=cnts(rows,"fr"), b=scnLabel(S.bpol,S.bcli);
+  return `Of ${x} EWRs at this ${lvl}, ${y} meet their target under ${esc(a)}; ${esc(a)} improves ${c.up} and declines ${c.dn} compared with ${esc(b)}.`; }
+// "11 of 17 EWRs below target" for the headline box plots (one scenario only)
+/**
+ * Return single-scenario HTML counting usable EWRs below FR 1 or above the S.ethr exceedance allowance.
+ * Return an empty string in differential mode, for metrics other than fr/et, or when no usable values exist.
+ */
+function belowTxt(rows,m){ if(isDiff()||(m!=="fr"&&m!=="et")) return ""; const i=scnIdx(), rs=rows.filter(r=>valOne(r,m,i)!=null); if(!rs.length) return "";
+  const n=rs.filter(r=>m==="fr"?valOne(r,m,i)<FR_T-1e-9:valOne(r,m,i)>S.ethr+1e-9).length;
+  return `<span class="belowt">${n} of ${rs.length} EWRs ${m==="fr"?"below target":"beyond the maximum gap allowance"}</span>`; }
+/** Describe v in achieved years per century (positive = more), rounding its magnitude to whole years; nullish v yields no text. */
+const diffFrTxt=v=>{ const n=Math.round(Math.abs(v)); return v==null?"":v===0?"on average, no change in the years each EWR is met":n===0?`on average, each EWR is met in slightly ${v>0?"more":"fewer"} than 1 year out of every 100`:`on average, each EWR is met in about ${n} ${v>0?"more":"fewer"} years out of every 100`; };
+/** Describe v as a base-minus-comparison time proportion in rounded percentage points (positive = less exceedance); nullish v yields no text. */
+const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===0?"no change in the time spent beyond the maximum gap":n===0?`slightly ${v>0?"less":"more"} (under 1 point) time spent beyond the maximum gap (${v>0?"better":"worse"})`:`${n} points ${v>0?"less":"more"} time spent beyond the maximum gap (${v>0?"better":"worse"})`; };
 /**
  * Replace the panel for S's selection, scenarios, and display settings, including matrices and selected cell details.
  * Mount performance charts and bind flow controls for a selection; dispose performance state when no selection is active.
  */
 function render(){
-  const s=S.sel;
+  const s=S.sel; mripSeen=false;
   if(s.type==="none"){
     disposePerformance();
     const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
     if(S.src==="user"&&!names.length){ $("panel").innerHTML=`<h2>Your data</h2><div class="note">This mode uses only model output you add yourself, and unlocks the flow charts (threshold × duration heat map, hydrograph, flow duration curves). Add a scenario to begin; the SDL units it covers are found from its gauges.</div><div class="row"><button data-act="addscn">＋ Add scenario</button></div>`; return; }
-    $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.</div>
+    $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Pick an area to see how its environmental watering requirements are met.${tip("Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.")}</div>${(t=>t?`<div class="summary">${t}</div>`:"")(summaryLine(ROWS.filter(r=>activeSdl(r[1]))))}
       <table><tbody>${names.map(([n,i])=>`<tr class="click" data-act="sdl" data-i="${i}"><td>${esc(n)}</td></tr>`).join("")}</tbody></table>`;
     return;
   }
-  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), sv=agg(rows,lv,"sev",i), dr=agg(rows,lv,"dr",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
+  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), sv=agg(rows,lv,"sev",i), dr=agg(rows,lv,"dr",i), ac=agg(rows,lv,"ach",i), fq=agg(rows,lv,"fq",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
   const bx=k=>s.type==="gauge"&&S.metric===k?boxPlot(rows,k):"";   // gauge view, FR or % beyond MRIP selected: distribution of the EWRs beside the mean
-  const foot=(k,a)=>isDiff()?(c=>`<span style="display:block">${MET_OUT?`Mean over ${a.n} EWRs below target in at least one scenario; ${c.met} met in both excluded`:`Mean over ${a.n} EWRs; ${c.met} met in both count as no change`}</span>`)(cnts(rows,k)):"";   // what the differential mean is taken over
-  let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div${isDiff()?` title="Mean change in FR (ΔFR): ${(d=>d==null?"–":num(d,3))(agg(rows,lv,"fr",i,dFR).mean)} (comparison − base; capped at the target where it is crossed)"`:""}><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?"achieved years per century":"mean frequency ratio (each EWR capped at 1)"} · ${fr.n} EWRs</span>${foot("fr",fr)}${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
+  const foot=(k,a)=>isDiff()?(c=>`<span style="display:block">${MET_OUT?`Average of the ${a.n} EWRs that missed their target in at least one scenario. EWRs that met it in both are left out.`:`Mean over ${a.n} EWRs; ${c.met} met in both count as no change`}</span>`)(cnts(rows,k)):"";   // what the differential mean is taken over
+  let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${(t=>t?`<div class="summary">${t}</div>`:"")(summaryLine(rows))}${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div${isDiff()?` title="Mean change in FR (ΔFR): ${(d=>d==null?"–":num(d,3))(agg(rows,lv,"fr",i,dFR).mean)} (comparison − base; capped at the target where it is crossed)"`:""}><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?diffFrTxt(fr.mean):"mean frequency ratio; values above 1 are counted as 1 in the average"} · ${fr.n} EWRs</span>${belowTxt(rows,"fr")}${foot("fr",fr)}${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
+    ${inFam("fq")&&S.metric!=="fr"?`<div class="tile"><b>${f3(fq.mean,"fq")}</b><span>${isDiff()?"mean change in achieved frequency (% of years)":"mean achieved frequency (% of years)"} · ${fq.n} EWRs</span></div>`:""}
     ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"improvement in EWRs achieving":"hierarchical % meeting frequency threshold"} · ${ac.n} EWRs</span></div>`:""}
-    ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"improvement in EWRs achieving MRIP":"EWRs achieving MRIP"} · ${mz.n} EWRs</span></div>`:""}
+    ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"improvement in EWRs achieving the "+mr():"EWRs achieving the "+mr()} · ${mz.n} EWRs</span></div>`:""}
     ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"improvement in EWRs failing badly (fewer = +)":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
-    ${inFam("et")?`<div class="tile${bx("et")?" wb":""}"><div><b>${f3(et.mean,"et")}</b><span>${isDiff()?"improvement in mean % of record beyond MRIP (less = +)":"mean % of record beyond MRIP"} · ${et.n} EWRs</span>${foot("et",et)}${bx("et")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("et")}</div>`:""}
+    ${inFam("et")?`<div class="tile${bx("et")?" wb":""}"><div><b>${f3(et.mean,"et")}</b><span>${isDiff()?diffEtTxt(et.mean):"mean % of record beyond the "+mr()} · ${et.n} EWRs</span>${belowTxt(rows,"et")}${foot("et",et)}${bx("et")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("et")}</div>`:""}
     ${inFam("sev")&&hasSev(rows)?`<div class="tile"><b>${f3(sv.mean,"sev")}</b><span>${isDiff()?"change in the worst gap between events, × MRIP (shorter = +)":"worst gap between events ÷ MRIP"}${whoTxt(sv)} · ${sv.n} EWRs</span></div>`:""}
-    ${inFam("dr")&&hasDr(rows)?`<div class="tile"><b>${f3(dr.mean,"dr")}</b><span>${isDiff()?"change in mean duration ratio":"mean duration ratio"} (${drLab()}) · ${dr.n} EWRs</span>${s.type==="gauge"?nearMiss(rows):""}</div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
+    ${inFam("dr")&&hasDr(rows)?`<div class="tile"><b>${f3(dr.mean,"dr")}</b><span>${isDiff()?"change in mean duration ratio":"mean duration ratio"} (${drLab()}) · ${dr.n} EWRs${dr.n<fr.n||fr.n===0?` (only ${dr.n} EWRs have event-length data)`:""}</span>${s.type==="gauge"?nearMiss(rows):""}</div>`:""}</div>${S.boxOpen&&bx(S.metric)?boxRegimes(rows,S.metric):""}`}
     ${isDiff()&&s.type!=="sdl"?(()=>{ const c=cnts(rows,S.metric), p=x=>c.n?Math.round(100*x/c.n):0, bin=isBin(S.metric), sv=S.metric==="sev", tg=S.metric==="et"?"the MRIP target":"target";
       return `<div class="cnts"><b>${MS[S.metric]==="FR"?"Frequency ratio":MS[S.metric][0].toUpperCase()+MS[S.metric].slice(1)}: EWRs changed (comparison vs base)</b><div class="bar"><span style="width:${p(c.up)}%;background:#2166ac"></span><span style="width:${p(c.same)}%;background:#c9ced6"></span><span style="width:${p(c.dn)}%;background:#b2182b"></span></div>
         <span class="up">▲ ${c.up} improved${bin?"":sv?` (${c.gain} now within the MRIP)`:` (${c.gain} now meet ${tg})`}</span> · <span class="dn">▼ ${c.dn} declined${bin?"":sv?` (${c.loss} now beyond it)`:` (${c.loss} drop below ${tg})`}</span> · = ${c.same} unchanged${bin?"":` · met in both: ${c.met} (${MET_OUT?"not in the mean":"in the mean as no change"})`} <span style="color:#6b7280">· ${c.n+(MET_OUT?c.met:0)} EWRs with a result in both scenarios; unchanged = ${S.metric==="fr"?(S.period?`under max(1, ${S.band} × window years ÷ record years) achieved years`:`under ${S.band} achieved year${S.band===1?"":"s"}`):S.metric==="dr"?"duration ratio moves under 0.1":S.metric==="et"?"under 1 year of record beyond MRIP":sv?"worst gap moves under 1 year":"no change"}</span></div>`; })():""}
@@ -368,7 +445,7 @@ function render(){
       ${s.type==="sdl"?"":`<div class="seg"><span class="lbl">Sort columns</span><span class="tabs sm">${[["default","Default"],["high","High → low"],["low","Low → high"]].map(([v,l])=>`<button data-act="sort" data-v="${v}" class="${S.sort===v?"on":""}">${l}</button>`).join("")}</span></div>`}
       ${s.type==="gauge"?`<div class="seg"><span class="lbl">Columns · flow regimes</span><span class="tabs sm"><button data-act="expand-x" class="${COLL_REG.size===0?"on":""}" title="Expand every flow regime into its EWRs">Expand</button><button data-act="collapse-x" class="${META.regimes.every(x=>COLL_REG.has(x))?"on":""}" title="Collapse every flow regime into one column">Collapse</button></span></div>`:""}
     </div>
-    ${s.type==="sdl"?[["pu","By planning unit (gauges per unit in the column label)"],["regime","By flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div>${matrixLegend(true)}</details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>${matrixLegend(false)}`}${cellDetail()}${flowPanel()}`;
+    ${s.type==="sdl"?[["pu","How many EWRs support each objective, by planning unit (gauges per unit in the column label)"],["regime","How many EWRs support each objective, by flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div>${matrixLegend(true,k)}</details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>${matrixLegend(false)}`}${cellDetail()}${flowPanel()}`;
 
   const pv=preparePerformance(rows);
   $("panel").innerHTML=h; mountPerformance(pv); wireFlow(); loadMcn();
@@ -411,21 +488,21 @@ function boxRegimes(rows,m){
  * Box = quartiles, line = median, diamond = mean, whiskers reach observations within 1.5 x IQR, dots mark outliers.
  * Single-mode FR and its plotted mean remain uncapped; differential values follow val's exclusions.
  * dom optionally supplies [min, max] in stored metric units; otherwise the axis includes the data and reference (FR 1 or differential 0).
- * compact reduces the plot height and omits axis labels; ETP labels are scaled to years in 10.
+ * compact reduces the plot height and omits axis labels; ETP labels use percentages, or percentage points in differential mode.
  */
 function boxPlot(rows,m,dom,compact){
   const i=scnIdx(), v=rows.map(r=>val(r,m,i)).filter(x=>x!=null).sort((a,b)=>a-b); if(v.length<2) return "";
   const q=p=>{ const x=(v.length-1)*p, lo=Math.floor(x); return v[lo]+(v[Math.min(lo+1,v.length-1)]-v[lo])*(x-lo); };
   const q1=q(.25), md=q(.5), q3=q(.75), mean=v.reduce((a,b)=>a+b,0)/v.length, iqr=q3-q1, wl=v.find(x=>x>=q1-1.5*iqr), wh=[...v].reverse().find(x=>x<=q3+1.5*iqr);
-  const ref=isDiff()?0:m==="fr"?1:null, lo=dom?dom[0]:Math.min(v[0],ref??v[0]), hi=dom?dom[1]:Math.max(v[v.length-1],ref??v[v.length-1]), W=200, H=compact?26:44, a=10, b=W-10, X=x=>hi>lo?a+(x-lo)/(hi-lo)*(b-a):(a+b)/2, y=compact?13:22, h=compact?14:18, fmt=x=>fs2(x,m);
+  const ref=isDiff()?0:m==="fr"?1:null, lo=dom?dom[0]:Math.min(v[0],ref??v[0]), hi=dom?dom[1]:Math.max(v[v.length-1],ref??v[v.length-1]), W=200, H=compact?26:72, a=10, b=W-10, X=x=>hi>lo?a+(x-lo)/(hi-lo)*(b-a):(a+b)/2, y=compact?13:34, h=compact?14:18, fmt=x=>fs2(x,m);
   const tip=`Box = middle 50% of EWRs, line = median, diamond = mean${m==="fr"&&!isDiff()?" (uncapped; the tile mean caps each EWR at 1)":""}. ${v.length} EWRs: min ${fmt(lo)}, Q1 ${fmt(q1)}, median ${fmt(md)}, mean ${fmt(mean)}, Q3 ${fmt(q3)}, max ${fmt(hi)}`;
-  const rl=ref==null?"":`<line x1="${X(ref)}" x2="${X(ref)}" y1="3" y2="${compact?H-3:H-14}" stroke="#374151" stroke-width="1.6" stroke-dasharray="4 2"/>${compact?"":`<text x="${X(ref)}" y="${H-4}" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#374151">${isDiff()?"0":"1"}</text>`}`;
+  const rl=ref==null?"":`<line x1="${X(ref)}" x2="${X(ref)}" y1="${compact?3:16}" y2="${compact?H-3:H-26}" stroke="#374151" stroke-width="1.6" stroke-dasharray="4 2"/>${compact?"":`<text x="${X(ref)}" y="${H-16}" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#374151">${isDiff()?"0":"1"}</text>`}`;
   return `<svg viewBox="0 0 ${W} ${H}" role="img"><title>${esc(tip)}${ref==null?"":isDiff()?" Dashed line = no change.":" Dashed line = 1 (target frequency met)."}</title>${rl}`+
     `<line x1="${X(wl)}" x2="${X(wh)}" y1="${y}" y2="${y}" stroke="#4b5563"/><line x1="${X(wl)}" x2="${X(wl)}" y1="${y-5}" y2="${y+5}" stroke="#4b5563"/><line x1="${X(wh)}" x2="${X(wh)}" y1="${y-5}" y2="${y+5}" stroke="#4b5563"/>`+
     v.filter(x=>x<wl||x>wh).map(x=>`<circle cx="${X(x)}" cy="${y}" r="2.4" fill="none" stroke="#4b5563"/>`).join("")+
     `<rect x="${X(q1)}" y="${y-h/2}" width="${Math.max(1,X(q3)-X(q1))}" height="${h}" fill="#dbe7f5" stroke="#1f4e8c"/><line x1="${X(md)}" x2="${X(md)}" y1="${y-h/2}" y2="${y+h/2}" stroke="#1f4e8c" stroke-width="2"/>`+
     `<path d="M${X(mean)} ${y-5}l4 5-4 5-4-5z" fill="#c0392b" stroke="#fff" stroke-width=".8"/>`+
-    (compact?"":`<text x="2" y="${H-4}" text-anchor="start" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-a)<16?"":fmt(lo)}</text><text x="${W-2}" y="${H-4}" text-anchor="end" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-b)<16?"":fmt(hi)}</text>`)+
+    (compact?"":`<text x="2" y="${H-16}" text-anchor="start" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-a)<16?"":fmt(lo)}</text><text x="${W-2}" y="${H-16}" text-anchor="end" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-b)<16?"":fmt(hi)}</text><text x="${W/2}" y="9" text-anchor="middle" style="font-size:9.5px;font-weight:700;fill:#374151">Spread of EWRs (box = middle 50%, ◆ = mean)</text><text x="${W/2}" y="${H-3}" text-anchor="middle" style="font-size:9.5px;fill:#4b5563">${isDiff()?(m==="fr"?"Change in achieved years per century":"Change")+" per EWR":m==="et"?"Share of record beyond the maximum gap, per EWR":m==="fr"?"Frequency ratio per EWR (1 = target met)":FAMN[m]+" per EWR"}</text>`)+
     `</svg>`;
 }
 let LASTMX={};   // matrix key ("pu" / "regime" in the SDL view, else "main") -> {cols,orows,cnt}
@@ -478,7 +555,7 @@ function matrixSvg(rows,mxk){
   cols.forEach(c=>c.show=trunc(c.label,t==="sdl"?30:26));
   const C=isDiff()&&!cnt?28:24, PH=cnt?0:64, bandH=t==="gauge"?18:0, bandGap=t==="gauge"?6:0, TB=18;   // cell size, bar panel height, regime band, theme band width: scaled with the 10-11px type
   const lab=Math.max(...orows.map(o=>o.label.length))*6.6+10, labH=Math.max(...cols.map(c=>c.show.length))*6.2+12;   // label space estimated for 11px text
-  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","% >MRIP"],["mz","MRIP ✓"],["sev","Worst gap"],["dr","Dur."]].filter(([k])=>inFam(k)&&(k!=="sev"||hasSev(rows))&&(k!=="dr"||hasDr(rows))), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
+  const CHIPS=[["fr","FR"],["fq","Freq"],["ach","Freq ✓"],["fb","Failed"],["et","% >MRIP"],["mz","MRIP ✓"],["sev","Worst gap"],["dr","Dur."]].filter(([k])=>inFam(k)&&(k!=="sev"||hasSev(rows))&&(k!=="dr"||hasDr(rows))), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
   const D=isDiff(), step=0.05, mid=base-PH/2;
   const vmax=D?Math.max(2*step,Math.ceil(Math.max(0,...cols.map(c=>Math.abs(c.v||0)))/step)*step):(isBin(m)?1:m==="fr"||m==="dr"?Math.max(1.25,Math.ceil(Math.max(...cols.map(c=>c.v||0))*4)/4):Math.max(0.5,Math.ceil(Math.max(...cols.map(c=>c.v||0))*10)/10));
   const by=D?v=>mid-Math.max(-vmax,Math.min(vmax,v))/vmax*(PH/2):v=>base-Math.min(v,vmax)/vmax*PH;
@@ -498,7 +575,7 @@ function matrixSvg(rows,mxk){
     const go=byReg?"":t==="sdl"?` class="colsel" data-act="pu" data-i="${c.key}" data-sdl="${S.sel.i}" style="cursor:pointer"`:t==="pu"?` class="colsel" data-act="gauge" data-i="${c.key}" style="cursor:pointer"`:"";
     g+=`<g><title>${esc(c.full)}${t==="gauge"&&c.grp?": "+[...c.rows].sort(byThrR).map(r=>r[3]).slice(0,40).join(", ")+(c.rows.length>40?" …":""):""} ${cnt?"":` — ${mn(m)} ${f3(c.v,m)}${whoTxt(c)}`+(D?(cc=>` — ▲${cc.up} improved, ▼${cc.dn} declined, ${cc.same} unchanged`)(cnts(c.rows,m)):"")}${go?" (click to open)":""}</title>`;
     if(!cnt&&c.v!=null) g+=`<rect x="${x-6}" y="${D?Math.min(by(c.v),mid):by(c.v)}" width="12" height="${D?Math.abs(by(c.v)-mid)||1:base-by(c.v)}" fill="${colour(c.v,m)}" stroke="#0004"${go}/>`;
-    if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid; g+=`<text x="${x}" y="${top-3}" text-anchor="middle" style="font-size:10px;font-weight:600">${fs2(c.v,m)}</text>`; }   // exact change above the bar
+    if(D&&!cnt&&c.v!=null){ const top=c.v>=0?by(c.v):mid, lt=fs2(c.v,m), stag=lt.length*5.6>C-1&&ci%2?11:0; g+=`<text x="${x}" y="${top-3-stag}" text-anchor="middle" style="font-size:10px;font-weight:600">${lt}</text>`; }   // labels wider than a column alternate in height so neighbours do not overlap   // exact change above the bar
     if(!cnt&&c.v==null) g+=D&&allMet(c.cn)?`<text x="${x}" y="${mid+3.5}" text-anchor="middle" style="font-size:11px;fill:#4b5563">✓</text>`:`<text x="${x}" y="${base-3}" text-anchor="middle" style="font-size:10px;fill:#6b7280">n/a</text>`;
     g+=`<rect x="${x-C/2}" y="${base}" width="${C}" height="${H-base}" fill="transparent"/>`;
     if(hit.length>1) g+=`<line x1="${x}" x2="${x}" y1="${my+hit[0]*C+C/2}" y2="${my+hit[hit.length-1]*C+C/2}" stroke="#999" stroke-width="2"/>`;
@@ -520,11 +597,13 @@ function matrixSvg(rows,mxk){
 /**
  * Return the matrix legend HTML: the color scale sampled from colour(), numeric anchors, direction of improvement, counts, and rings.
  * cnt selects the SDL mapping-count legend; otherwise S.metric and S.mode determine scales and target-status explanations.
+ * With cnt, kind="regime" describes cell inspection; other values describe opening planning units.
+ * ETP labels share mr()'s first-use expansion state.
  */
-function matrixLegend(cnt){
+function matrixLegend(cnt,kind){
   const D=isDiff(), m=S.metric, dot=(f,st,sw,r,t)=>`<svg width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="${r||9}" fill="${f}" stroke="${st||"#0004"}" stroke-width="${sw||1}"/>${t?`<text x="11" y="14.5" text-anchor="middle" style="font:10px system-ui,sans-serif;fill:#111">${t}</text>`:""}</svg>`;
   const counts=`<div><b>Cells</b><span class="it">${dot("#e8edf4","#0004",1,9,"7")}number = EWRs averaged in the cell</span><span class="it">${dot("#e8edf4","#222",1,5.4)}one EWR</span><span class="it">${dot("#d1d5db","none",0,3.4)}no EWR for this pair</span></div>`;
-  if(cnt) return `<div class="mxleg">${counts.replace("EWRs averaged in the cell","EWR → objective mappings")}<div><b>Columns</b><span>click a planning unit to open it</span></div></div>`;
+  if(cnt) return `<div class="mxleg">${counts.replace("EWRs averaged in the cell","EWR → objective mappings")}<div><b>Columns</b><span>${kind==="regime"?"click a flow regime's cell to list its EWRs":"click a planning unit to open it"}</span></div></div>`;
   const [lo,hi,ticks,better]=D?[-DIV[m],DIV[m],[-DIV[m],0,DIV[m]],"blue = improvement, red = decline, white = no change"]
     :m==="fr"?[0,1,[0,.5,.9],"higher is better; white at 0.9, full blue at 1.0 (target met) and above"]
     :m==="et"?[0,1,[0,.5,1],"lower is better; blue = never beyond the MRIP"]
@@ -533,7 +612,7 @@ function matrixLegend(cnt){
     :[0,1,[0,.5,1],m==="fb"?"lower is better (fewer EWRs failing badly)":"higher is better"];
   const at=v=>(v-lo)/(hi-lo)*100, stops=Array.from({length:21},(_,k)=>{ const v=lo+(hi-lo)*k/20; return `${colour(v,m)} ${k*5}%`; }).join(",");
   const lab=v=>m==="dr"?(D?num(v,1):v.toFixed(1)):m==="sev"?(D?num(v,1):String(v))+"×":D?(m==="et"||isBin(m)?pct(v):m==="fr"?num(v,0):num(v,2)):m==="et"||isBin(m)?pa(v):v.toFixed(1);
-  const name=D&&m==="fr"?"Change in achieved years per century (comparison − base)":D&&m==="sev"?"Change in the worst gap, × MRIP (base − comparison)":D?`Change in ${MN[m].replace(/^mean /,"")} (${m==="et"||m==="fb"?"base − comparison":"comparison − base"})`:m==="et"?"% of record beyond MRIP":MN[m][0].toUpperCase()+MN[m].slice(1);
+  const name=D&&m==="fr"?"Change in achieved years per century (comparison − base)":D&&m==="sev"?"Change in the worst gap, × MRIP (base − comparison)":D?`Change in ${MN[m].replace(/^mean /,"")} (${m==="et"||m==="fb"?"base − comparison":"comparison − base"})`:m==="et"?"% of record beyond the "+mr():MN[m][0].toUpperCase()+MN[m].slice(1);
   const scale=`<div><b>${esc(name)}</b><div class="it"><div><div class="rmp" style="background:linear-gradient(90deg,${stops})"></div><div class="tk">${ticks.map(v=>`<span style="left:${at(v)}%">${lab(v)}</span>`).join("")}</div></div>${!D&&(m==="fr"||m==="dr")?"<span>1.0+</span>":!D&&m==="sev"?"<span>4+</span>":D?`<span>beyond ±${lab(hi).replace(/^[+−]/,"")}: full colour</span>`:""}</div><span>${better}</span></div>`;
   const rings=`<div><b>Rings</b>${D?`<span class="it">${dot("#fff","#c0392b",2.2)}net change not worse, but some EWRs declined, or some drop below target</span>`:""}<span class="it">${dot("#fff","#1f4e8c",3)}selected cell (details below)</span></div>`;
   const met=D&&!isBin(m)?`<div><b>Met in both</b><span class="it">${dot(MET_FILL,"#0004",1,9,"✓")}every EWR meets the target in both scenarios</span><span>${MET_OUT?"left out of the means and ▲/▼ counts":"in the means as no change"}</span></div>`:"";
@@ -949,6 +1028,11 @@ async function drawRegimes(){   // flow regime components: thresholds from the E
 }
 // ---- monthly differential flow duration (differential mode, uploaded scenarios) ----------------------------------------------
 S.mflow={xlim:"",yr:null,xr:null}; let MTOKEN=0, MTIMER=0;
+/**
+ * Draw monthly changes in the percentage of days at or above each flow (ML/day), with baseline/comparison hover values.
+ * Retain zoom in S.mflow, rescale colors to visible cells, and fetch a new grid when the flow range changes.
+ * Do nothing without a ready, open flow view; show library, request, or rendering failures in the chart status message.
+ */
 async function drawMonthly(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("mflowPlot")) return;
   const msg=$("mflowMsg"), tok=++MTOKEN; if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
@@ -962,7 +1046,7 @@ async function drawMonthly(){
     const [zlo,zhi]=fitZ();
     const ax=(t,extra)=>Object.assign({title:{text:t},showline:true,linecolor:"black",mirror:true,ticks:"outside",showgrid:false},extra||{});
     await Plotly.newPlot("mflowPlot",[{type:"heatmap",z:d.diff,x:ml,y:d.flows,zmin:zlo,zmax:zhi,colorscale:divScale(zlo,zhi),colorbar:{title:{text:`Change in % of days at or above the flow (${c.cn} − ${c.bn})<br><i>colour range: visible data</i>`,side:"right"}},
-        hovertemplate:"Change: <b>%{z:+.1f} pts</b> of days<br>%{x} · flow ≥ %{y:,.0f} ML/d<extra></extra>",hoverongaps:false}],
+        customdata:d.base.map((r,j)=>r.map((b,i)=>[b,d.comp[j][i]])),hovertemplate:`${esc(c.bn)} <b>%{customdata[0]:.1f}%</b> → ${esc(c.cn)} <b>%{customdata[1]:.1f}%</b><br>Change: <b>%{z:+.1f} pts</b> of days<br>Flow ≥ %{y:,.0f} ML/d in %{x}<extra></extra>`,hoverongaps:false}],
       {height:420,margin:{t:20,r:20,b:50,l:60},plot_bgcolor:"white",paper_bgcolor:"white",font:{size:11},xaxis:ax("Month (water year)",{type:"category",range:S.mflow.xr||undefined}),yaxis:ax("Flow (ML/day)",{range:S.mflow.yr||undefined}),showlegend:false},{responsive:true,displaylogo:false});
     const mp=$("mflowPlot"); if(mp.removeAllListeners) mp.removeAllListeners("plotly_relayout");
     mp.on("plotly_relayout",ev=>{ if(!Object.keys(ev).some(k=>/^[xy]axis\.(range|autorange)/.test(k))) return;   // zoom or reset: rescale the colours to the cells in view, and fetch finer flow steps for the zoomed flow range
@@ -981,6 +1065,12 @@ const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); MCN.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 const heatCols=()=>{ const w=($("flowPlot")&&$("flowPlot").clientWidth)||600; return Math.max(60,Math.min(1200,Math.round((w-150)/3/20)*20)); };   // ~3 px per heat-map column, bucketed so small drags don't refetch
 const r0=v=>v==null||!isFinite(v)?"–":Math.round(v).toLocaleString(), r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: whole flows, one-decimal percentages
+/**
+ * Draw the selected flow/performance chart, dispatching specialized views and fetching uploaded flow data as needed.
+ * keepZoom preserves the threshold-duration heat map's saved zoom; otherwise reset it before requesting the grid.
+ * Heat maps show achieved-year percentages or comparison-minus-base percentage points against flow (ML/day) and duration (days).
+ * Show caught heat-map/curve request and rendering errors in flowMsg, retrying heat-map call-stack failures at coarser resolution.
+ */
 async function drawFlow(keepZoom){
   if(S.flow.chart==="joint"){
     const view=performanceView;
@@ -1021,7 +1111,7 @@ async function drawFlow(keepZoom){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},hovertemplate:(diff?"Change: <b>%{z:+.1f} pts</b> of years":"<b>%{z:.1f}%</b> of years")+"<br>Flow ≥ %{x:,.0f} ML/d for %{y:.0f} days<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},customdata:diff&&d.comp?d.base.map((r,j)=>r.map((b,i)=>[b,d.comp[j][i]])):undefined,hovertemplate:(diff?(d.comp?`${esc(c.bn)} <b>%{customdata[0]:.1f}%</b> → ${esc(c.cn)} <b>%{customdata[1]:.1f}%</b><br>`:"")+"Change: <b>%{z:+.1f} pts</b> of years":"<b>%{z:.1f}%</b> of years")+"<br>Flow ≥ %{x:,.0f} ML/d for %{y:.0f} days<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(ew?[{type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(ew.code)}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hvt}<extra></extra>`,showlegend:false}]:[]),
         lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim],hoverformat:",.0f"}),yaxis:ax("Duration (days)",Object.assign({hoverformat:".0f"},zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{})),showlegend:false,shapes:shapesFor(),annotations:ew?[{x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(ew.code)}</b>`,showarrow:true,arrowhead:0,arrowcolor:"black",ax:(f.lblOff||[34,-26])[0],ay:(f.lblOff||[34,-26])[1],captureevents:true,font:{size:13,color:"#111"},bgcolor:"white",bordercolor:"black",borderwidth:1,borderpad:3}]:[]}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
@@ -1203,6 +1293,7 @@ function setSrc(src){ S.src=src; S.cell=null;
   else { const u=CUSTOM.filter(c=>!c.removed).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } S.cli=0; S.bcli=0; }
   S.sel={type:"none"}; fillPolicyOptions(); syncSrc(); refresh(); }
 $("barTog").onclick=()=>{ const o=$("bar").classList.toggle("open"); $("barTog").setAttribute("aria-expanded",o); $("barTog").textContent=o?"Controls ▴":"Controls ▾"; };
+$("glossBtn").onclick=()=>$("glossDlg").showModal(); $("glossClose").onclick=()=>$("glossDlg").close();
 $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 
 // ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
@@ -1214,7 +1305,7 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
   { let rt=0; if(window.ResizeObserver) new ResizeObserver(()=>{ clearTimeout(rt); rt=setTimeout(plots,80); }).observe(pn); }   // window resizes, the mobile layout and the divider all reach the charts
   { let rt; const regrid=()=>{ clearTimeout(rt); rt=setTimeout(()=>{ const f=S.flow; if(f&&f.open&&f.chart==="heat"&&$("flowPlot")&&$("flowPlot").data&&f.cols!==heatCols()) drawFlow(true); },300); };   // resizing the panel or window re-fetches the heat map on a grid that matches its new width
     if(window.ResizeObserver) new ResizeObserver(regrid).observe(pn); addEventListener("resize",regrid); }
-  const fitMap=()=>{ map.invalidateSize(); const l=document.querySelector(".legend"); if(l) l.style.maxHeight=Math.max(60,$("map").clientHeight-20)+"px"; };   // the legend scrolls within the map, which is short on small screens
+  const fitMap=()=>{ basinFit(); const l=document.querySelector(".legend"); if(l) l.style.maxHeight=Math.max(60,$("map").clientHeight-20)+"px"; };   // the legend scrolls within the map, which is short on small screens
   if(window.ResizeObserver) new ResizeObserver(fitMap).observe($("map")); else addEventListener("resize",fitMap);   // the map always fills its box (a saved panel width or window resize no longer leaves part of it hidden)
   fitMap(); addEventListener("load",fitMap); setTimeout(fitMap,300);   // after fonts / layout settle
   dv.onpointerdown=e=>{ dv.setPointerCapture(e.pointerId); dv.classList.add("drag");
@@ -1242,11 +1333,11 @@ $("swapBC").onclick=()=>{ [S.pol,S.bpol]=[S.bpol,S.pol]; [S.cli,S.bcli]=[S.bcli,
 function setMode(md){ S.mode=md; $("modeS").classList.toggle("on",md==="single"); $("modeD").classList.toggle("on",md==="diff");
   $("baseL").style.display=$("bandL").style.display=md==="diff"?"":"none"; $("swapBC").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
 $("modeS").onclick=()=>setMode("single"); $("modeD").onclick=()=>setMode("diff");
-const MORE={ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved",sev:"Worst gap",dr:"Duration ratio"};
+const MORE={fq:"Achieved frequency",ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved",sev:"Worst gap",dr:"Duration ratio"};
 function syncMore(){ const k=S.metric, on=k in MORE; $("mMore").classList.toggle("on",on); $("mMoreS").textContent=on?MORE[k]:"More"; $("mMore").open=false; }
-function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mMZ").classList.toggle("on",m==="mz"); $("mSV").classList.toggle("on",m==="sev"); $("mDR").classList.toggle("on",m==="dr"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
+function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mFQ").classList.toggle("on",m==="fq"); $("mMZ").classList.toggle("on",m==="mz"); $("mSV").classList.toggle("on",m==="sev"); $("mDR").classList.toggle("on",m==="dr"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
   $("thrL").style.display=m==="ach"?"":"none"; $("ethrL").style.display=m==="mz"?"":"none"; refresh(); }
-$("mAC").onclick=()=>setMetric("ach"); $("mSV").onclick=()=>setMetric("sev"); $("mDR").onclick=()=>setMetric("dr"); $("mFB").onclick=()=>setMetric("fb");
+$("mFQ").onclick=()=>setMetric("fq"); $("mAC").onclick=()=>setMetric("ach"); $("mSV").onclick=()=>setMetric("sev"); $("mDR").onclick=()=>setMetric("dr"); $("mFB").onclick=()=>setMetric("fb");
 $("fbthr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.fbthr=v; refresh(); } }; $("mMZ").onclick=()=>setMetric("mz");
 $("ethr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.ethr=v/100; refresh(); } };
 $("band").onchange=e=>{ S.band=+e.target.value; refresh(); };
@@ -1314,7 +1405,7 @@ function syncUI(){   // bring the header controls in line with the state
   $("pol").value=S.pol; $("cli").value=S.cli; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
   $("modeS").classList.toggle("on",S.mode==="single"); $("modeD").classList.toggle("on",S.mode==="diff");
   $("baseL").style.display=$("swapBC").style.display=$("bandL").style.display=S.mode==="diff"?"":"none"; $("band").value=S.band; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
-  for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"],["mSV","sev"],["mDR","dr"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
+  for(const [id,k] of [["mFR","fr"],["mFQ","fq"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"],["mSV","sev"],["mDR","dr"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
   $("thrL").style.display=S.metric==="ach"?"":"none"; $("fbL").style.display=S.metric==="fb"?"":"none"; $("ethrL").style.display=S.metric==="mz"?"":"none";
   $("thr").value=S.thr; $("fbthr").value=S.fbthr; $("ethr").value=+(S.ethr*100).toFixed(2);
 }
@@ -1334,13 +1425,22 @@ const ruleCode = row => row[3];
 const rulePU = row => META.pus[row[0]];
 const ruleGauge = row => META.gauges[row[2]];
 const gaugeNames = new Map(GAUGES.map(g => [g.id, g.name]));
-const ruleLabel = row => `${ruleGauge(row)} (${gaugeNames.get(ruleGauge(row)) || 'station name unavailable'}) · ${rulePU(row)} · ${ruleCode(row)}`;
+/** Return an unescaped rule label with gauge ID/name, planning unit, and code; normalize the name when niceGaugeName is available. */
+const ruleLabel = row => `${ruleGauge(row)} (${typeof niceGaugeName === 'function' ? niceGaugeName(gaugeNames.get(ruleGauge(row))) : gaugeNames.get(ruleGauge(row)) || 'station name unavailable'}) · ${rulePU(row)} · ${ruleCode(row)}`;
+// The joint plot's own fixed targets (dashed lines and green region).
+const PLOT_FR = 0.95, PLOT_ET = 0.05;
 const meetsTarget = fr => fr >= JOINT_TARGET - JOINT_EPS;
 const jointNames = ['Meeting both', 'Frequency only', 'MRIP only', 'Failing both'];
 const jointColours = ['#207a65', '#c38315', '#527db3', '#bb4052'];
-function jointClass(fr, et, threshold = S.ethr) {
+/**
+ * Classify frequency ratio fr and MRIP exceedance time proportion et (0–1).
+ * Return 0 for both targets met, 1 for frequency only, 2 for MRIP only, or 3 for neither.
+ * Return null for non-finite metrics, negative fr, or et outside [0, 1].
+ * threshold is the maximum allowed et (default S.ethr); target is the minimum fr (default 1), both with 1e-9 tolerance.
+ */
+function jointClass(fr, et, threshold = S.ethr, target = JOINT_TARGET) {
   if (!Number.isFinite(fr) || !Number.isFinite(et) || fr < 0 || et < 0 || et > 1) return null;
-  return (meetsTarget(fr) ? 0 : 2) + (et <= threshold + JOINT_EPS ? 0 : 1);
+  return (fr >= target - JOINT_EPS ? 0 : 2) + (et <= threshold + JOINT_EPS ? 0 : 1);
 }
 function jointSummary(rows, index) {
   const counts = [0, 0, 0, 0]; let severe = 0;
@@ -1421,20 +1521,30 @@ function detailText(view, index) {
   }).join('\n'));
   return view.details.get(index);
 }
+/**
+ * Return an HTML table for view.rows at the flattened policy/climate scenario index.
+ * Show FR to three decimals and ETP as a percentage to one decimal; non-finite values appear as 'missing'.
+ * Include baseline columns when view.base is set; finite ETP values above 1 are displayed as 100%.
+ */
+function detailTable(view, index) {
+  const fmtFR = v => Number.isFinite(v) ? String(+v.toPrecision(6)) : 'missing', fmtET = v => Number.isFinite(v) ? +(100*v).toFixed(3)+'%' : 'missing', hasBase = view.base != null;
+  return `<div style="overflow:auto;max-height:320px"><table><thead><tr><th>EWR</th><th>Gauge</th><th>Planning unit</th><th>FR</th><th>Time beyond maximum gap</th>${hasBase ? '<th>Base FR</th><th>Base time beyond maximum gap</th>' : ''}</tr></thead><tbody>${view.rows.map(row =>
+    `<tr><td>${esc(ruleCode(row))}</td><td>${esc(ruleGauge(row))}</td><td>${esc(rulePU(row))}</td><td>${fmtFR(ruleFR(row, index))}</td><td>${fmtET(ruleETP(row, index))}</td>${hasBase ? `<td>${fmtFR(ruleFR(row, view.base))}</td><td>${fmtET(ruleETP(row, view.base))}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+}
 /** Return panel markup for a performance view, with lazy rule details and robustness results. */
 function performancePanels(view) {
   const q = summaryFor(view, view.i);
   return `<section id="performancePanel">
     <div id="jointContent">
-    <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
+    <p class="note">Each dot is an EWR. Further right = the target frequency is met more often; lower = less time spent beyond the maximum recommended interval between events (MRIP). The shaded bottom-right zone is where both are met.</p>
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
-    <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
+    <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics.</p>
     </div>
-    <details id="otherDetails" class="flowp"><summary>Other</summary>
-    <details id="jointDetails"><summary>Exact rule values and baseline comparisons</summary><pre style="white-space:pre-wrap"></pre></details>
+    <details id="otherDetails" class="flowp"><summary>Advanced data</summary>
+    <details id="jointDetails"><summary>Exact rule values and baseline comparisons</summary><div class="jointTable"></div></details>
     <details id="robustnessDetails"><summary>Policy × climate robustness · target FR 1.0</summary>
-      <p class="note">Joint score uses FR target 1.0 and the MRIP threshold above. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
-      <div id="robustnessTable"></div><pre id="robustnessValues" style="white-space:pre-wrap"></pre></details>
+      <p class="note">Joint score counts an EWR as meeting both when its frequency ratio is at least 1.0 and its time beyond the maximum gap is within the allowed limit. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Cells with no data are greyed out. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
+      <div id="robustnessTable"></div><div id="robustnessValues"></div></details>
     </details></section>`;
 }
 /** Attach the retained view to the panel and bind detail handlers when first mounted. */
@@ -1442,14 +1552,14 @@ function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
-  $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
+  $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('.jointTable').innerHTML = detailTable(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
     $('robustnessTable').innerHTML = robustnessTable(view); view.matrixBuilt = true;
     $('robustnessTable').querySelectorAll('[data-scenario]').forEach(cell => {
       const show = () => { cell.title = detailText(view, +cell.dataset.scenario); };
       cell.onmouseenter = show; cell.onfocus = show;
-      cell.onclick = () => { show(); $('robustnessValues').textContent = cell.title; };
+      cell.onclick = () => { show(); $('robustnessValues').innerHTML = detailTable(view, +cell.dataset.scenario); };
       cell.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); cell.click(); } };
     });
   };
@@ -1460,10 +1570,16 @@ function placeJoint(view) {
   view.jointNode.hidden = !slot;
 }
 
+/**
+ * Return joint-score, severe-failure, and coverage table HTML for the view's rows, using FR 1 and S.ethr.
+ * Built-in policies include outcomes across all expected climates; uploads are listed separately without inferred climates.
+ * Scenarios with no valid FR/ETP pairs show 'No data'; baseline scores appear when view.base is set and data is available.
+ */
 function robustnessTable(view) {
   const cell = index => {
     const q = summaryFor(view, index), base = view.base == null ? null : summaryFor(view, view.base);
-    return `<td tabindex="0" role="button" data-scenario="${index}" aria-label="Inspect exact rule values, target FR 1.0" style="background:${q.score == null ? '#eee' : `hsl(${q.score*130},40%,85%)`}"><b>${q.score == null ? 'Unavailable' : (100*q.score).toFixed(1)+'%'}</b><br>${q.severe} severe<br>${q.n}/${view.rows.length} coverage${base ? '<br>Base: '+(base.score == null ? '—' : (100*base.score).toFixed(1)+'%') : ''}</td>`;
+    if (q.n === 0) return `<td class="nodata" style="background:#f3f4f6;color:#9ca3af"><span>No data</span></td>`;
+    return `<td tabindex="0" role="button" data-scenario="${index}" aria-label="Inspect exact rule values, target FR 1.0" style="background:${q.score == null ? '#eee' : `hsl(${q.score*130},40%,85%)`}"><b>${q.score == null ? 'No data' : (100*q.score).toFixed(1)+'%'}</b><br>${q.severe} severe<br>${q.n}/${view.rows.length} coverage${base ? '<br>Base: '+(base.n === 0 || base.score == null ? '—' : (100*base.score).toFixed(1)+'%') : ''}</td>`;
   };
   if (S.src === 'user') return `<p class="note">Uploaded records have no policy × climate metadata. Climate robustness is not inferred from names.</p><table><tr><th>Uploaded record (climate unspecified)</th><th>Joint score · target FR 1.0</th></tr>${CUSTOM.filter(c => !c.removed).map(c => `<tr><th>${esc(c.name)}</th>${cell(scnIdx(c.P,0))}</tr>`).join('')}</table>`;
   // Custom records are registered explicitly, not identified by a fixed number of built-in policies.
@@ -1518,10 +1634,15 @@ function jointRegimeOrder(rows) {
   const rank = name => typeof REG_ORDER === 'undefined' || !REG_ORDER.includes(name) ? Infinity : REG_ORDER.indexOf(name);
   return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
 }
-/** Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range. */
+/**
+ * Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range.
+ * Use fixed plot targets of FR 0.95 and 5% exceedance for reference lines, shading, and hover classification.
+ * Omit missing or invalid metric pairs; draw baseline arrows only when both endpoints are valid.
+ * If Plotly is unavailable, direct readers to the tabulated values; synchronous chart errors propagate to the caller.
+ */
 function drawJointPlot(view) {
   const g = jointGeometry(view.rows,view.i,view.base,false);
-  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
+  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Advanced data.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
   const traces = regimes.map(name => {
@@ -1529,24 +1650,27 @@ function drawJointPlot(view) {
     return {type:'scatter',mode:'markers',name,x:points.map(p=>p.fr),y:points.map(p=>p.et),
       legendgroup:name,marker:{size:9,color:colours.get(name),line:{color:'white',width:1}},
       customdata:points.map(({row,fr,et})=>[esc(ruleCode(row)),esc(ruleGauge(row)),esc(rulePU(row)),(fr*100).toFixed(0),(et*100).toFixed(1),
-        view.base == null ? '' : `<br>Baseline: FR ${Number.isFinite(ruleFR(row,view.base)) ? ruleFR(row,view.base).toFixed(2) : 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et)]]),
+        view.base == null ? '' : `<br>Baseline: FR ${Number.isFinite(ruleFR(row,view.base)) ? ruleFR(row,view.base).toFixed(2) : 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et,PLOT_ET,PLOT_FR)]]),
       hovertemplate:`<b>%{customdata[0]}</b> · %{customdata[6]}<br>Flow regime: ${esc(name)}<br>Gauge %{customdata[1]} · %{customdata[2]}<br>Frequency: %{x:.2f} × target (%{customdata[3]}%)<br>Maximum gap exceeded: %{customdata[4]}% of time%{customdata[5]}<extra></extra>`};
   });
   if(view.base != null) for (const name of regimes) {
     const arrows = g.arrows.filter(a => jointRegime(a.row) === name);
     traces.push({type:'scatter',mode:'markers',name:'Baseline · '+name,legendgroup:name,showlegend:false,
-      x:arrows.map(a=>a.bf),y:arrows.map(a=>a.be),marker:{size:7,color:colours.get(name),symbol:'circle-open'},
-      hovertemplate:`Baseline · ${esc(name)}<br>Frequency: %{x:.2f} × target<br>Maximum gap exceeded: %{y:.1%} of time<extra></extra>`});
+      x:arrows.map(a=>a.bf),y:arrows.map(a=>a.be),marker:{size:9,color:colours.get(name),symbol:'circle-open',line:{width:2}},
+      customdata:arrows.map(a=>[esc(ruleCode(a.row)),esc(ruleGauge(a.row)),esc(rulePU(a.row))]),
+      hovertemplate:`<b>%{customdata[0]}</b> · baseline<br>Flow regime: ${esc(name)}<br>Gauge %{customdata[1]} · %{customdata[2]}<br>Frequency: %{x:.2f} × target<br>Maximum gap exceeded: %{y:.1%} of time<extra></extra>`});
   }
   const plot = $('jointPlot');
   Plotly.newPlot(plot,traces,{
     height:420,margin:{t:20,r:20,b:90,l:75},plot_bgcolor:'white',paper_bgcolor:'white',font:{size:11},hovermode:'closest',
     hoverlabel:{bgcolor:'white',bordercolor:'#9aa3b0',font:{size:12,color:'#1f2937'},align:'left'},
     legend:{orientation:'h',y:-.24,groupclick:'togglegroup'},
-    xaxis:{title:{text:'Frequency ratio (1 = target met)'},range:[0,g.xmax],showline:true,mirror:true,ticks:'outside'},
+    xaxis:{title:{text:'Frequency ratio (target 0.95)'},range:[0,g.xmax],showline:true,mirror:true,ticks:'outside'},
     yaxis:{title:{text:'Time exceeding maximum gap'},range:[0,1],tickformat:'.0%',showline:true,mirror:true,ticks:'outside'},
-    shapes:[{type:'line',x0:1,x1:1,y0:0,y1:1,line:{color:'#888',dash:'dash'}},{type:'line',x0:0,x1:g.xmax,y0:S.ethr,y1:S.ethr,line:{color:'#888',dash:'dash'}}],
-    annotations:g.arrows.map(a=>({x:a.fr,y:a.et,ax:a.bf,ay:a.be,xref:'x',yref:'y',axref:'x',ayref:'y',showarrow:true,text:'',arrowhead:2,arrowwidth:1,arrowcolor:colours.get(jointRegime(a.row))}))
+    shapes:[{type:'rect',x0:PLOT_FR,x1:g.xmax,y0:0,y1:PLOT_ET,layer:'below',fillcolor:'rgba(32,122,101,0.16)',line:{width:0}},
+      {type:'line',x0:PLOT_FR,x1:PLOT_FR,y0:0,y1:1,line:{color:'#888',dash:'dash'}},{type:'line',x0:0,x1:g.xmax,y0:PLOT_ET,y1:PLOT_ET,line:{color:'#888',dash:'dash'}}],
+    annotations:[]
+      .concat(g.arrows.map(a=>({x:a.fr,y:a.et,ax:a.bf,ay:a.be,xref:'x',yref:'y',axref:'x',ayref:'y',showarrow:true,text:'',arrowhead:3,arrowsize:1.6,arrowwidth:2.5,arrowcolor:colours.get(jointRegime(a.row))})))
   },PCFG).then(() => {
     if (!plot.on) return;
     plot.removeAllListeners('plotly_restyle');
