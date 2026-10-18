@@ -431,11 +431,17 @@ def test_jobs_collect_failures_and_fallback_without_aborting_other_pairs(spec, s
 
 
 @pytest.mark.slow
-def test_real_process_pool_job(spec, series):
+def test_real_process_pool_job(spec, series, monkeypatch):
+    executor = Mock(wraps=c.ProcessPoolExecutor)
+    monkeypatch.setattr(c, "ProcessPoolExecutor", executor)
+    monkeypatch.setattr(c.os, "cpu_count", lambda: 2)
     first = c.save_spec(spec)
     spec["code"] = "U_OTHER"
     second = c.save_spec(spec)
     out = c.run_job([first["id"], second["id"]], ["a"], lambda *p: None)
+    assert executor.call_count == 1
+    assert executor.call_args.args == (2,)
+    assert executor.call_args.kwargs["mp_context"].get_start_method() == "spawn"
     assert out["errors"] == out["skipped"] == {}
     assert {r["ewr"] for r in out["results"]["a"]} == {first["code"], second["code"]}
 

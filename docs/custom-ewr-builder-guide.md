@@ -473,12 +473,12 @@ const UEWR = {
 | Drought windows (period selector) | `r[12]` via `putVals` (`v[10]`) | `summarise_rows` computes `win` | as uploads |
 | Joint FR–MRIP scatter, climate matrix (`performance.js`) | `preparePerformance(rows)` | new `ROWS` + `performanceRevision++` | `MaxInter-event` = 0 → no ETP, so excluded from joint denominators (existing rule) |
 | Annual raster (performance.js) | `inventoryFor(gauge)` → `/api/ewryears` | `/api/ewrs` lists it, `ewr_eval` resolves `U_` | all kinds. Event volume column hidden for L/S |
-| Flow analysis EWR dropdown | `ewrsFor(g)` = `EWRLIST` + `CEWR` (`:729`) | `ewrsFor = g => [...EWRLIST.get(g)||[], ...UEWR.atGauge(g), ...CEWR]`. Label with ★ | all kinds for **ev-*** charts. Only F/V for heat map, hydrograph lines, FDC, dFDC and mDFDC (filter by `e.kind`) |
+| Flow analysis EWR dropdown | `ewrsFor(g)` = `EWRLIST` + `CEWR` (`:729`) | `ewrsFor = g => [...EWRLIST.get(g)\|\|[], ...UEWR.atGauge(g), ...CEWR]`. Label with ★ | all kinds for **ev-*** charts. Only F/V for heat map, hydrograph lines, FDC, dFDC and mDFDC (filter by `e.kind`) |
 | Heat-map overlay and threshold groups | `thrGroups(list, g)` | spec `thr` / `sm` / `em` | F only (`flow_handle`/`lowflow_handle`). It's a threshold × duration chart |
 | EWR performance charts: achievement by year, events, timing, gaps vs MRIP | `/api/ewryears?ewr=U_…&pu=` | server resolution (§4.4) | all. Y-axis unit from kind (ML/d, m, EC) |
 | Flow regime components | `/api/regimes` (lowest **sheet** threshold per regime) | **not included by design**. Regimes describe the review's EWR set | none |
 | EWR guide search and tutorial | `ROWS_ALL` | `guideRow(spec, pu)` appended | tutorial for flow_handle / lowflow_handle. Others show the existing "demo in development" card |
-| Share link (`encodeState`, `:1450`) | `S.flow.ewr` holds `code|pu` | none needed | a link opened elsewhere without the spec falls back to "no EWR selected" (already the behaviour for unknown codes). Note this in the README |
+| Share link (`encodeState`, `:1450`) | `S.flow.ewr` holds `code\|pu` | none needed | a link opened elsewhere without the spec falls back to "no EWR selected" (already the behaviour for unknown codes). Note this in the README |
 
 ### 5.4 Delete cascade (`UEWR.remove(id)`)
 

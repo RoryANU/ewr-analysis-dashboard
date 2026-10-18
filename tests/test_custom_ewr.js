@@ -222,3 +222,34 @@ test('salinity conversion cannot import a range that collapses to zero EC',()=>{
  const d=portable();d.spec.kind='S';d.spec.salinity={unit:'TDS',tds_factor:1e-300};d.spec.params.FlowThresholdMin=0;d.spec.params.FlowThresholdMax=1;
  assert.throws(()=>readPortable(d),/Upper limit must exceed lower limit/);
 });
+
+const formSubmit=source.slice(source.indexOf('  async function submit(run){'),source.indexOf("  dialog.addEventListener('submit'"));
+for(const editing of [false,true])test(`a failed run preserves the saved form identity for validation and retry (${editing?'edit':'new'})`,async()=>{
+ const initial=editing?spec():clone(fixtures.base),h=registryHarness({definitions:editing?[initial]:[]});await h.api.sync();
+ h.ctx.initial=initial;h.run(`
+  let original=initial.id?userClone(initial):null,draft=userClone(initial),busy=false,formEpoch=1,status='';
+  const dialog={open:true,querySelectorAll:()=>[{dataset:{scenario:'a'}}],close(){this.open=false;}};
+  const currentForm=token=>dialog.open&&token===formEpoch,live=()=>CUSTOM;
+  const formStatus=text=>{status=text;},showNotice=()=>{},errorText=error=>error.message;
+  const validate=()=>validateSpec(draft,UEWR.schema,UEWR.context());
+ `+formSubmit);
+ let attempts=0;h.api.run=async ids=>{assert.equal(ids[0],h.run('draft.id'));if(++attempts===1)throw Error('Evaluation unavailable');return {};};
+ await h.run('submit(true)');
+ const saved=[...h.server.values()][0];assert.equal(h.run('dialog.open'),true);assert.equal(h.run('status'),'Evaluation unavailable');
+ assert.deepEqual(plain(h.run('original')),saved);assert.deepEqual(plain(h.run('draft')),saved);
+ assert.equal(h.run('validate().ok'),true);assert.equal(h.run('busy'),false);
+ await h.run('submit(true)');
+ assert.equal(attempts,2);assert.equal(h.server.size,1);assert.equal(h.server.get(saved.id).ver,saved.ver+1);assert.equal(h.run('dialog.open'),false);
+});
+test('a save completing after another form opens leaves that form untouched',async()=>{
+ const h=registryHarness();await h.api.sync();h.ctx.initial=clone(fixtures.base);h.run(`
+  let original=null,draft=userClone(initial),busy=false,formEpoch=1;
+  const dialog={open:true,querySelectorAll:()=>[],close(){this.open=false;}};
+  const currentForm=token=>dialog.open&&token===formEpoch,live=()=>CUSTOM;
+  const formStatus=()=>{},showNotice=()=>{},errorText=error=>error.message;
+  const validate=()=>validateSpec(draft,UEWR.schema,UEWR.context());
+ `+formSubmit);
+ h.saveGate=async()=>{h.run("formEpoch++;draft={code:'U_OTHER'};");};
+ await h.run('submit(false)');
+ assert.deepEqual(plain(h.run('draft')),{code:'U_OTHER'});assert.equal(h.run('original'),null);assert.equal(h.run('dialog.open'),true);
+});

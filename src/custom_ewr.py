@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import re
 import threading
@@ -740,7 +741,7 @@ def run_job(spec_ids: list[str], scn_ids: list[str], progress: Callable[[str, in
 
     if total > 1 and (os.cpu_count() or 1) > 1:
         try:
-            with ProcessPoolExecutor(min(total, os.cpu_count() or 1)) as pool:
+            with ProcessPoolExecutor(min(total, os.cpu_count() or 1), mp_context=multiprocessing.get_context("spawn")) as pool:
                 futures = {pool.submit(_pair, spec, scn, str(_store())): i for i, (spec, scn) in enumerate(pairs)}
                 for future in as_completed(futures):
                     collect(futures[future], future.result())

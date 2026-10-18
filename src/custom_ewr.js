@@ -525,6 +525,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     try{
       const previous=original?live().filter(c=>c.vals.some(v=>v[1]===original.gauge&&v[2]===original.code)).map(c=>c.id):[];
       formStatus('Saving your definition…');const saved=await UEWR.save(check.spec);
+      if(currentForm(token)){original=userClone(saved);draft=userClone(saved);}
       const scns=run?selected:previous;
       if(scns.length){if(currentForm(token))formStatus('Evaluating the selected scenarios…');const job=await UEWR.run([saved.id],scns,(p,t)=>{if(p&&currentForm(token))showSteps(p.stage,p,t,STEPS_USER,'uewrSteps');});showNotice('Saved '+saved.code+'; evaluation complete.'+(Object.keys(job.skipped||{}).length||Object.keys(job.errors||{}).length?' Expand the EWR to review skips or errors.':''));}
       else showNotice('Saved '+saved.code+'. Run it on uploaded scenarios when ready.');if(currentForm(token))dialog.close();
