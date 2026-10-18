@@ -6,6 +6,7 @@
 Used by the `parameter-sheet-sync` pre-push hook and tests/test_parameter_sheet_sync.py.
 """
 
+import csv
 import hashlib
 import sys
 import tempfile
@@ -28,6 +29,10 @@ def fetch_upstream(timeout: float = 30) -> bytes:
         return normalise(resp.read())
 
 
+# columns the build reads unconditionally (build_dashboard.py, ewr_index)
+REQUIRED_COLUMNS = {"PlanningUnitName", "Code", "StartMonth", "EndMonth", "Multigauge", "FlowLevelVolume"}
+
+
 def local_copy() -> bytes:
     """Read the local parameter sheet with normalised newlines."""
     return normalise(LOCAL.read_bytes())
@@ -46,8 +51,8 @@ def main(argv: list[str]) -> int:
         print(f"parameter sheet: could not reach GitHub ({e}); not checked", file=sys.stderr)
         return 0
     if "--update" in argv:
-        header = upstream.split(b"\n", 1)[0]
-        if b"PlanningUnitName" not in header or b"Code" not in header:
+        header = next(csv.reader([upstream.split(b"\n", 1)[0].decode("utf-8-sig", errors="replace")]))
+        if not REQUIRED_COLUMNS <= set(header):
             print("parameter sheet: invalid upstream header; local copy unchanged", file=sys.stderr)
             return 1
         temporary = None

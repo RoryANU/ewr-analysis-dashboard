@@ -7,6 +7,8 @@ import pytest
 
 import sync_parameter_sheet as sync
 
+VALID_UPSTREAM = b"PlanningUnitName,Code,StartMonth,EndMonth,Multigauge,FlowLevelVolume\nExample,BF1,7,6,,F\n"
+
 
 def test_local_copy_exists_and_has_the_columns_the_page_uses():
     """Verify the local sheet contains the columns required by the guide."""
@@ -20,7 +22,7 @@ def test_normalise_ignores_line_endings_and_trailing_newlines():
     assert sync.normalise(b"a,b\r\n1,2\r\n\r\n") == sync.normalise(b"a,b\n1,2")
 
 
-@pytest.mark.parametrize("upstream", [b"", b"<html>error</html>\nPlanningUnitName,Code\n", b"PlanningUnitName,Gauge\n", b"Gauge,Code\n"])
+@pytest.mark.parametrize("upstream", [b"", b"<html>error</html>\nPlanningUnitName,Code\n", b"PlanningUnitName,Gauge\n", b"Gauge,Code\n", b"PlanningUnitName,Code\nExample,BF1\n"])
 def test_update_rejects_invalid_header_without_changing_local_copy(tmp_path, monkeypatch, capsys, upstream):
     """Verify invalid upstream headers leave the local sheet and directory unchanged."""
     local = tmp_path / "parameter_sheet.csv"
@@ -39,7 +41,7 @@ def test_update_replaces_local_copy_atomically(tmp_path, monkeypatch):
     """Verify updates replace a complete temporary file beside the existing sheet."""
     local = tmp_path / "parameter_sheet.csv"
     original = b"original local content\n"
-    upstream = b"PlanningUnitName,Code\nExample,BF1\n"
+    upstream = VALID_UPSTREAM
     local.write_bytes(original)
     monkeypatch.setattr(sync, "LOCAL", local)
     monkeypatch.setattr(sync, "fetch_upstream", lambda: upstream)
@@ -69,7 +71,7 @@ def test_failed_update_preserves_local_copy_and_removes_temporary_file(tmp_path,
     original = b"original local content\n"
     local.write_bytes(original)
     monkeypatch.setattr(sync, "LOCAL", local)
-    monkeypatch.setattr(sync, "fetch_upstream", lambda: b"PlanningUnitName,Code\nExample,BF1\n")
+    monkeypatch.setattr(sync, "fetch_upstream", lambda: VALID_UPSTREAM)
 
     def failed_replace(source, target):
         """Simulate a filesystem failure during the atomic replacement."""
@@ -89,7 +91,7 @@ def test_interrupted_write_preserves_local_copy_and_removes_temporary_file(tmp_p
     original = b"original local content\n"
     local.write_bytes(original)
     monkeypatch.setattr(sync, "LOCAL", local)
-    monkeypatch.setattr(sync, "fetch_upstream", lambda: b"PlanningUnitName,Code\nExample,BF1\n")
+    monkeypatch.setattr(sync, "fetch_upstream", lambda: VALID_UPSTREAM)
     temp = sync.tempfile.NamedTemporaryFile(dir=tmp_path, delete=False)
     write = temp.write
 

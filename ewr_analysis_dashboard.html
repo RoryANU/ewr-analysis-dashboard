@@ -2437,16 +2437,16 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
       },
       {
         title: "Gaps between events", ms: 4200,
-        cap: sp.mi != null ? `The EWR also limits how long the river can go between successful years: <b>${yrs(sp.mi)}</b> at most. In this record the longest gap is <b>${m.gap ?? 3} years</b>${(m.gap ?? 3) > sp.mi ? ", which is too long" : ", which is within the limit"}.` : `This EWR has no maximum gap between events set, but the longer a river goes without a successful year, the more the ecology suffers.`,
+        cap: sp.mi != null ? `The EWR also limits how long the river can go between successful years: <b>${yrs(sp.mi)}</b> at most. The longest gap in this illustrative record is <b>${m.gap ?? 3} years</b>; it is shown only to explain the idea and is not compared with that limit.` : `This EWR has no maximum gap between events set, but the longer a river goes without a successful year, the more the ecology suffers.`,
         draw: p => {
           const t = tilesSvg(m, 1), a = ease(sub(0.2, 0.8, p));
           const idx = m.record.map((y, i) => (y.met ? i : -1)).filter(i => i >= 0);
           let best = [0, 0];
           for (let k = 1; k < idx.length; k++) if (idx[k] - idx[k - 1] > best[1] - best[0]) best = [idx[k - 1], idx[k]];
-          const xa = t.x0 + best[0] * (t.tw + t.gx) + t.tw / 2, xb = t.x0 + best[1] * (t.tw + t.gx) + t.tw / 2, over = sp.mi != null && best[1] - best[0] > sp.mi;
-          const col = sp.mi == null ? C.org : over ? C.bad : C.ok;
-          let s = t.svg + `<g opacity="${a}"><path d="M${xa} 150 V168 H${xb} V150" fill="none" stroke="${col}" stroke-width="2.5"/>` + T((xa + xb) / 2, 192, `${best[1] - best[0]} years between successful years`, { size: 13, w: 700, a: "middle", fill: col });
-          if (sp.mi != null) s += T((xa + xb) / 2, 216, `limit: ${yrs(sp.mi)} → ${over ? "exceeded ✗" : "within limit ✓"}`, { size: 12, a: "middle", fill: col });
+          const xa = t.x0 + best[0] * (t.tw + t.gx) + t.tw / 2, xb = t.x0 + best[1] * (t.tw + t.gx) + t.tw / 2;
+          const col = C.mut;
+          let s = t.svg + `<g opacity="${a}"><path d="M${xa} 150 V168 H${xb} V150" fill="none" stroke="${col}" stroke-width="2.5"/>` + T((xa + xb) / 2, 192, `${best[1] - best[0]} years between successful years (illustration)`, { size: 13, w: 700, a: "middle", fill: col });
+          if (sp.mi != null) s += T((xa + xb) / 2, 216, `EWR limit: ${yrs(sp.mi)} (not compared with this illustration)`, { size: 12, a: "middle", fill: col });
           return s + "</g>";
         },
       },
