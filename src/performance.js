@@ -10,13 +10,15 @@ const ruleCode = row => row[3];
 const rulePU = row => META.pus[row[0]];
 const ruleGauge = row => META.gauges[row[2]];
 const gaugeNames = new Map(GAUGES.map(g => [g.id, g.name]));
-const ruleLabel = row => `${ruleGauge(row)} (${gaugeNames.get(ruleGauge(row)) || 'station name unavailable'}) · ${rulePU(row)} · ${ruleCode(row)}`;
+const ruleLabel = row => `${ruleGauge(row)} (${typeof niceGaugeName === 'function' ? niceGaugeName(gaugeNames.get(ruleGauge(row))) : gaugeNames.get(ruleGauge(row)) || 'station name unavailable'}) · ${rulePU(row)} · ${ruleCode(row)}`;
+// The joint plot's own fixed targets (dashed lines and green region).
+const PLOT_FR = 0.95, PLOT_ET = 0.05;
 const meetsTarget = fr => fr >= JOINT_TARGET - JOINT_EPS;
 const jointNames = ['Meeting both', 'Frequency only', 'MRIP only', 'Failing both'];
 const jointColours = ['#207a65', '#c38315', '#527db3', '#bb4052'];
-function jointClass(fr, et, threshold = S.ethr) {
+function jointClass(fr, et, threshold = S.ethr, target = JOINT_TARGET) {
   if (!Number.isFinite(fr) || !Number.isFinite(et) || fr < 0 || et < 0 || et > 1) return null;
-  return (meetsTarget(fr) ? 0 : 2) + (et <= threshold + JOINT_EPS ? 0 : 1);
+  return (fr >= target - JOINT_EPS ? 0 : 2) + (et <= threshold + JOINT_EPS ? 0 : 1);
 }
 function jointSummary(rows, index) {
   const counts = [0, 0, 0, 0]; let severe = 0;
@@ -97,20 +99,26 @@ function detailText(view, index) {
   }).join('\n'));
   return view.details.get(index);
 }
+/** Return an HTML table of exact FR and ETP values (and baseline values in differential mode) for one scenario index. */
+function detailTable(view, index) {
+  const fmtFR = v => Number.isFinite(v) ? v.toFixed(3) : 'missing', fmtET = v => Number.isFinite(v) ? (100*v).toFixed(1)+'%' : 'missing', hasBase = view.base != null;
+  return `<div style="overflow:auto;max-height:320px"><table><thead><tr><th>EWR</th><th>Gauge</th><th>Planning unit</th><th>FR</th><th>Time beyond maximum gap</th>${hasBase ? '<th>Base FR</th><th>Base time beyond maximum gap</th>' : ''}</tr></thead><tbody>${view.rows.map(row =>
+    `<tr><td>${esc(ruleCode(row))}</td><td>${esc(ruleGauge(row))}</td><td>${esc(rulePU(row))}</td><td>${fmtFR(ruleFR(row, index))}</td><td>${fmtET(ruleETP(row, index))}</td>${hasBase ? `<td>${fmtFR(ruleFR(row, view.base))}</td><td>${fmtET(ruleETP(row, view.base))}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+}
 /** Return panel markup for a performance view, with lazy rule details and robustness results. */
 function performancePanels(view) {
   const q = summaryFor(view, view.i);
   return `<section id="performancePanel">
     <div id="jointContent">
-    <p class="note">Each dot is an EWR. Right = more frequent achievement; lower = less time exceeding the maximum gap between events. Target: FR ≥ 1.0; allowed exceedance ≤ ${(S.ethr*100).toFixed(1)}% of time.</p>
+    <p class="note">Each dot is an EWR. Further right = the target frequency is met more often; lower = less time spent beyond the maximum recommended interval between events (MRIP). The shaded bottom-right zone is where both are met.</p>
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
-    <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics. The frequency target is always 1.0, independent of the header threshold.</p>
+    <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics.</p>
     </div>
-    <details id="otherDetails" class="flowp"><summary>Other</summary>
-    <details id="jointDetails"><summary>Exact rule values and baseline comparisons</summary><pre style="white-space:pre-wrap"></pre></details>
+    <details id="otherDetails" class="flowp"><summary>Advanced data</summary>
+    <details id="jointDetails"><summary>Exact rule values and baseline comparisons</summary><div class="jointTable"></div></details>
     <details id="robustnessDetails"><summary>Policy × climate robustness · target FR 1.0</summary>
-      <p class="note">Joint score uses FR target 1.0 and the MRIP threshold above. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
-      <div id="robustnessTable"></div><pre id="robustnessValues" style="white-space:pre-wrap"></pre></details>
+      <p class="note">Joint score counts an EWR as meeting both when its frequency ratio is at least 1.0 and its time beyond the maximum gap is within the allowed limit. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Cells with no data are greyed out. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
+      <div id="robustnessTable"></div><div id="robustnessValues"></div></details>
     </details></section>`;
 }
 /** Attach the retained view to the panel and bind detail handlers when first mounted. */
@@ -118,14 +126,14 @@ function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
-  $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('pre').textContent = detailText(view, view.i); };
+  $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('.jointTable').innerHTML = detailTable(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
     $('robustnessTable').innerHTML = robustnessTable(view); view.matrixBuilt = true;
     $('robustnessTable').querySelectorAll('[data-scenario]').forEach(cell => {
       const show = () => { cell.title = detailText(view, +cell.dataset.scenario); };
       cell.onmouseenter = show; cell.onfocus = show;
-      cell.onclick = () => { show(); $('robustnessValues').textContent = cell.title; };
+      cell.onclick = () => { show(); $('robustnessValues').innerHTML = detailTable(view, +cell.dataset.scenario); };
       cell.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); cell.click(); } };
     });
   };
@@ -139,7 +147,8 @@ function placeJoint(view) {
 function robustnessTable(view) {
   const cell = index => {
     const q = summaryFor(view, index), base = view.base == null ? null : summaryFor(view, view.base);
-    return `<td tabindex="0" role="button" data-scenario="${index}" aria-label="Inspect exact rule values, target FR 1.0" style="background:${q.score == null ? '#eee' : `hsl(${q.score*130},40%,85%)`}"><b>${q.score == null ? 'Unavailable' : (100*q.score).toFixed(1)+'%'}</b><br>${q.severe} severe<br>${q.n}/${view.rows.length} coverage${base ? '<br>Base: '+(base.score == null ? '—' : (100*base.score).toFixed(1)+'%') : ''}</td>`;
+    if (q.n === 0) return `<td class="nodata" data-scenario="${index}" style="background:#f3f4f6;color:#9ca3af"><span>No data</span></td>`;
+    return `<td tabindex="0" role="button" data-scenario="${index}" aria-label="Inspect exact rule values, target FR 1.0" style="background:${q.score == null ? '#eee' : `hsl(${q.score*130},40%,85%)`}"><b>${q.score == null ? 'No data' : (100*q.score).toFixed(1)+'%'}</b><br>${q.severe} severe<br>${q.n}/${view.rows.length} coverage${base ? '<br>Base: '+(base.n === 0 || base.score == null ? '—' : (100*base.score).toFixed(1)+'%') : ''}</td>`;
   };
   if (S.src === 'user') return `<p class="note">Uploaded records have no policy × climate metadata. Climate robustness is not inferred from names.</p><table><tr><th>Uploaded record (climate unspecified)</th><th>Joint score · target FR 1.0</th></tr>${CUSTOM.filter(c => !c.removed).map(c => `<tr><th>${esc(c.name)}</th>${cell(scnIdx(c.P,0))}</tr>`).join('')}</table>`;
   // Custom records are registered explicitly, not identified by a fixed number of built-in policies.
@@ -197,7 +206,7 @@ function jointRegimeOrder(rows) {
 /** Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range. */
 function drawJointPlot(view) {
   const g = jointGeometry(view.rows,view.i,view.base,false);
-  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Other.'; return; }
+  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Advanced data.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
   const traces = regimes.map(name => {
@@ -205,24 +214,27 @@ function drawJointPlot(view) {
     return {type:'scatter',mode:'markers',name,x:points.map(p=>p.fr),y:points.map(p=>p.et),
       legendgroup:name,marker:{size:9,color:colours.get(name),line:{color:'white',width:1}},
       customdata:points.map(({row,fr,et})=>[esc(ruleCode(row)),esc(ruleGauge(row)),esc(rulePU(row)),(fr*100).toFixed(0),(et*100).toFixed(1),
-        view.base == null ? '' : `<br>Baseline: FR ${Number.isFinite(ruleFR(row,view.base)) ? ruleFR(row,view.base).toFixed(2) : 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et)]]),
+        view.base == null ? '' : `<br>Baseline: FR ${Number.isFinite(ruleFR(row,view.base)) ? ruleFR(row,view.base).toFixed(2) : 'missing'} · ${Number.isFinite(ruleETP(row,view.base)) ? (100*ruleETP(row,view.base)).toFixed(1)+'% of time beyond gap' : 'gap data missing'}`,jointNames[jointClass(fr,et,PLOT_ET,PLOT_FR)]]),
       hovertemplate:`<b>%{customdata[0]}</b> · %{customdata[6]}<br>Flow regime: ${esc(name)}<br>Gauge %{customdata[1]} · %{customdata[2]}<br>Frequency: %{x:.2f} × target (%{customdata[3]}%)<br>Maximum gap exceeded: %{customdata[4]}% of time%{customdata[5]}<extra></extra>`};
   });
   if(view.base != null) for (const name of regimes) {
     const arrows = g.arrows.filter(a => jointRegime(a.row) === name);
     traces.push({type:'scatter',mode:'markers',name:'Baseline · '+name,legendgroup:name,showlegend:false,
-      x:arrows.map(a=>a.bf),y:arrows.map(a=>a.be),marker:{size:7,color:colours.get(name),symbol:'circle-open'},
-      hovertemplate:`Baseline · ${esc(name)}<br>Frequency: %{x:.2f} × target<br>Maximum gap exceeded: %{y:.1%} of time<extra></extra>`});
+      x:arrows.map(a=>a.bf),y:arrows.map(a=>a.be),marker:{size:9,color:colours.get(name),symbol:'circle-open',line:{width:2}},
+      customdata:arrows.map(a=>[esc(ruleCode(a.row)),esc(ruleGauge(a.row)),esc(rulePU(a.row))]),
+      hovertemplate:`<b>%{customdata[0]}</b> · baseline<br>Flow regime: ${esc(name)}<br>Gauge %{customdata[1]} · %{customdata[2]}<br>Frequency: %{x:.2f} × target<br>Maximum gap exceeded: %{y:.1%} of time<extra></extra>`});
   }
   const plot = $('jointPlot');
   Plotly.newPlot(plot,traces,{
     height:420,margin:{t:20,r:20,b:90,l:75},plot_bgcolor:'white',paper_bgcolor:'white',font:{size:11},hovermode:'closest',
     hoverlabel:{bgcolor:'white',bordercolor:'#9aa3b0',font:{size:12,color:'#1f2937'},align:'left'},
     legend:{orientation:'h',y:-.24,groupclick:'togglegroup'},
-    xaxis:{title:{text:'Frequency ratio (1 = target met)'},range:[0,g.xmax],showline:true,mirror:true,ticks:'outside'},
+    xaxis:{title:{text:'Frequency ratio (target 0.95)'},range:[0,g.xmax],showline:true,mirror:true,ticks:'outside'},
     yaxis:{title:{text:'Time exceeding maximum gap'},range:[0,1],tickformat:'.0%',showline:true,mirror:true,ticks:'outside'},
-    shapes:[{type:'line',x0:1,x1:1,y0:0,y1:1,line:{color:'#888',dash:'dash'}},{type:'line',x0:0,x1:g.xmax,y0:S.ethr,y1:S.ethr,line:{color:'#888',dash:'dash'}}],
-    annotations:g.arrows.map(a=>({x:a.fr,y:a.et,ax:a.bf,ay:a.be,xref:'x',yref:'y',axref:'x',ayref:'y',showarrow:true,text:'',arrowhead:2,arrowwidth:1,arrowcolor:colours.get(jointRegime(a.row))}))
+    shapes:[{type:'rect',x0:PLOT_FR,x1:g.xmax,y0:0,y1:PLOT_ET,layer:'below',fillcolor:'rgba(32,122,101,0.16)',line:{width:0}},
+      {type:'line',x0:PLOT_FR,x1:PLOT_FR,y0:0,y1:1,line:{color:'#888',dash:'dash'}},{type:'line',x0:0,x1:g.xmax,y0:PLOT_ET,y1:PLOT_ET,line:{color:'#888',dash:'dash'}}],
+    annotations:[]
+      .concat(g.arrows.map(a=>({x:a.fr,y:a.et,ax:a.bf,ay:a.be,xref:'x',yref:'y',axref:'x',ayref:'y',showarrow:true,text:'',arrowhead:3,arrowsize:1.6,arrowwidth:2.5,arrowcolor:colours.get(jointRegime(a.row))})))
   },PCFG).then(() => {
     if (!plot.on) return;
     plot.removeAllListeners('plotly_restyle');
