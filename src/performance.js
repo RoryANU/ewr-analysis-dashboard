@@ -10,12 +10,19 @@ const ruleCode = row => row[3];
 const rulePU = row => META.pus[row[0]];
 const ruleGauge = row => META.gauges[row[2]];
 const gaugeNames = new Map(GAUGES.map(g => [g.id, g.name]));
+/** Return an unescaped rule label with gauge ID/name, planning unit, and code; normalize the name when niceGaugeName is available. */
 const ruleLabel = row => `${ruleGauge(row)} (${typeof niceGaugeName === 'function' ? niceGaugeName(gaugeNames.get(ruleGauge(row))) : gaugeNames.get(ruleGauge(row)) || 'station name unavailable'}) · ${rulePU(row)} · ${ruleCode(row)}`;
 // The joint plot's own fixed targets (dashed lines and green region).
 const PLOT_FR = 0.95, PLOT_ET = 0.05;
 const meetsTarget = fr => fr >= JOINT_TARGET - JOINT_EPS;
 const jointNames = ['Meeting both', 'Frequency only', 'MRIP only', 'Failing both'];
 const jointColours = ['#207a65', '#c38315', '#527db3', '#bb4052'];
+/**
+ * Classify frequency ratio fr and MRIP exceedance time proportion et (0–1).
+ * Return 0 for both targets met, 1 for frequency only, 2 for MRIP only, or 3 for neither.
+ * Return null for non-finite metrics, negative fr, or et outside [0, 1].
+ * threshold is the maximum allowed et (default S.ethr); target is the minimum fr (default 1), both with 1e-9 tolerance.
+ */
 function jointClass(fr, et, threshold = S.ethr, target = JOINT_TARGET) {
   if (!Number.isFinite(fr) || !Number.isFinite(et) || fr < 0 || et < 0 || et > 1) return null;
   return (fr >= target - JOINT_EPS ? 0 : 2) + (et <= threshold + JOINT_EPS ? 0 : 1);
@@ -99,7 +106,11 @@ function detailText(view, index) {
   }).join('\n'));
   return view.details.get(index);
 }
-/** Return an HTML table of exact FR and ETP values (and baseline values in differential mode) for one scenario index. */
+/**
+ * Return an HTML table for view.rows at the flattened policy/climate scenario index.
+ * Show FR to three decimals and ETP as a percentage to one decimal; non-finite values appear as 'missing'.
+ * Include baseline columns when view.base is set; finite ETP values above 1 are displayed as 100%.
+ */
 function detailTable(view, index) {
   const fmtFR = v => Number.isFinite(v) ? v.toFixed(3) : 'missing', fmtET = v => Number.isFinite(v) ? (100*v).toFixed(1)+'%' : 'missing', hasBase = view.base != null;
   return `<div style="overflow:auto;max-height:320px"><table><thead><tr><th>EWR</th><th>Gauge</th><th>Planning unit</th><th>FR</th><th>Time beyond maximum gap</th>${hasBase ? '<th>Base FR</th><th>Base time beyond maximum gap</th>' : ''}</tr></thead><tbody>${view.rows.map(row =>
@@ -144,6 +155,11 @@ function placeJoint(view) {
   view.jointNode.hidden = !slot;
 }
 
+/**
+ * Return joint-score, severe-failure, and coverage table HTML for the view's rows, using FR 1 and S.ethr.
+ * Built-in policies include outcomes across all expected climates; uploads are listed separately without inferred climates.
+ * Scenarios with no valid FR/ETP pairs show 'No data'; baseline scores appear when view.base is set and data is available.
+ */
 function robustnessTable(view) {
   const cell = index => {
     const q = summaryFor(view, index), base = view.base == null ? null : summaryFor(view, view.base);
@@ -203,7 +219,12 @@ function jointRegimeOrder(rows) {
   const rank = name => typeof REG_ORDER === 'undefined' || !REG_ORDER.includes(name) ? Infinity : REG_ORDER.indexOf(name);
   return (a,b) => (thresholds.get(a) ?? Infinity) - (thresholds.get(b) ?? Infinity) || rank(a) - rank(b) || a.localeCompare(b);
 }
-/** Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range. */
+/**
+ * Draw FR versus MRIP exceedance for the view, with baseline arrows and an automatic FR range.
+ * Use fixed plot targets of FR 0.95 and 5% exceedance for reference lines, shading, and hover classification.
+ * Omit missing or invalid metric pairs; draw baseline arrows only when both endpoints are valid.
+ * If Plotly is unavailable, direct readers to the tabulated values; synchronous chart errors propagate to the caller.
+ */
 function drawJointPlot(view) {
   const g = jointGeometry(view.rows,view.i,view.base,false);
   if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Advanced data.'; return; }
