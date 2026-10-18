@@ -408,9 +408,9 @@ function belowTxt(rows,m){ if(isDiff()||(m!=="fr"&&m!=="et")) return ""; const i
   const n=rs.filter(r=>m==="fr"?valOne(r,m,i)<FR_T-1e-9:valOne(r,m,i)>S.ethr+1e-9).length;
   return `<span class="belowt">${n} of ${rs.length} EWRs ${m==="fr"?"below target":"beyond the maximum gap allowance"}</span>`; }
 /** Describe v in achieved years per century (positive = more), rounding its magnitude to whole years; nullish v yields no text. */
-const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===0?"no change in the time spent beyond the maximum gap":n===0?`slightly ${v>0?"less":"more"} (under 1 point) time spent beyond the maximum gap (${v>0?"better":"worse"})`:`${n} points ${v>0?"less":"more"} time spent beyond the maximum gap (${v>0?"better":"worse"})`; };
+const diffFrTxt=v=>{ const n=Math.round(Math.abs(v)); return v==null?"":v===0?"on average, no change in the years each EWR is met":n===0?`on average, each EWR is met in slightly ${v>0?"more":"fewer"} than 1 year out of every 100`:`on average, each EWR is met in about ${n} ${v>0?"more":"fewer"} years out of every 100`; };
 /** Describe v as a base-minus-comparison time proportion in rounded percentage points (positive = less exceedance); nullish v yields no text. */
->>>>>>> b28f810 (Address review: exact-rule precision, hover decimals, no-change wording; 1 d.p. for % beyond MRIP in the matrix)
+const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===0?"no change in the time spent beyond the maximum gap":n===0?`slightly ${v>0?"less":"more"} (under 1 point) time spent beyond the maximum gap (${v>0?"better":"worse"})`:`${n} points ${v>0?"less":"more"} time spent beyond the maximum gap (${v>0?"better":"worse"})`; };
 /**
  * Replace the panel for S's selection, scenarios, and display settings, including matrices and selected cell details.
  * Mount performance charts and bind flow controls for a selection; dispose performance state when no selection is active.
