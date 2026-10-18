@@ -55,15 +55,7 @@ def main(argv: list[str]) -> int:
         if not REQUIRED_COLUMNS <= set(header):
             print("parameter sheet: invalid upstream header; local copy unchanged", file=sys.stderr)
             return 1
-        temporary = None
-        try:
-            with tempfile.NamedTemporaryFile(dir=LOCAL.parent, delete=False) as temp:
-                temporary = Path(temp.name)
-                temp.write(upstream)
-            temporary.replace(LOCAL)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
+        _replace_local(upstream)
         print(f"parameter sheet updated ({digest(upstream)}); now run: python3 src/build_dashboard.py")
         return 0
     if not LOCAL.exists() or local_copy() != upstream:
@@ -76,6 +68,19 @@ def main(argv: list[str]) -> int:
         return 1
     print(f"parameter sheet matches upstream ({digest(upstream)})")
     return 0
+
+
+def _replace_local(content: bytes) -> None:
+    """Replace the local copy atomically (write a temporary file beside it, then rename), so a failure never leaves half a sheet."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=LOCAL.parent, delete=False) as temp:
+            temporary = Path(temp.name)
+            temp.write(content)
+        temporary.replace(LOCAL)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

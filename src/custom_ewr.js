@@ -90,10 +90,12 @@ function validateSpec(spec,schema,ctx={}){
 // Portable files contain definitions only. Import always creates a draft, never an update to a server id.
 const UEWR_FILE_FORMAT='ewr-user-definition',UEWR_FILE_LIMIT=64*1024;
 const UEWR_FILE_FIELDS=['code','name','kind','handler','gauge','second_gauge','pus','objectives','regime','params','salinity'];
+/** A shareable JSON file for a definition: its portable fields only (never server ids, versions or results). */
 function exportDefinition(spec){
   const definition=Object.fromEntries(UEWR_FILE_FIELDS.map(k=>[k,userClone(spec[k]??null)]));
   return JSON.stringify({format:UEWR_FILE_FORMAT,version:1,spec:definition},null,2)+'\n';
 }
+/** Parse and validate an imported definition file, returning a draft spec; throws an Error with a readable reason. */
 function parseDefinition(text,schema,ctx){
   const fail=message=>{throw Error('Cannot import EWR: '+message);};
   if(typeof text!=='string'||new TextEncoder().encode(text).length>UEWR_FILE_LIMIT)fail('choose a UTF-8 JSON file no larger than 64 KiB.');
@@ -139,16 +141,19 @@ function parseDefinition(text,schema,ctx){
   return canonical.spec;
 }
 
+/** One-sentence plain-language summary of a definition's rule. */
 function ruleSentence(s){
   const p=s.params||{},unit=userUnit(s),lo=p[s.kind==='L'?'LevelThresholdMin':'FlowThresholdMin'],hi=p[s.kind==='L'?'LevelThresholdMax':'FlowThresholdMax'];
   const range=lo!=null&&hi!=null?`${lo}–${hi} ${unit}`:lo!=null?`at least ${lo} ${unit}`:hi!=null?`at most ${hi} ${unit}`:'the specified range';
   return `${s.code}: ${s.kind==='V'?`${p.VolumeThreshold} ML over ${p.AccumulationPeriod} days`:range} at ${s.gauge}${s.second_gauge?' plus '+s.second_gauge:''}, for ${p.Duration} ${s.handler.startsWith('lowflow_handle')?'total':'consecutive'} days; minimum spell ${p.MinSpell} days, ${p.EventsPerYear??1} event(s) per year, window ${p.StartMonth}${p.StartDay?'.'+p.StartDay:''}–${p.EndMonth}${p.EndDay?'.'+p.EndDay:''}; target ${p.TargetFrequency}%, maximum gap ${p['MaxInter-event']??0} years.`;
 }
+/** A definition as an EWR guide row (the page's short parameter keys) for one planning unit. */
 function guideRow(s,pu,base={}){
   const p=s.params;return {...base,key:`${s.gauge}|${s.code}|${pu}`,g:s.gauge,c:s.code,pu,k:s.kind,h:s.handler,u:true,user:s.id,name:s.name,eo:s.objectives.join('+'),
     sm:p.StartMonth,sd:p.StartDay,em:p.EndMonth,ed:p.EndDay,dur:p.Duration,ms:p.MinSpell,tmin:p.FlowThresholdMin,tmax:p.FlowThresholdMax,lmin:p.LevelThresholdMin,lmax:p.LevelThresholdMax,
     vol:p.VolumeThreshold,acc:p.AccumulationPeriod,mi:p['MaxInter-event'],tf:p.TargetFrequency,tfl:p.TargetFrequencyMin,tfh:p.TargetFrequencyMax,epy:p.EventsPerYear,gap:p.WithinEventGapTolerance,mg:s.second_gauge};
 }
+/** Result-table rows (ROWS layout, empty metrics) for a definition: one per planning unit and SDL unit it applies to. */
 function synthRows(spec,meta,sheetIdx){
   const {rows=[],sheet=[]}=Array.isArray(sheetIdx)?{rows:sheetIdx}:sheetIdx||{},width=meta.policies.length*meta.climates.length,blank=()=>Array(width).fill(null),out=[];
   const gauge=meta.gauges.indexOf(spec.gauge);if(gauge<0)throw Error('Unknown review gauge '+spec.gauge);
@@ -164,12 +169,14 @@ function synthRows(spec,meta,sheetIdx){
     }
   }return out;
 }
+/** Merge new result rows into a scenario's `vals`, replacing rows for the same (planning unit, gauge, EWR) and stamping the definition version. */
 function mergeResults(vals,rows,specVer){
   const merged=new Map(vals.map(v=>[userResultKey(v),userClone(v)]));
   for(const row of rows){const v=Array.isArray(row)?userClone(row):['pu','gauge','ewr','fr','et','ey','ny','sev','dr','nm','win'].map(k=>row[k]??null),version=Array.isArray(row)?userVersion(row):row.uewr_ver;
     v[11]={uewrVer:version??specVer??null};merged.set(userResultKey(v),v);
   }return [...merged.values()];
 }
+/** Everything in the page state that refers to a definition (scenarios, rows, guide, flow and table selections), for edit or delete. */
 function cascadePlan(spec,state){
   const matches=v=>v[1]===spec.gauge&&v[2]===spec.code,guidePrefix=spec.gauge+'|'+spec.code+'|';
   return {scenarioKeys:(state.scenarios||[]).filter(c=>c.vals.some(matches)).map(c=>c.key),rowIndices:(state.rows||[]).flatMap((r,i)=>r.user===spec.id?[i]:[]),

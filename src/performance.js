@@ -15,9 +15,7 @@ const gaugeNames = new Map(GAUGES.map(g => [g.id, g.name]));
 const ruleLabel = row => `${ruleGauge(row)} (${typeof niceGaugeName === 'function' ? niceGaugeName(gaugeNames.get(ruleGauge(row))) : gaugeNames.get(ruleGauge(row)) || 'station name unavailable'}) · ${rulePU(row)} · ${ruleCode(row)}`;
 // The joint plot's own fixed targets (dashed lines and green region).
 const PLOT_FR = 0.95, PLOT_ET = 0.05;
-const meetsTarget = fr => fr >= JOINT_TARGET - JOINT_EPS;
-const jointNames = ['Meeting both', 'Frequency only', 'MRIP only', 'Failing both'];
-const jointColours = ['#207a65', '#c38315', '#527db3', '#bb4052'];
+const jointNames = ['Meeting both', 'Frequency only', 'MRIP only', 'Failing both'];  // by jointClass
 /**
  * Classify frequency ratio fr and MRIP exceedance time proportion et (0–1).
  * Return 0 for both targets met, 1 for frequency only, 2 for MRIP only, or 3 for neither.
@@ -28,20 +26,26 @@ function jointClass(fr, et, threshold = S.ethr, target = JOINT_TARGET) {
   if (!Number.isFinite(fr) || !Number.isFinite(et) || fr < 0 || et < 0 || et > 1) return null;
   return (fr >= target - JOINT_EPS ? 0 : 2) + (et <= threshold + JOINT_EPS ? 0 : 1);
 }
+/** Count rules per joint class at one scenario: {counts, n (classified), severe (FR below S.fbthr), score (share meeting both)}. */
 function jointSummary(rows, index) {
   const counts = [0, 0, 0, 0]; let severe = 0;
   for (const row of rows) {
-    const k = jointClass(ruleFR(row, index), ruleETP(row, index));
-    if (k !== null) { counts[k]++; if (ruleFR(row, index) < S.fbthr) severe++; }
+    const cls = jointClass(ruleFR(row, index), ruleETP(row, index));
+    if (cls !== null) { counts[cls]++; if (ruleFR(row, index) < S.fbthr) severe++; }
   }
   const n = counts.reduce((a, b) => a + b, 0);
   return {counts, n, severe, score: n ? counts[0] / n : null};
 }
+/** Linearly interpolated percentile (p in 0–1) of an ascending array; null when it is empty. */
 function percentile(sorted, p) {
   if (!sorted.length) return null;
   const at = (sorted.length - 1) * p, lo = Math.floor(at), hi = Math.ceil(at);
   return sorted[lo] + (sorted[hi] - sorted[lo]) * (at - lo);
 }
+/**
+ * Sort rules by how they fare across the scenarios at `indices` (one policy's climates): resilient = meeting both everywhere,
+ * crossings = meeting both in some but not all, incomplete = missing a class anywhere. `assessed` counts classified scenarios per rule.
+ */
 function climateSummary(rows, indices) {
   const resilient = [], crossings = [], incomplete = [], assessed = [];
   for (const row of rows) {
@@ -57,6 +61,10 @@ function climateSummary(rows, indices) {
   return {resilient, crossings, incomplete, assessed, expected: indices.length};
 }
 const ROLLING_YEARS = 10;
+/**
+ * Per assessment year: years since the last achieved year (`since`) and the achieved share over the last `window`
+ * consecutive complete years (`rolling`); null wherever a gap in the record makes the value unknown.
+ */
 function sequenceStats(years, window = ROLLING_YEARS) {
   let last = null, prev = null, run = []; const since = [], rolling = [];
   years.wy.forEach((w, i) => {
@@ -64,10 +72,10 @@ function sequenceStats(years, window = ROLLING_YEARS) {
     prev = w;
     // A missing year could contain an unobserved success. Do not report an exact interval across it.
     if (!years.complete[i]) { last = null; run = []; since.push(null); rolling.push(null); return; }
-    const a = years.achieved[i] ? 1 : 0;
-    if (a) last = w;
+    const achieved = years.achieved[i] ? 1 : 0;
+    if (achieved) last = w;
     since.push(last === null ? null : w - last);
-    run.push(a); if (run.length > window) run.shift();
+    run.push(achieved); if (run.length > window) run.shift();
     rolling.push(run.length === window ? run.reduce((x, y) => x + y, 0) / window : null);
   });
   return {since, rolling};
@@ -76,15 +84,18 @@ function sequenceStats(years, window = ROLLING_YEARS) {
 // One retained view per analytical selection. Sorting, expanding existing matrices and changing
 // scatter scales preserve this node, its charts, in-flight work and lazy caches.
 let performanceView = null, performanceRevision = 0;
+/** Everything that changes the analysis shown: a view is reused only while this key is unchanged. */
 function performanceKey() {
   return JSON.stringify([S.src, S.sel, S.pol, S.cli, S.mode, isDiff() ? [S.bpol, S.bcli] : null, S.ethr, S.fbthr, performanceRevision, FLOWGEN]);
 }
+/** Cancel the current view's pending work and free its charts. */
 function disposePerformance() {
   if (!performanceView) return;
   performanceView.sequence?.abort(); performanceView.conditions?.abort();
   if (typeof Plotly !== 'undefined') [performanceView.node, performanceView.jointNode].forEach(node => node?.querySelectorAll('.js-plotly-plot').forEach(el => Plotly.purge(el)));
   performanceView = null;
 }
+/** The view for the current selection (user EWR rows only in Your data mode), reused while performanceKey is unchanged. */
 function preparePerformance(rows) {
   rows = rows.filter(row => !row.user || S.src === 'user');
   const key = performanceKey();
@@ -96,10 +107,12 @@ function preparePerformance(rows) {
   return performanceView;
 }
 const currentPerformance = view => view === performanceView;
+/** jointSummary for a scenario index, cached on the view. */
 function summaryFor(view, index) {
   if (!view.summaries.has(index)) view.summaries.set(index, jointSummary(view.rows, index));
   return view.summaries.get(index);
 }
+/** Plain-text FR / ETP values of every rule at a scenario (with the baseline in Differential mode), cached on the view. */
 function detailText(view, index) {
   if (!view.details.has(index)) view.details.set(index, view.rows.map(row => {
     if (!view.labels.has(row)) view.labels.set(row, ruleLabel(row));
@@ -163,6 +176,7 @@ function mountPerformance(view) {
     });
   };
 }
+/** Move the joint plot into its slot in the current panel layout, hiding it when the layout has no slot. */
 function placeJoint(view) {
   const slot = $('jointSlot');
   (slot || view.node).appendChild(view.jointNode);
@@ -220,6 +234,7 @@ const jointRegimeColour = (index, count) => {
   const lo = Math.min(Math.floor(at), stops.length - 2), t = at - lo;
   return `rgb(${stops[lo].map((v,i) => Math.round(v+(stops[lo+1][i]-v)*t)).join(',')})`;
 };
+/** Comparator for regime names: lowest flow threshold among their rules first, then the page's regime order, then by name. */
 function jointRegimeOrder(rows) {
   const thresholds = new Map();
   for (const row of rows) {
@@ -285,6 +300,7 @@ function drawJointPlot(view) {
   $('jointNote').textContent = `${g.omittedCurrent} current points outside the axes${view.base == null ? '' : `; ${g.omittedBase} baseline points outside`}. Missing metrics are not plotted.${view.base == null ? '' : ' Hollow dots show the baseline; arrows point to the comparison.'}`;
 }
 
+/** Fetch JSON from the local server, throwing its error message on failure. */
 async function performanceJSON(url, signal) {
   const response = await fetch(url, {signal});
   const data = await response.json();
@@ -293,7 +309,9 @@ async function performanceJSON(url, signal) {
 }
 // Share pending and resolved inventory requests with the existing event selector. Evict failures for retry.
 const inventoryRequests = new Map();
+/** Forget a gauge's cached inventory (all gauges when none is given), e.g. after user EWRs change. */
 function invalidateInventory(gauge) { if (gauge) inventoryRequests.delete(gauge); else inventoryRequests.clear(); }
+/** The gauge's /api/ewrs inventory, shared by concurrent callers; a failed request is evicted so it can be retried. */
 function inventoryFor(gauge) {
   if (!inventoryRequests.has(gauge)) {
     const pending = performanceJSON('/api/ewrs?gauge='+encodeURIComponent(gauge)).catch(error => {
@@ -303,11 +321,13 @@ function inventoryFor(gauge) {
   }
   return inventoryRequests.get(gauge);
 }
+/** A server inventory with its user EWRs replaced by the browser registry's current definitions. */
 function currentInventory(gauge,data) {
   if (typeof UEWR === 'undefined') return data;
   const user = UEWR.atGauge(gauge);
   return {ewrs:data.ewrs.filter(e => !e.custom).concat(user), inventory:data.inventory.filter(e => !e.custom).concat(user.map(e => ({...e,detailed:true})))};
 }
+/** Show the selected gauge's rule inventory and which rules support annual diagnostics. */
 async function loadInventoryView(view) {
   if (!view.gauge) { $('diagnosticInventory').textContent = 'Select a gauge to inspect its inventory.'; return; }
   try {
@@ -315,6 +335,7 @@ async function loadInventoryView(view) {
     $('diagnosticInventory').innerHTML = '<table><tr><th>Rule / planning unit</th><th>Type / handler</th><th>Annual diagnostics</th></tr>'+inv.inventory.map(r => `<tr><td>${esc(r.code+' · '+r.pu)}</td><td>${esc(r.kind+' / '+r.handler)}</td><td>${r.detailed ? 'Available' : 'Not supported'}</td></tr>`).join('')+'</table>';
   } catch (error) { if (currentPerformance(view)) $('diagnosticInventory').textContent = 'Inventory unavailable: '+error.message; }
 }
+/** A promise that settles like `promise`, or rejects with an AbortError as soon as `signal` aborts. */
 function abortable(promise, signal) {
   return new Promise((resolve,reject) => {
     const abort = () => reject(new DOMException('Cancelled','AbortError'));
@@ -323,6 +344,7 @@ function abortable(promise, signal) {
     promise.then(resolve,reject).finally(() => signal.removeEventListener('abort',abort));
   });
 }
+/** Run `work` over items with at most `limit` in flight, stopping on abort; results are {value} or {error} in item order. */
 async function boundedMap(items, limit, signal, work) {
   const results = new Array(items.length); let next = 0;
   async function worker() {
@@ -335,6 +357,7 @@ async function boundedMap(items, limit, signal, work) {
   await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));
   return results;
 }
+/** The inventory rules matching the selected rows, one per (code, planning unit). */
 function selectedAnnualRules(inventory, rows) {
   const selected = new Map();
   for (const e of inventory.ewrs) for (const row of rows) {
@@ -346,6 +369,7 @@ function selectedAnnualRules(inventory, rows) {
   }
   return [...selected.values()];
 }
+/** Purge any charts in `parent` and replace its contents with one new, empty chart element. */
 function freshChart(parent) {
   parent.querySelectorAll('.js-plotly-plot').forEach(el => Plotly.purge(el));
   const chart = document.createElement('div');
@@ -475,6 +499,7 @@ function conditionCSV(text) {
   if (field !== '' || row.length || closed) endRow();
   return rows;
 }
+/** Parse an observations CSV (date plus stage / temperature / dissolved oxygen) into rows sorted by date, with daily stage change. */
 function parseConditions(text) {
   const rows = conditionCSV(text); if (!rows.length) throw Error('CSV is empty.');
   const headers = rows.shift(), allowed = ['date','stage_m','temperature_c','dissolved_oxygen_mg_l'];
@@ -497,12 +522,14 @@ function parseConditions(text) {
   data.forEach((r,i) => { const p = data[i-1]; r.rate = p && r.time-p.time === 86400000 && Number.isFinite(r.stage_m) && Number.isFinite(p.stage_m) ? r.stage_m-p.stage_m : null; });
   return data;
 }
+/** Insert a value-less row after each gap in the dates, so Plotly breaks the lines there. */
 function breakConditionGaps(data) {
   // One separator per gap, never one row per missing day. Output is at most 2n-1.
   const out = [];
   data.forEach((r,i) => { if (i && r.time-data[i-1].time > 86400000) out.push({date:new Date(data[i-1].time+86400000).toISOString().slice(0,10)}); out.push(r); });
   return out;
 }
+/** Read an observations CSV and chart it for the selected gauge; a newer load supersedes this one. */
 async function loadConditions(file, view) {
   if (!file || !currentPerformance(view)) return;
   view.conditions?.abort(); const controller = new AbortController(); view.conditions = controller;

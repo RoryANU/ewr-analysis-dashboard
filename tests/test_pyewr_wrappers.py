@@ -33,6 +33,11 @@ def ewr_table() -> pd.DataFrame:
 class TestEwrList:
     GAUGES = ["416001", "410001", "404216", "405201"]
 
+    @pytest.fixture(autouse=True)
+    def _no_user_ewrs(self, tmp_path, monkeypatch):
+        # ewr_list also lists the user EWRs saved in the upload store, which have no rows in py_ewr's table: start from an empty store
+        monkeypatch.setattr(server, "STORE", tmp_path)
+
     def test_unknown_gauge_has_no_ewrs(self):
         assert server.ewr_list("not-a-gauge") == []
 

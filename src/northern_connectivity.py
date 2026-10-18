@@ -17,8 +17,9 @@ STATIONS = Path(__file__).resolve().parent.parent / "data" / "reference" / "nort
 
 
 def get_northern_connectivity_codes() -> dict:
-    metadf = pd.read_csv(STATIONS, dtype=str)
-    return dict(zip(metadf["site"].str.strip(), metadf["gauge"].str.strip(), strict=True))
+    """Workbook site name -> gauge number, from data/reference/northern_connectivity_stations.csv."""
+    stations = pd.read_csv(STATIONS, dtype=str)
+    return dict(zip(stations["site"].str.strip(), stations["gauge"].str.strip(), strict=True))
 
 
 def unpack_northern_connectivity(excel_file: str, sheet_name: str = "River flows") -> dict:
