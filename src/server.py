@@ -44,11 +44,11 @@ import traceback
 import uuid
 import warnings
 import webbrowser
-from http.cookies import SimpleCookie
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+from http.cookies import SimpleCookie
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
@@ -209,7 +209,9 @@ def _eval_gauge(gauge: Any) -> tuple[Any, Any, str | None]:
         return gauge, None, f"{type(e).__name__}: {e}"
 
 
-def evaluate_gauges(df_F: Any, df_L: Any, table: Any, calc_config: Any, progress: Callable[[str, int, int], None]) -> tuple[dict[Any, Any], dict[Any, Any], dict[Any, str]]:
+def evaluate_gauges(
+    df_F: Any, df_L: Any, table: Any, calc_config: Any, progress: Callable[[str, int, int], None]
+) -> tuple[dict[Any, Any], dict[Any, Any], dict[Any, str]]:
     """calc_sorter for every gauge in the file, one process per gauge (the gauges are independent and this is most of the run time).
     Falls back to one gauge at a time when worker processes cannot be started. Returns (results, events, skipped) by gauge."""
     gauges = sorted(set(df_F.columns) | set(df_L.columns))
@@ -233,7 +235,7 @@ def evaluate_gauges(df_F: Any, df_L: Any, table: Any, calc_config: Any, progress
             progress("Evaluating gauges", len(out), len(gauges))
     results = {g: out[g][0][0] for g in gauges if out[g][0] is not None}
     events = {g: out[g][0][1] for g in gauges if out[g][0] is not None}
-    return results, events, {g: out[g][1] for g in gauges if out[g][1] is not None}
+    return results, events, {g: err for g in gauges if (err := out[g][1]) is not None}
 
 
 def run_scenario(
@@ -254,7 +256,7 @@ def run_scenario(
 
     import numpy as np
     import pandas as pd
-    from py_ewr import data_inputs, evaluate_EWRs
+    from py_ewr import data_inputs
     from py_ewr.scenario_handling import ScenarioHandler
 
     if fmt not in FORMATS:
@@ -398,6 +400,7 @@ def worker(
 ) -> None:
     job = JOBS[job_id]
     try:
+
         def progress(stage: str, done: int, total: int) -> None:
             job["progress"] = {"stage": stage, "done": done, "total": total}
 
