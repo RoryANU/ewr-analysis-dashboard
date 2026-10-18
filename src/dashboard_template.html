@@ -85,7 +85,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label id="bandL" style="display:none" title="Differential: an EWR's frequency counts as changed when it gains or loses at least this many achieved years over the record (crossing the target always counts)">Change band ≥ <select id="band"><option>1</option><option selected>2</option><option>3</option><option>5</option></select> achieved years<span class="tip" tabindex="0" title="Changes smaller than this count as 'no change', unless they cross the frequency target.">ⓘ</span></label>
   <label><span id="scL">Scenario</span> <select id="pol"></select><select id="cli"></select></label>
   <label id="perL" title="Metrics over a drought window (water years, July–June) instead of the whole record">Period <select id="period"><option value="">Full record</option></select><span id="perNote" class="pnote">Compare in Differential mode: overbank EWRs fail in droughts even without development.</span></label>
-  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="Share of the record that lies beyond the maximum recommended interval between events (MRIP), i.e. inside a gap between successful events, after its first MRIP days (lower is better)">% of record beyond MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button><button id="mDR" title="Duration ratio: how long the events last against the required duration (1 = long enough; capped at 2). Your data: the median over complete years of each year's best event ÷ the required duration (volume EWRs: the best accumulated volume ÷ the volume threshold). Review results: the mean event length ÷ the required duration, an approximation">Duration ratio</button><button id="mSV" title="Longest gap between successful events (not counting the gaps from the start or to the end of the record) ÷ the MRIP: the worst EWR sets each cell (lower is better). Uploaded scenarios only">Worst gap (× MRIP)</button></div></details></span></label>
+  <label>Matrix metric <span class="tabs"><button id="mFR" class="on">Frequency ratio</button><button id="mET" title="Share of the record that lies beyond the maximum recommended interval between events (MRIP), i.e. inside a gap between successful events, after its first MRIP days (lower is better)">% of record beyond MRIP</button><details id="mMore" class="mmore"><summary id="mMoreS">More</summary><div class="pop"><button id="mFQ" title="Achieved frequency: the share of years in which the EWR is achieved (frequency ratio × the EWR's target % of years). Not capped at the target">Achieved frequency (% of years)</button><button id="mAC" title="Share of EWRs whose frequency ratio meets the threshold (binary check per EWR)">Meeting frequency threshold</button><button id="mFB" title="Share of EWRs that failed badly: frequency ratio below the floor (binary check per EWR; lower is better)">Failed badly</button><button id="mMZ" title="Share of EWRs that achieve their MRIP, i.e. it is never exceeded (ETP at or below the threshold, default 0): binary check per EWR">MRIP achieved</button><button id="mDR" title="Duration ratio: how long the events last against the required duration (1 = long enough; capped at 2). Your data: the median over complete years of each year's best event ÷ the required duration (volume EWRs: the best accumulated volume ÷ the volume threshold). Review results: the mean event length ÷ the required duration, an approximation">Duration ratio</button><button id="mSV" title="Longest gap between successful events (not counting the gaps from the start or to the end of the record) ÷ the MRIP: the worst EWR sets each cell (lower is better). Uploaded scenarios only">Worst gap (× MRIP)</button></div></details></span></label>
   <label id="fbL" style="display:none" title="An EWR counts as failed badly (1) when its frequency ratio is below this value, otherwise 0">Failed badly when FR &lt; <input id="fbthr" type="number" min="0" max="2" step="0.05" value="0.5" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its % of record beyond MRIP is at or below this value, otherwise 0">MRIP achieved when % of record beyond MRIP ≤ <input id="ethr" type="number" min="0" max="100" step="1" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Frequency threshold (target = 1.0) ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="1.0" style="width:56px;font:inherit;padding:2px 4px"></label>
@@ -134,9 +134,9 @@ const S={src:"demo",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"
 const scnIdx=(p=S.pol,c=S.cli)=>p*NC+c;
 const isDiff=()=>S.mode==="diff";
 const FAMN={fr:"FR",et:"% of record beyond MRIP",sev:"Worst gap ÷ MRIP",dr:"Duration ratio"};   // the ETP (0-1 time proportion) is shown as a % of the record; stored and coloured as a proportion
-const MN={fr:"mean FR",et:"mean % of record beyond MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly",sev:"worst gap (× MRIP)",dr:"mean duration ratio"}, MS={fr:"FR",et:"% of record beyond MRIP",sev:"worst gap",dr:"duration ratio",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
-const FAM={fr:"f",ach:"f",fb:"f",dr:"f",et:"e",mz:"e",sev:"e"}, inFam=k=>["ach","fb","mz","sev","dr"].includes(S.metric)||k===S.metric||(k==="sev"&&S.metric==="et")||(k==="dr"&&S.metric==="fr");   // FR or % beyond MRIP selected: only that metric is shown; a metric from the "More" menu: all of them are shown
-const METRICS=["fr","et","ach","mz","fb","sev","dr"], LOWER={et:1,fb:1,sev:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb";   // LOWER: a lower value is better
+const MN={fr:"mean FR",fq:"mean achieved frequency (% of years)",et:"mean % of record beyond MRIP",ach:"hierarchical % meeting frequency threshold",mz:"hierarchical % meeting MRIP threshold",fb:"% EWRs failed badly",sev:"worst gap (× MRIP)",dr:"mean duration ratio"}, MS={fr:"FR",fq:"achieved frequency",et:"% of record beyond MRIP",sev:"worst gap",dr:"duration ratio",ach:"achieved",mz:"MRIP achieved",fb:"failed badly"};
+const FAM={fr:"f",fq:"f",ach:"f",fb:"f",dr:"f",et:"e",mz:"e",sev:"e"}, inFam=k=>["fq","ach","fb","mz","sev","dr"].includes(S.metric)||k===S.metric||(k==="sev"&&S.metric==="et")||(k==="dr"&&S.metric==="fr");   // FR or % beyond MRIP selected: only that metric is shown; a metric from the "More" menu: all of them are shown
+const METRICS=["fr","fq","et","ach","mz","fb","sev","dr"], LOWER={et:1,fb:1,sev:1}, isBin=m=>m==="ach"||m==="mz"||m==="fb"||m==="fq";   // LOWER: a lower value is better
 const FR_T=1, MET_OUT=true;   // FR_T: FR at the target frequency. MET_OUT: differential means and ▲/▼ counts leave out EWRs that meet the target in both scenarios (false: they stay in as a change of 0)
 // one scenario's value of metric m: FR, ETP (capped at 1), or 1 / 0 for the binary metrics ("ach": FR >= threshold; "fb": FR < floor; "mz": ETP <= threshold, 0 = MRIP never exceeded)
 // the stored value behind metric m: the whole record (r[6], r[7], r[10], r[11]) or, with a drought period, that window's (r[12]; none for the review results)
@@ -147,7 +147,8 @@ function src(r,m,i){ const k=m==="et"||m==="mz"?"et":m==="sev"||m==="dr"?m:"fr";
 // a window too short to expect one achieved year (n < 100 / T): its FR is shown as "k of n years" and kept out of the means
 const shortWin=(r,i)=>{ const w=win(r), T=r[8]&&r[8].T; return !!w&&T>0&&w.n&&w.n[i]!=null&&w.n[i]<100/T; };
 function valOne(r,m,i){ if(m==="sev"||m==="dr") return src(r,m,i);   // worst gap ÷ MRIP; duration ratio
-  if((m==="fr"||m==="ach"||m==="fb")&&shortWin(r,i)) return null;
+  if((m==="fr"||m==="fq"||m==="ach"||m==="fb")&&shortWin(r,i)) return null;
+  if(m==="fq"){ const raw=src(r,m,i), T=r[8]&&r[8].T; return Number.isFinite(raw)&&T>0?raw*T/100:null; }   // achieved frequency = FR x target % of years, as a proportion
   const raw=src(r,m,i), v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw;
   return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; }
 const nyFull=(r,i)=>r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null;   // record years (an upload's own)
@@ -217,7 +218,7 @@ const pct=v=>signed(String(Math.abs(Math.round(v*100))),v)+" pts", dfr=m=>isDiff
 const pa=v=>Math.round(v*100)+"%", pa1=v=>(v*100).toFixed(1)+"%", pct1=v=>signed((Math.abs(v)*100).toFixed(1),v)+" pts";
 const sg=v=>isDiff()&&v>0?"+":"", num=(v,dp)=>isDiff()?signed(Math.abs(v).toFixed(dp),v):v.toFixed(dp);
 const dyc=m=>isDiff()&&m==="fr";   // differential FR is in achieved years per century of record
-const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"?(isDiff()?pct1(v):pa1(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,1)+"×":m==="et"?(isDiff()?pct1(v):pa1(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
+const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"||m==="fq"?(isDiff()?pct1(v):pa1(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,3), fs2=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,1)+"×":m==="et"||m==="fq"?(isDiff()?pct1(v):pa1(v)):dyc(m)?num(v,1):dfr(m)?pct(v):isBin(m)?pa(v):num(v,2);
 const mn=m=>dyc(m)?"mean change in achieved years per century":MN[m], msn=m=>dyc(m)?"change in achieved yrs/century":MS[m];   // differential FR labels
 
 // ---- selection ---------------------------------------------------------------------------------------------------
@@ -234,7 +235,7 @@ const mixc=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
 const RYB=[[215,48,39],[252,141,89],[254,224,144],[145,191,219],[69,117,180]], ryb=s=>{ const x=Math.max(0,Math.min(1,s))*(RYB.length-1), i=Math.min(RYB.length-2,Math.floor(x)); return `rgb(${mixc(RYB[i],RYB[i+1],x-i)})`; };
 const ramp=s=>ryb(s);   // 0 worst (red) .. 1 best (blue)
 const MET_FILL="#e5e7eb", MET_IN=MET_OUT?"not in the means":"in the means as no change", metTip=(r,m)=>{ const k=diffClass(r,m); return `meets the target in both scenarios (${MET_IN})${k&&k.sur!=null?`; surplus ${m==="et"?pct(k.sur):signed(Math.abs(k.sur).toFixed(2),k.sur)}`:""}`; };   // differential: every EWR meets the target in both scenarios
-const ETP_MAX=0.5, DIV={fr:10,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1,dr:0.5};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
+const ETP_MAX=0.5, DIV={fr:10,fq:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1,dr:0.5};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,v/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
@@ -242,7 +243,7 @@ function colour(v,m){ if(v==null) return "#bbb";
     return `rgb(${x<=0.9?mixc([215,48,39],w,x/0.9):mixc(w,[33,102,172],(x-0.9)/0.1)})`; }
   if(m==="sev") return ryb(v<=1+1e-9?1:v<=2?.5:v<3?.25:0);   // worst gap ÷ MRIP: blue within it, yellow 1-2, orange 2-3, red 3 or more
   if(m==="et") return ryb(1-Math.max(0,Math.min(1,v)));   // % of record beyond the MRIP: 0 blue (best), 50% pale yellow, 100% red
-  return m==="ach"||m==="mz"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
+  return m==="ach"||m==="mz"||m==="fq"?ramp(Math.max(0,Math.min(1,v))):m==="fb"?ramp(1-Math.max(0,Math.min(1,v))):ramp(1-Math.max(0,Math.min(1,v/ETP_MAX))); }
 
 // text drawn on a coloured fill: near-black or white, whichever has the higher WCAG contrast ratio against the fill
 const rgbOf=c=>{ c=String(c).trim(); if(c[0]==="#"){ const h=c.length===4?c.slice(1).split("").map(x=>x+x).join(""):c.slice(1,7); return [0,2,4].map(i=>parseInt(h.slice(i,i+2),16)); } const m=c.match(/[\d.]+/g); return m?m.slice(0,3).map(Number):[255,255,255]; };
@@ -425,10 +426,11 @@ function render(){
       <table><tbody>${names.map(([n,i])=>`<tr class="click" data-act="sdl" data-i="${i}"><td>${esc(n)}</td></tr>`).join("")}</tbody></table>`;
     return;
   }
-  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), sv=agg(rows,lv,"sev",i), dr=agg(rows,lv,"dr",i), ac=agg(rows,lv,"ach",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
+  const rows=selRows(), i=scnIdx(), lv=scopeLevels(), fr=agg(rows,lv,"fr",i), et=agg(rows,lv,"et",i), sv=agg(rows,lv,"sev",i), dr=agg(rows,lv,"dr",i), ac=agg(rows,lv,"ach",i), fq=agg(rows,lv,"fq",i), mz=agg(rows,lv,"mz",i), fb=agg(rows,lv,"fb",i);
   const bx=k=>s.type==="gauge"&&S.metric===k?boxPlot(rows,k):"";   // gauge view, FR or % beyond MRIP selected: distribution of the EWRs beside the mean
   const foot=(k,a)=>isDiff()?(c=>`<span style="display:block">${MET_OUT?`Average of the ${a.n} EWRs that missed their target in at least one scenario. EWRs that met it in both are left out.`:`Mean over ${a.n} EWRs; ${c.met} met in both count as no change`}</span>`)(cnts(rows,k)):"";   // what the differential mean is taken over
   let h=`<h2>${esc(title())}</h2><div class="crumbs">${crumbHtml()}</div>${(t=>t?`<div class="summary">${t}</div>`:"")(summaryLine(rows))}${s.type==="sdl"?"":`<div class="tiles">${inFam("fr")?`<div class="tile${bx("fr")?" wb":""}"><div${isDiff()?` title="Mean change in FR (ΔFR): ${(d=>d==null?"–":num(d,3))(agg(rows,lv,"fr",i,dFR).mean)} (comparison − base; capped at the target where it is crossed)"`:""}><b>${f3(fr.mean,"fr")}</b><span>${isDiff()?diffFrTxt(fr.mean):"mean frequency ratio; values above 1 are counted as 1 in the average"} · ${fr.n} EWRs</span>${belowTxt(rows,"fr")}${foot("fr",fr)}${bx("fr")?`<br><button class="bt" data-act="boxtog">${S.boxOpen?"▾ Hide":"▸ Expand"} by flow regime</button>`:""}</div>${bx("fr")}</div>`:""}
+    ${inFam("fq")&&S.metric!=="fr"?`<div class="tile"><b>${f3(fq.mean,"fq")}</b><span>${isDiff()?"mean change in achieved frequency (% of years)":"mean achieved frequency (% of years)"} · ${fq.n} EWRs</span></div>`:""}
     ${inFam("ach")?`<div class="tile"><b>${f3(ac.mean,"ach")}</b><span>${isDiff()?"improvement in EWRs achieving":"hierarchical % meeting frequency threshold"} · ${ac.n} EWRs</span></div>`:""}
     ${inFam("mz")?`<div class="tile"><b>${f3(mz.mean,"mz")}</b><span>${isDiff()?"improvement in EWRs achieving the "+mr():"EWRs achieving the "+mr()} · ${mz.n} EWRs</span></div>`:""}
     ${inFam("fb")?`<div class="tile"><b>${f3(fb.mean,"fb")}</b><span>${isDiff()?"improvement in EWRs failing badly (fewer = +)":"EWRs failing badly (FR < "+S.fbthr+")"} · ${fb.n} EWRs</span></div>`:""}
@@ -553,7 +555,7 @@ function matrixSvg(rows,mxk){
   cols.forEach(c=>c.show=trunc(c.label,t==="sdl"?30:26));
   const C=isDiff()&&!cnt?28:24, PH=cnt?0:64, bandH=t==="gauge"?18:0, bandGap=t==="gauge"?6:0, TB=18;   // cell size, bar panel height, regime band, theme band width: scaled with the 10-11px type
   const lab=Math.max(...orows.map(o=>o.label.length))*6.6+10, labH=Math.max(...cols.map(c=>c.show.length))*6.2+12;   // label space estimated for 11px text
-  const CHIPS=[["fr","FR"],["ach","Freq ✓"],["fb","Failed"],["et","% >MRIP"],["mz","MRIP ✓"],["sev","Worst gap"],["dr","Dur."]].filter(([k])=>inFam(k)&&(k!=="sev"||hasSev(rows))&&(k!=="dr"||hasDr(rows))), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
+  const CHIPS=[["fr","FR"],["fq","Freq"],["ach","Freq ✓"],["fb","Failed"],["et","% >MRIP"],["mz","MRIP ✓"],["sev","Worst gap"],["dr","Dur."]].filter(([k])=>inFam(k)&&(k!=="sev"||hasSev(rows))&&(k!=="dr"||hasDr(rows))), CW=44, CS=47, CCW=64, CX=k=>TB+4+k*CS, chipsEnd=TB+4+CHIPS.length*CS+(isDiff()?CCW+6:0), xL=cnt?TB+6:chipsEnd+6, x0=xL+lab, W=x0+cols.length*C+6, base=(cnt?8:30)+PH, bandTop=base+bandGap, my=bandTop+bandH+labH+4, H=my+orows.length*C+6;
   const D=isDiff(), step=0.05, mid=base-PH/2;
   const vmax=D?Math.max(2*step,Math.ceil(Math.max(0,...cols.map(c=>Math.abs(c.v||0)))/step)*step):(isBin(m)?1:m==="fr"||m==="dr"?Math.max(1.25,Math.ceil(Math.max(...cols.map(c=>c.v||0))*4)/4):Math.max(0.5,Math.ceil(Math.max(...cols.map(c=>c.v||0))*10)/10));
   const by=D?v=>mid-Math.max(-vmax,Math.min(vmax,v))/vmax*(PH/2):v=>base-Math.min(v,vmax)/vmax*PH;
@@ -1331,11 +1333,11 @@ $("swapBC").onclick=()=>{ [S.pol,S.bpol]=[S.bpol,S.pol]; [S.cli,S.bcli]=[S.bcli,
 function setMode(md){ S.mode=md; $("modeS").classList.toggle("on",md==="single"); $("modeD").classList.toggle("on",md==="diff");
   $("baseL").style.display=$("bandL").style.display=md==="diff"?"":"none"; $("swapBC").style.display=md==="diff"?"":"none"; $("scL").textContent=md==="diff"?"Comparison":"Scenario"; refresh(); }
 $("modeS").onclick=()=>setMode("single"); $("modeD").onclick=()=>setMode("diff");
-const MORE={ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved",sev:"Worst gap",dr:"Duration ratio"};
+const MORE={fq:"Achieved frequency",ach:"Frequency achieved",fb:"Failed badly",mz:"MRIP achieved",sev:"Worst gap",dr:"Duration ratio"};
 function syncMore(){ const k=S.metric, on=k in MORE; $("mMore").classList.toggle("on",on); $("mMoreS").textContent=on?MORE[k]:"More"; $("mMore").open=false; }
-function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mMZ").classList.toggle("on",m==="mz"); $("mSV").classList.toggle("on",m==="sev"); $("mDR").classList.toggle("on",m==="dr"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
+function setMetric(m){ S.metric=m; syncMore(); $("mFR").classList.toggle("on",m==="fr"); $("mET").classList.toggle("on",m==="et"); $("mAC").classList.toggle("on",m==="ach"); $("mFQ").classList.toggle("on",m==="fq"); $("mMZ").classList.toggle("on",m==="mz"); $("mSV").classList.toggle("on",m==="sev"); $("mDR").classList.toggle("on",m==="dr"); $("mFB").classList.toggle("on",m==="fb"); $("fbL").style.display=m==="fb"?"":"none";
   $("thrL").style.display=m==="ach"?"":"none"; $("ethrL").style.display=m==="mz"?"":"none"; refresh(); }
-$("mAC").onclick=()=>setMetric("ach"); $("mSV").onclick=()=>setMetric("sev"); $("mDR").onclick=()=>setMetric("dr"); $("mFB").onclick=()=>setMetric("fb");
+$("mFQ").onclick=()=>setMetric("fq"); $("mAC").onclick=()=>setMetric("ach"); $("mSV").onclick=()=>setMetric("sev"); $("mDR").onclick=()=>setMetric("dr"); $("mFB").onclick=()=>setMetric("fb");
 $("fbthr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.fbthr=v; refresh(); } }; $("mMZ").onclick=()=>setMetric("mz");
 $("ethr").onchange=e=>{ const v=+e.target.value; if(isFinite(v)&&v>=0){ S.ethr=v/100; refresh(); } };
 $("band").onchange=e=>{ S.band=+e.target.value; refresh(); };
@@ -1403,7 +1405,7 @@ function syncUI(){   // bring the header controls in line with the state
   $("pol").value=S.pol; $("cli").value=S.cli; $("bpol").value=S.bpol; $("bcli").value=S.bcli;
   $("modeS").classList.toggle("on",S.mode==="single"); $("modeD").classList.toggle("on",S.mode==="diff");
   $("baseL").style.display=$("swapBC").style.display=$("bandL").style.display=S.mode==="diff"?"":"none"; $("band").value=S.band; $("scL").textContent=S.mode==="diff"?"Comparison":"Scenario";
-  for(const [id,k] of [["mFR","fr"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"],["mSV","sev"],["mDR","dr"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
+  for(const [id,k] of [["mFR","fr"],["mFQ","fq"],["mAC","ach"],["mFB","fb"],["mET","et"],["mMZ","mz"],["mSV","sev"],["mDR","dr"]]) $(id).classList.toggle("on",S.metric===k); syncMore();
   $("thrL").style.display=S.metric==="ach"?"":"none"; $("fbL").style.display=S.metric==="fb"?"":"none"; $("ethrL").style.display=S.metric==="mz"?"":"none";
   $("thr").value=S.thr; $("fbthr").value=S.fbthr; $("ethr").value=+(S.ethr*100).toFixed(2);
 }
