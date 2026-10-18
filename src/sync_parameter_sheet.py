@@ -8,6 +8,7 @@ Used by the `parameter-sheet-sync` pre-push hook and tests/test_parameter_sheet_
 
 import hashlib
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -41,7 +42,19 @@ def main(argv: list[str]) -> int:
         print(f"parameter sheet: could not reach GitHub ({e}); not checked", file=sys.stderr)
         return 0
     if "--update" in argv:
-        LOCAL.write_bytes(upstream)
+        header = upstream.split(b"\n", 1)[0]
+        if b"PlanningUnitName" not in header or b"Code" not in header:
+            print("parameter sheet: invalid upstream header; local copy unchanged", file=sys.stderr)
+            return 1
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=LOCAL.parent, delete=False) as temp:
+                temporary = Path(temp.name)
+                temp.write(upstream)
+            temporary.replace(LOCAL)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         print(f"parameter sheet updated ({digest(upstream)}); now run: python3 src/build_dashboard.py")
         return 0
     if not LOCAL.exists() or local_copy() != upstream:
