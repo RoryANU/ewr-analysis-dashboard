@@ -246,11 +246,12 @@ test('differential labels: FR in achieved years per century, a share of EWRs in 
   assert.equal(run("fs2(.04,'fr')"),'0.0');   // a change that rounds to zero carries no sign
   assert.equal(run("fs2(.25,'ach')"),'+25 pts');
   assert.equal(run("fs2(-.1,'fb')"),'−10 pts');
-  assert.equal(run("fs2(.03,'et')"),'+3 pts');   // % of record beyond MRIP: a difference of shares
+  assert.equal(run("fs2(.03,'et')"),'+3.0 pts');   // % of record beyond MRIP: a difference of shares, with one decimal
+  assert.equal(run("fs2(.032,'et')"),'+3.2 pts');
   assert.equal(run("fs2(-.5,'sev')"),'−0.5×');
   run("S.mode='single'");
   assert.equal(run("fs2(.9,'fr')"),'0.90'); assert.equal(run("fs2(.5,'ach')"),'50%'); assert.equal(run("f3(null,'fr')"),'–');
-  assert.equal(run("f3(.237,'et')"),'24%'); assert.equal(run("fs2(1,'et')"),'100%');   // ETP as a % of the record, no decimals
+  assert.equal(run("f3(.237,'et')"),'23.7%'); assert.equal(run("fs2(1,'et')"),'100.0%');   // ETP as a % of the record, with one decimal
   assert.equal(run("f3(3.288,'sev')"),'3.29×');
 });
 test('textOnColour picks the label colour with the higher contrast on its fill',()=>{
@@ -262,4 +263,39 @@ test('textOnColour picks the label colour with the higher contrast on its fill',
   assert.equal(run("textOnColour('#f28e2b')"),'#111111');   // waterbird orange: white text fails here
   assert.equal(run("textOnColour('#888')"),'#111111');
   assert.ok(run("contrast('#6b7280','#ffffff')")>=4.5);   // the failed-year grey keeps white text and symbols legible
+});
+
+test('row indices rebuild in place for U_ codes, shared SDL rows and deletions',()=>{
+  const ctx=vm.createContext({});
+  vm.runInContext(`const META={pus:['PU'],gauges:['404216'],objTheme:[0],themes:['Fish','Unclassified']};
+    const ROWS=[[0,0,0,'F1',[0],[],[null],[null],{},[null]]];`,ctx);
+  vm.runInContext(section('// ---- row indices:','// ---- end row indices'),ctx);
+  const run=code=>vm.runInContext(code,ctx);
+  run('const refs=[sdlRows,gaugeRows,PUKEY]; const user=[0,0,0,"U_FRESH",[],[],[null],[null],{},[null]]; ROWS.push(user,[...user.slice(0,1),1,...user.slice(2)]);reindexRows();');
+  assert.equal(run('refs[0]===sdlRows&&refs[1]===gaugeRows&&refs[2]===PUKEY'),true);
+  assert.equal(run('PUKEY.get("PU|404216|U_FRESH").length'),2);
+  assert.equal(run('gaugeRows[0].length'),3); assert.equal(run('sdlRows[1].length'),1);
+  assert.deepEqual(plain(run('user.t')),[1]);
+  vm.runInContext(section('function putVals(','function addCustom('),ctx);
+  run('const NC=1; PUKEY.get("PU|404216|U_FRESH").forEach(r=>putVals(r,0,["PU","404216","U_FRESH",1.2,.1,3,4]));');
+  assert.equal(run('user[6][0]'),1.2);
+  run('ROWS.splice(1);reindexRows();reindexRows();');
+  assert.equal(run('PUKEY.has("PU|404216|U_FRESH")'),false);
+  assert.equal(run('gaugeRows[0].length'),1); assert.equal(run('Object.keys(sdlRows).length'),1);
+});
+
+test('Demo coverage and means exclude U_ rows; user mode includes current versions and removal restores aggregates',()=>{
+  const normal=row(0,0,0,'F1',[.4,0,.4,0]);
+  const user=row(0,0,0,'U_ONE',[1,0,1,0]);user.user='u_one';user.userVer=2;user[8].uewrVerAt={0:2,2:2};
+  const run=harness([normal,user]);run("S.src='demo';S.sel={type:'gauge',i:0}");
+  assert.equal(run('selRows().length'),1);near(run("agg(selRows(),[],'fr',0).mean"),.4);
+  run("S.src='user'");assert.equal(run('selRows().length'),2);near(run("agg(selRows(),[],'fr',0).mean"),.7);
+  run('ROWS[1].userVer=3');assert.equal(run("val(ROWS[1],'fr',0)"),null);near(run("agg(selRows(),[],'fr',0).mean"),.4);
+  run('ROWS.pop()');assert.equal(run('selRows().length'),1);near(run("agg(selRows(),[],'fr',0).mean"),.4);
+});
+
+test('stale user results cannot leak achieved years, drought years or near-miss counts',()=>{
+ const r=row(0,0,0,'U_STALE',[.8,.8,.8,.8]);r.user='u_stale';r.userVer=2;r[8].uewrVerAt={2:1};r[8].nyAt={2:100};r[8].nmAt={2:[3,5]};r[12]={dry:{fr:[.8,.8,.8,.8],n:[10,10,10,10]}};
+ const run=harness([r]);assert.equal(run('eyOf(ROWS[0],2)'),null);assert.equal(run('nyOf(ROWS[0],2)'),null);assert.equal(run('nyFull(ROWS[0],2)'),null);
+ run("S.period='dry'");assert.equal(run('eyOf(ROWS[0],2)'),null);assert.equal(run('nyOf(ROWS[0],2)'),null);
 });

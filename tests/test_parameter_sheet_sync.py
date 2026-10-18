@@ -22,7 +22,9 @@ def test_normalise_ignores_line_endings_and_trailing_newlines():
     assert sync.normalise(b"a,b\r\n1,2\r\n\r\n") == sync.normalise(b"a,b\n1,2")
 
 
-@pytest.mark.parametrize("upstream", [b"", b"<html>error</html>\nPlanningUnitName,Code\n", b"PlanningUnitName,Gauge\n", b"Gauge,Code\n", b"PlanningUnitName,Code\nExample,BF1\n"])
+@pytest.mark.parametrize(
+    "upstream", [b"", b"<html>error</html>\nPlanningUnitName,Code\n", b"PlanningUnitName,Gauge\n", b"Gauge,Code\n", b"PlanningUnitName,Code\nExample,BF1\n"]
+)
 def test_update_rejects_invalid_header_without_changing_local_copy(tmp_path, monkeypatch, capsys, upstream):
     """Verify invalid upstream headers leave the local sheet and directory unchanged."""
     local = tmp_path / "parameter_sheet.csv"

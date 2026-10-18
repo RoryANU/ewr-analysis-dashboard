@@ -1,0 +1,2186 @@
+{
+  "base": {
+    "code": "U_FRESH1",
+    "name": "Spring fresh",
+    "kind": "F",
+    "handler": "flow_handle",
+    "gauge": "404216",
+    "pus": [
+      "Broken River Reach 2: Hollands Creek to Caseys Weir"
+    ],
+    "objectives": [],
+    "regime": null,
+    "params": {
+      "FlowThresholdMin": 200,
+      "Duration": 5,
+      "TargetFrequency": 50,
+      "MaxInter-event": 2
+    }
+  },
+  "context": {
+    "gauges": [
+      "404216",
+      "404243"
+    ],
+    "pusByGauge": {
+      "404216": [
+        "Broken River Reach 2: Hollands Creek to Caseys Weir"
+      ],
+      "404243": [
+        "Broken River Reach 1: Lake Nillahcootie to Hollands Creek"
+      ]
+    },
+    "objs": [
+      "NF1"
+    ],
+    "regimes": [],
+    "sheetCodes": [
+      "BF1"
+    ],
+    "specs": [],
+    "flowScenarios": [
+      [
+        "404216",
+        "404243"
+      ]
+    ]
+  },
+  "schema": {
+    "F": {
+      "flow_handle": {
+        "category": "flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "lowflow_handle": {
+        "category": "low flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": 1
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "ctf_handle": {
+        "category": "cease to flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "flow_handle_anytime": {
+        "category": "flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "flow_handle_check_ctf": {
+        "category": "flow-ctf",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "NonFlowSpell",
+          "CtfThreshold",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "NonFlowSpell": "Preceding dry spell (days)",
+          "CtfThreshold": "Dry flow limit",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "NonFlowSpell": 0,
+          "CtfThreshold": 5,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "NonFlowSpell": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "CtfThreshold": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "rise_and_fall_handle": {
+        "category": "rise_fall",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "NonFlowSpell",
+          "RateOfRiseMax1",
+          "RateOfRiseMax2",
+          "RateOfFallMin",
+          "RateOfRiseThreshold1",
+          "RateOfRiseThreshold2",
+          "RateOfRiseRiverLevel",
+          "RateOfFallRiverLevel",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "NonFlowSpell": "Preceding dry spell (days)",
+          "RateOfRiseMax1": "Flow rise ratio below the second threshold",
+          "RateOfRiseMax2": "Flow rise ratio above the second threshold",
+          "RateOfFallMin": "Flow fall ratio",
+          "RateOfRiseThreshold1": "Minimum flow for a rise event",
+          "RateOfRiseThreshold2": "Second flow rise threshold",
+          "RateOfRiseRiverLevel": "Level rise per day",
+          "RateOfFallRiverLevel": "Level fall per day",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "NonFlowSpell": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "NonFlowSpell": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "RateOfRiseMax1": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseMax2": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfFallMin": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseThreshold1": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseThreshold2": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseRiverLevel": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfFallRiverLevel": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "flow_handle_multi": {
+        "category": "multi-gauge-flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": true
+      },
+      "lowflow_handle_multi": {
+        "category": "multi-gauge-low flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": 1
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": true
+      },
+      "ctf_handle_multi": {
+        "category": "multi-gauge-cease to flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": true
+      }
+    },
+    "V": {
+      "cumulative_handle": {
+        "category": "cumulative",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "VolumeThreshold",
+          "EventsPerYear",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "MaxInter-event",
+          "AccumulationPeriod",
+          "WithinEventGapTolerance",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "VolumeThreshold": "Volume (ML)",
+          "EventsPerYear": "Events needed per year",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "AccumulationPeriod": "Accumulation period (days)",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "EventsPerYear": 1,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "MaxInter-event": 0,
+          "WithinEventGapTolerance": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "VolumeThreshold": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "AccumulationPeriod": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "cumulative_handle_multi": {
+        "category": "multi-gauge-cumulative",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "VolumeThreshold",
+          "EventsPerYear",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "MaxInter-event",
+          "AccumulationPeriod",
+          "WithinEventGapTolerance",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "VolumeThreshold": "Volume (ML)",
+          "EventsPerYear": "Events needed per year",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "AccumulationPeriod": "Accumulation period (days)",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "EventsPerYear": 1,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "MaxInter-event": 0,
+          "WithinEventGapTolerance": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "VolumeThreshold": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "AccumulationPeriod": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": true
+      }
+    },
+    "L": {
+      "level_handle": {
+        "category": "level",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "LevelThresholdMin",
+          "LevelThresholdMax",
+          "Duration",
+          "MinSpell",
+          "EventsPerYear",
+          "DrawdownRate",
+          "MaxInter-event",
+          "MaxSpell",
+          "WithinEventGapTolerance",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "LevelThresholdMin": "Lower level",
+          "LevelThresholdMax": "Upper level",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "EventsPerYear": "Events needed per year",
+          "DrawdownRate": "Maximum level fall per day",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "MaxSpell": "Longest acceptable spell",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "WithinEventGapTolerance": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "LevelThresholdMin": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "LevelThresholdMax": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "DrawdownRate": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "MaxSpell": {
+            "min": 1,
+            "max": null,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "rise_and_fall_handle": {
+        "category": "rise_fall",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "NonFlowSpell",
+          "RateOfRiseMax1",
+          "RateOfRiseMax2",
+          "RateOfFallMin",
+          "RateOfRiseThreshold1",
+          "RateOfRiseThreshold2",
+          "RateOfRiseRiverLevel",
+          "RateOfFallRiverLevel",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "NonFlowSpell": "Preceding dry spell (days)",
+          "RateOfRiseMax1": "Flow rise ratio below the second threshold",
+          "RateOfRiseMax2": "Flow rise ratio above the second threshold",
+          "RateOfFallMin": "Flow fall ratio",
+          "RateOfRiseThreshold1": "Minimum flow for a rise event",
+          "RateOfRiseThreshold2": "Second flow rise threshold",
+          "RateOfRiseRiverLevel": "Level rise per day",
+          "RateOfFallRiverLevel": "Level fall per day",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "NonFlowSpell": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "NonFlowSpell": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "RateOfRiseMax1": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseMax2": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfFallMin": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseThreshold1": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseThreshold2": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfRiseRiverLevel": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "RateOfFallRiverLevel": {
+            "min": null,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      }
+    },
+    "S": {
+      "flow_handle": {
+        "category": "flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "WithinEventGapTolerance",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "WithinEventGapTolerance": "Days below threshold allowed inside an event",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "WithinEventGapTolerance": 0,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": "Duration"
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "WithinEventGapTolerance": {
+            "min": 0,
+            "max": 30,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      },
+      "lowflow_handle": {
+        "category": "low flow",
+        "fields": [
+          "StartMonth",
+          "EndMonth",
+          "StartDay",
+          "EndDay",
+          "FlowThresholdMin",
+          "FlowThresholdMax",
+          "Duration",
+          "MinSpell",
+          "EventsPerYear",
+          "MaxInter-event",
+          "TargetFrequency",
+          "TargetFrequencyMin",
+          "TargetFrequencyMax"
+        ],
+        "labels": {
+          "StartMonth": "Window starts: month",
+          "EndMonth": "Window ends: month",
+          "StartDay": "Window starts: day",
+          "EndDay": "Window ends: day",
+          "FlowThresholdMin": "Lower limit",
+          "FlowThresholdMax": "Upper limit",
+          "Duration": "Required days",
+          "MinSpell": "Shortest run that counts",
+          "EventsPerYear": "Events needed per year",
+          "MaxInter-event": "Maximum gap between successful events (years)",
+          "TargetFrequency": "Target: percent of years achieved",
+          "TargetFrequencyMin": "Acceptable frequency minimum",
+          "TargetFrequencyMax": "Acceptable frequency maximum"
+        },
+        "defaults": {
+          "StartMonth": 7,
+          "EndMonth": 6,
+          "FlowThresholdMin": 0,
+          "FlowThresholdMax": 1000000,
+          "EventsPerYear": 1,
+          "MaxInter-event": 0,
+          "MinSpell": 1
+        },
+        "bounds": {
+          "StartMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "EndMonth": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "StartDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "EndDay": {
+            "min": 1,
+            "max": 31,
+            "integer": true
+          },
+          "FlowThresholdMin": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "FlowThresholdMax": {
+            "min": 0,
+            "max": null,
+            "integer": true
+          },
+          "Duration": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "MinSpell": {
+            "min": 1,
+            "max": 366,
+            "integer": true
+          },
+          "EventsPerYear": {
+            "min": 1,
+            "max": 12,
+            "integer": true
+          },
+          "MaxInter-event": {
+            "min": 0,
+            "max": null,
+            "integer": false
+          },
+          "TargetFrequency": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMin": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          },
+          "TargetFrequencyMax": {
+            "min": 0,
+            "max": 100,
+            "integer": false
+          }
+        },
+        "required": [
+          "Duration",
+          "TargetFrequency"
+        ],
+        "second_gauge": false
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "valid",
+      "patch": {},
+      "errors": []
+    },
+    {
+      "name": "blank MinSpell defaults",
+      "patch": {
+        "params": {
+          "MinSpell": null
+        }
+      },
+      "errors": []
+    },
+    {
+      "name": "zero MinSpell",
+      "patch": {
+        "params": {
+          "MinSpell": 0
+        }
+      },
+      "errors": [
+        "params.MinSpell"
+      ]
+    },
+    {
+      "name": "MinSpell too long",
+      "patch": {
+        "params": {
+          "MinSpell": 6
+        }
+      },
+      "errors": [
+        "params.MinSpell"
+      ]
+    },
+    {
+      "name": "fractional MinSpell",
+      "patch": {
+        "params": {
+          "MinSpell": 1.5
+        }
+      },
+      "errors": [
+        "params.MinSpell"
+      ]
+    },
+    {
+      "name": "nonfinite MinSpell",
+      "patch": {
+        "params": {
+          "MinSpell": "nan"
+        }
+      },
+      "errors": [
+        "params.MinSpell"
+      ]
+    },
+    {
+      "name": "literal Duration is not numeric",
+      "patch": {
+        "params": {
+          "MinSpell": "Duration"
+        }
+      },
+      "errors": [
+        "params.MinSpell"
+      ]
+    },
+    {
+      "name": "hyphen code",
+      "patch": {
+        "code": "U_BAD-CODE"
+      },
+      "errors": [
+        "code"
+      ]
+    },
+    {
+      "name": "wrong gauge",
+      "patch": {
+        "gauge": "999999"
+      },
+      "errors": [
+        "gauge",
+        "pus"
+      ]
+    },
+    {
+      "name": "invalid month",
+      "patch": {
+        "params": {
+          "StartMonth": 13
+        }
+      },
+      "errors": [
+        "params.StartMonth"
+      ]
+    },
+    {
+      "name": "invalid day",
+      "patch": {
+        "params": {
+          "StartMonth": 2,
+          "StartDay": 30
+        }
+      },
+      "errors": [
+        "params.StartDay"
+      ]
+    },
+    {
+      "name": "short window",
+      "patch": {
+        "params": {
+          "StartMonth": 9,
+          "EndMonth": 9,
+          "StartDay": 1,
+          "EndDay": 3
+        }
+      },
+      "errors": [
+        "params.Duration"
+      ]
+    },
+    {
+      "name": "upper below lower",
+      "patch": {
+        "params": {
+          "FlowThresholdMax": 100
+        }
+      },
+      "errors": [
+        "params.FlowThresholdMax"
+      ]
+    },
+    {
+      "name": "totals default one",
+      "patch": {
+        "handler": "lowflow_handle"
+      },
+      "errors": []
+    },
+    {
+      "name": "unknown parameter",
+      "patch": {
+        "params": {
+          "VolumeThreshold": 1
+        }
+      },
+      "errors": [
+        "params.VolumeThreshold"
+      ]
+    },
+    {
+      "name": "anytime window",
+      "patch": {
+        "handler": "flow_handle_anytime",
+        "params": {
+          "StartMonth": 8
+        }
+      },
+      "errors": [
+        "params.StartMonth"
+      ]
+    }
+  ]
+}

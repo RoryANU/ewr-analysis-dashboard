@@ -99,6 +99,20 @@ body.nobar #bar{display:none}body.nobar #tabT{display:block}
 .gdev{margin:8px 0;padding:10px 12px;border:1px dashed #c5ccd6;border-radius:8px;background:#f7f9fc;font-size:12.5px;line-height:1.5}.gdev code{font-size:11.5px}
 .gnote{font-size:11px;color:var(--mut);margin-top:6px}
 @media(max-width:800px){#lpanel{flex:1;width:100%;max-width:none;min-width:0;border-right:0;border-bottom:1px solid var(--line)}#ldivider{display:none}}
+/* User EWR configuration: uses the dashboard's existing controls and colour palette. */
+.uewr-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.uewr-heading h2,.uewr-heading h3{margin:10px 0}
+.uewr-dialog{width:min(1040px,calc(100vw - 32px));max-height:90vh;padding:20px;border:1px solid #9aa3b0;border-radius:8px;color:#1f2937}.uewr-dialog [hidden]{display:none!important}.uewr-dialog::backdrop{background:#1f29377a}
+.uewr-layout{display:grid;grid-template-columns:165px minmax(0,1fr);gap:22px}.uewr-layout nav{display:flex;flex-direction:column;gap:8px;position:sticky;top:0;align-self:start}.uewr-layout nav button{text-align:left}
+.uewr-sections{min-width:0;max-height:73vh;overflow:auto;padding-right:6px}.uewr-sections fieldset{border:1px solid #d1d5db;border-radius:6px;margin:0 0 18px;padding:16px;scroll-margin:8px}.uewr-sections legend{font-size:16px;font-weight:700;padding:0 6px}
+.uewr-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.uewr-fields label,.uewr-sections label{font-size:12px;display:flex;flex-direction:column;gap:5px}.uewr-fields input,.uewr-fields select{width:100%;min-width:0;box-sizing:border-box}.uewr-fields small{font-size:11px;color:#4b5563}
+.uewr-sections [data-error]:not(:empty){color:#a12622;font-size:12px}.uewr-sections [aria-invalid=true]{border-color:#a12622}.uewr-check{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;margin:7px 0}.uewr-check input{margin:0}
+.uewr-rules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}.uewr-rules button{text-align:left;white-space:normal;padding:12px}.uewr-rules button[aria-checked=true]{border-color:#1f4e8c;background:#eaf1fa}
+.uewr-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.uewr-item{border:1px solid #d1d5db;padding:10px;border-radius:5px;margin:8px 0;font-size:12px}.uewr-item summary{cursor:pointer}.uewr-item small{display:block;margin-top:5px}.uewr-notice{white-space:pre-wrap;font-size:12px}.uewr-offer{font-size:12px;background:#eef4fa;padding:10px}.uewr-sections h4{margin:14px 0 8px}
+.uewr-tutorial{border:1px solid #d1d5db;border-radius:6px;padding:12px;background:#f8fafc}.uewr-tutorial svg{display:block;width:100%;height:auto;max-height:300px}.uewr-tutorial p{font-size:12px;line-height:1.5}.uewr-tutorial small{color:#4b5563}
+.uewr-preview-table{overflow-x:auto;margin:10px 0}.uewr-preview-table table{width:100%;font-size:12px}.uewr-preview-table caption{text-align:left;padding:8px 0;font-weight:600}
+.uewr-notice:not(:empty){border-left:3px solid #1f4e8c;background:#eef4fa;padding:10px;line-height:1.5}.uewr-notice[data-tone=error]{border-color:#a12622;background:#fff2f0}.uewr-notice[data-tone=success]{border-color:#1a704f;background:#edf8f2}.uewr-notice[data-tone=warning]{border-color:#976411;background:#fff8e8}
+.uewr-toast{position:fixed;right:20px;bottom:20px;z-index:1200;max-width:min(460px,calc(100vw - 40px));display:flex;align-items:start;gap:12px;padding:14px;background:#fff;color:#1f2937;border:1px solid #9aa3b0;border-left:4px solid #1a704f;border-radius:6px;box-shadow:0 3px 16px #0002;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}.uewr-toast[hidden]{display:none}.uewr-toast[data-tone=error]{border-left-color:#a12622}.uewr-toast[data-tone=info]{border-left-color:#1f4e8c}.uewr-toast[data-tone=warning]{border-left-color:#976411}.uewr-toast button{flex:none;padding:0 5px}.uewr-heading .uewr-actions{margin:0}
+@media(max-width:600px){.uewr-dialog{padding:12px;width:calc(100vw - 24px)}.uewr-layout{display:block}.uewr-layout nav{position:static;display:grid;grid-template-columns:1fr 1fr;margin-bottom:12px}.uewr-fields,.uewr-rules{grid-template-columns:1fr}.uewr-sections{max-height:65vh}.uewr-sections fieldset{padding:10px}}
 </style></head><body class="nol"><div id="app">
 <div id="bar">
   <h1>EWR analysis tool</h1><button id="barHide" class="ghost" title="Hide this bar to see more of the map (a tab at the top brings it back)" aria-label="Hide the title and options bar">▴</button><button id="barTog" class="ghost" aria-expanded="false" aria-controls="bar">Controls ▾</button>
@@ -147,7 +161,21 @@ const PRELOADED=[];   // scenarios calculated outside the page (e.g. by a Databr
 //   r[10]: worst gap between successful events ÷ MRIP per scenario (uploads only: null until one is added); r[11]: duration ratio per scenario
 //   (review results: mean event length ÷ required duration; uploads: median over complete years of the year's best event ÷ required duration);
 //   r[12]: drought windows {fed|ww2|mil|tin: {fr, et, sev, dr, n}}, each an array per scenario (uploads only)
-ROWS.forEach(r=>{ const t=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=t.length?t:[META.themes.indexOf("Unclassified")]; });
+// ---- row indices: rebuild in place after ROWS additions/removals, including U_ codes --------------------------------
+const sdlRows={}, gaugeRows={}, PUKEY=new Map();
+function reindexRows(){
+  for(const k of Object.keys(sdlRows)) delete sdlRows[k];
+  for(const k of Object.keys(gaugeRows)) delete gaugeRows[k];
+  PUKEY.clear();
+  for(const r of ROWS){
+    const themes=[...new Set(r[4].map(o=>META.objTheme[o]))]; r.t=themes.length?themes:[META.themes.indexOf("Unclassified")];
+    (sdlRows[r[1]]??=[]).push(r); (gaugeRows[r[2]]??=[]).push(r);
+    const key=META.pus[r[0]]+"|"+META.gauges[r[2]]+"|"+r[3];
+    if(!PUKEY.has(key)) PUKEY.set(key,[]); PUKEY.get(key).push(r);
+  }
+}
+reindexRows();
+// ---- end row indices ---------------------------------------------------------------------------------------------
 const NC=META.climates.length;
 const POL_L={"Without Development":"Without development","Pre Basin Plan":"Pre Basin Plan","Basin plan 2024":"Basin Plan 2024","Basin plan full implementation":"Full implementation"};
 const CLI_L={"Historical Climate":"Historical","Warmer and Wetter 1.5 C":"Warmer, wetter 1.5°C","Warmer and Drier 1.5 C":"Warmer, drier 1.5°C","Warmer and Much Drier 1.5 C":"Warmer, much drier 1.5°C","Hotter and Wetter 2.0 C":"Hotter, wetter 2.0°C","Hotter and Drier 2.0 C":"Hotter, drier 2.0°C","Hotter and Much Drier 2.0 C":"Hotter, much drier 2.0°C"};
@@ -170,7 +198,8 @@ const FR_T=1, MET_OUT=true;   // FR_T: FR at the target frequency. MET_OUT: diff
 // one scenario's value of metric m: FR, ETP (capped at 1), or 1 / 0 for the binary metrics ("ach": FR >= threshold; "fb": FR < floor; "mz": ETP <= threshold, 0 = MRIP never exceeded)
 // the stored value behind metric m: the whole record (r[6], r[7], r[10], r[11]) or, with a drought period, that window's (r[12]; none for the review results)
 const win=r=>S.period&&r[12]?r[12][S.period]||null:null;
-function src(r,m,i){ const k=m==="et"||m==="mz"?"et":m==="sev"||m==="dr"?m:"fr";
+const userFresh=(r,i)=>!r.user||r[8]?.uewrVerAt?.[i]===r.userVer;
+function src(r,m,i){ if(!userFresh(r,i)) return null; const k=m==="et"||m==="mz"?"et":m==="sev"||m==="dr"?m:"fr";
   if(S.period){ const w=win(r); return w&&w[k]?w[k][i]??null:null; }
   const a=k==="et"?r[7]:k==="fr"?r[6]:k==="sev"?r[10]:r[11]; return a?a[i]??null:null; }
 // a window too short to expect one achieved year (n < 100 / T): its FR is shown as "k of n years" and kept out of the means
@@ -185,10 +214,10 @@ function valOne(r,m,i){ if(m==="sev"||m==="dr") return src(r,m,i);   // worst ga
   if(m==="fq"){ const raw=src(r,m,i), T=r[8]&&r[8].T; return Number.isFinite(raw)&&T>0?raw*T/100:null; }   // achieved frequency = FR x target % of years, as a proportion
   const raw=src(r,m,i), v=(m==="et"||m==="mz")&&Number.isFinite(raw)?Math.min(1,raw):raw;
   return v==null?null:m==="ach"?(v>=S.thr-1e-9?1:0):m==="fb"?(v<S.fbthr-1e-9?1:0):m==="mz"?(v<=S.ethr+1e-9?1:0):v; }
-const nyFull=(r,i)=>r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null;   // record years (an upload's own)
+const nyFull=(r,i)=>!userFresh(r,i)?null:r[8]?(r[8].nyAt&&r[8].nyAt[i])??r[8].ny??null:null;   // record years (an upload's own)
 // the years behind FR and how many were achieved: the record's, or with a drought period the window's complete years (achieved = FR x T / 100 x n)
-const nyOf=(r,i)=>S.period?(w=>w&&w.n?w.n[i]??null:null)(win(r)):nyFull(r,i);
-const eyOf=(r,i)=>{ if(!S.period) return r[9]?r[9][i]??null:null; const w=win(r), T=r[8]&&r[8].T, f=w&&w.fr?w.fr[i]:null, n=nyOf(r,i); return f==null||!T||!n?null:f*T/100*n; };
+const nyOf=(r,i)=>!userFresh(r,i)?null:S.period?(w=>w&&w.n?w.n[i]??null:null)(win(r)):nyFull(r,i);
+const eyOf=(r,i)=>{ if(!userFresh(r,i))return null; if(!S.period) return r[9]?r[9][i]??null:null; const w=win(r), T=r[8]&&r[8].T, f=w&&w.fr?w.fr[i]:null, n=nyOf(r,i); return f==null||!T||!n?null:f*T/100*n; };
 const dYears=r=>{ const c=eyOf(r,scnIdx()), b=eyOf(r,scnIdx(S.bpol,S.bcli)); return c==null||b==null?null:c-b; };   // achieved years, comparison − base
 // differential class of an EWR (base b -> comparison c) and its change d as it enters the means (positive = better); null when either is missing.
 //   met: target met in both (d null, so out of the means; FR surplus c - b in `sur`, tooltips only) · gain: reaches it, d = min(c,1) - b
@@ -256,11 +285,12 @@ const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"
 const mn=m=>dyc(m)?"mean change in achieved years per century":MN[m], msn=m=>dyc(m)?"change in achieved yrs/century":MS[m];   // differential FR labels
 
 // ---- selection ---------------------------------------------------------------------------------------------------
+const vis=r=>!r.user||S.src==="user";
 function selRows(){
-  const s=S.sel;
-  if(s.type==="sdl") return ROWS.filter(r=>r[1]===s.i);
-  if(s.type==="pu") return ROWS.filter(r=>r[0]===s.i&&r[1]===s.sdl);
-  if(s.type==="gauge") return ROWS.filter(r=>r[2]===s.i&&(s.sdl==null||r[1]===s.sdl)&&(s.pu==null||r[0]===s.pu));
+  const s=S.sel, rows=ROWS.filter(vis);
+  if(s.type==="sdl") return rows.filter(r=>r[1]===s.i);
+  if(s.type==="pu") return rows.filter(r=>r[0]===s.i&&r[1]===s.sdl);
+  if(s.type==="gauge") return rows.filter(r=>r[2]===s.i&&(s.sdl==null||r[1]===s.sdl)&&(s.pu==null||r[0]===s.pu));
   return [];
 }
 // ---- colours -----------------------------------------------------------------------------------------------------
@@ -304,7 +334,6 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_L
 const activeSdl=i=>i>=0&&(S.src!=="user"||CUSTOM.some(c=>!c.removed&&c.sdls.includes(META.sdls[i])));   // demo: every SDL unit in the review; your data: units you have added a scenario for
 const inReview=f=>activeSdl(f.properties.sdl);
 const clickable=f=>!(f.properties.state==="SA"&&!inReview(f));   // other SA units are drawn but not interactive
-const sdlRows={}, gaugeRows={}; ROWS.forEach(r=>{ (sdlRows[r[1]]??=[]).push(r); (gaugeRows[r[2]]??=[]).push(r); });
 // map fills show the selected measure's performance (the hierarchical mean of the SDL unit / gauge); grey = no result
 const PERF={sdl:{},gauge:{}};
 /**
@@ -312,8 +341,8 @@ const PERF={sdl:{},gauge:{}};
  * Use hierarchical SDL aggregates and flat gauge aggregates (maxima for worst gap); missing aggregates are gray.
  */
 function computePerf(){ const i=scnIdx(), m=S.metric; PERF.sdl={}; PERF.gauge={};
-  for(const k of Object.keys(sdlRows)){ const v=agg(sdlRows[k],["pu","gauge"],m,i).mean; PERF.sdl[k]=v==null?"#bbb":colour(v,m); }
-  for(const k of Object.keys(gaugeRows)){ const v=agg(gaugeRows[k],[],m,i).mean; PERF.gauge[k]=v==null?"#bbb":colour(v,m); } }
+  for(const k of Object.keys(sdlRows)){ const v=agg(sdlRows[k].filter(vis),["pu","gauge"],m,i).mean; PERF.sdl[k]=v==null?"#bbb":colour(v,m); }
+  for(const k of Object.keys(gaugeRows)){ const v=agg(gaugeRows[k].filter(vis),[],m,i).mean; PERF.gauge[k]=v==null?"#bbb":colour(v,m); } }
 /** Return Leaflet style for an SDL unit polygon: shaded by PERF (the current metric's performance) in the active review, otherwise grey with a dashed outline. */
 const style=f=>({color:"#333",weight:1,fillColor:inReview(f)?(PERF.sdl[f.properties.sdl]||"#bbb"):"#888",fillOpacity:inReview(f)?0.75:0.2,dashArray:inReview(f)?null:"4",interactive:clickable(f)});
 computePerf();
@@ -460,12 +489,13 @@ const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===
  * Mount performance charts and bind flow controls for a selection; dispose performance state when no selection is active.
  */
 function render(){
+  FLOWTOKEN++;EVTOKEN++;SPTOKEN++;RGTOKEN++;MTOKEN++;LASTMX={};
   const s=S.sel; mripSeen=false;
   if(s.type==="none"){
     disposePerformance();
     const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
     if(S.src==="user"&&!names.length){ $("panel").innerHTML=`<h2>Your data</h2><div class="note">This mode uses only model output you add yourself, and unlocks the flow charts (threshold × duration heat map, hydrograph, flow duration curves). Add a scenario to begin; the SDL units it covers are found from its gauges.</div><div class="row"><button data-act="addscn">＋ Add scenario</button></div>`; return; }
-    $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Pick an area to see how its environmental watering requirements are met.${tip("Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.")}</div>${(t=>t?`<div class="summary">${t}</div>`:"")(summaryLine(ROWS.filter(r=>activeSdl(r[1]))))}
+    $("panel").innerHTML=`<h2>${S.src==="user"?"Your data · select an SDL unit":"Select an SDL unit"}</h2><div class="note">Pick an area to see how its environmental watering requirements are met.${tip("Click an SDL unit on the map or below. SDL unit → planning units → gauges → EWRs. Each level averages the one beneath it: gauge = mean of its EWRs, planning unit = mean of its gauges, SDL unit = mean of its planning units.")}</div>${(t=>t?`<div class="summary">${t}</div>`:"")(summaryLine(ROWS.filter(r=>vis(r)&&activeSdl(r[1]))))}
       <table><tbody>${names.map(([n,i])=>`<tr class="click" data-act="sdl" data-i="${i}"><td>${esc(n)}</td></tr>`).join("")}</tbody></table>`;
     return;
   }
@@ -497,7 +527,7 @@ function render(){
 // what the duration ratio is: uploads, the median over complete years of the year's best event ÷ required duration; the review results, an approximation
 const drLab=()=>isCustom(S.pol)?"median best event ÷ required duration":"mean event length ÷ required duration";
 // gauge view, uploads: of the years whose best event fell short (DR < 1), how many reached half the required duration (whole record only)
-function nearMiss(rows){ if(S.period||!isCustom(S.pol)) return ""; let k=0, n=0; for(const r of rows){ const v=r[8]&&r[8].nmAt&&r[8].nmAt[scnIdx()]; if(v){ k+=v[0]; n+=v[1]; } }
+function nearMiss(rows){ if(S.period||!isCustom(S.pol)) return ""; let k=0, n=0; for(const r of rows){ if(!userFresh(r,scnIdx()))continue; const v=r[8]&&r[8].nmAt&&r[8].nmAt[scnIdx()]; if(v){ k+=v[0]; n+=v[1]; } }
   return n?`<span style="display:block">In ${k} of ${n} failed years the best event reached half the required duration</span>`:""; }
 // ---- matrix: ecological themes (objectives) down; planning units / gauges / flow regimes (EWRs) across ---------------
 const REG_ORDER=["Cease to flow","Very low flow","Baseflow","Fresh","Small fresh","Large fresh","Bankfull","Bankfull flow","Annabranch connection","Overbank","Overbank small","Overbank large","Low overbank flow","Low to moderate overbank flow","Moderate overbank flow","Moderate to large overbank flow","Wetland inundation","Wetland Large Fresh","Nesting support flow","High lake level fill","Mid level lake fill","Low level lake fill","Very high level fill","lower lakes","coorong","Annual Barrage flow","three yearly barrage flows","excluded","Unmapped"];
@@ -548,6 +578,7 @@ function boxPlot(rows,m,dom,compact){
     (compact?"":`<text x="2" y="${H-16}" text-anchor="start" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-a)<16?"":fmt(lo)}</text><text x="${W-2}" y="${H-16}" text-anchor="end" style="font-size:10px;fill:#4b5563">${ref!=null&&Math.abs(X(ref)-b)<16?"":fmt(hi)}</text><text x="${W/2}" y="9" text-anchor="middle" style="font-size:9.5px;font-weight:700;fill:#374151">Spread of EWRs (box = middle 50%, ◆ = mean)</text><text x="${W/2}" y="${H-3}" text-anchor="middle" style="font-size:9.5px;fill:#4b5563">${isDiff()?(m==="fr"?"Change in achieved years per century":"Change")+" per EWR":m==="et"?"Share of record beyond the maximum gap, per EWR":m==="fr"?"Frequency ratio per EWR (1 = target met)":FAMN[m]+" per EWR"}</text>`)+
     `</svg>`;
 }
+const objectiveMatch=(r,o)=>o.unclassified?!!r.user&&!r[4].length:r[4].some(x=>o.objs.includes(x));
 let LASTMX={};   // matrix key ("pu" / "regime" in the SDL view, else "main") -> {cols,orows,cnt}
 /**
  * Return SVG for S's selection and metric, or a no-data HTML message if no rows or columns can be shown.
@@ -555,6 +586,7 @@ let LASTMX={};   // matrix key ("pu" / "regime" in the SDL view, else "main") ->
  * mxk selects the SDL matrix (pu or regime), defaulting to main; successful rendering updates LASTMX at that key for cell details.
  */
 function matrixSvg(rows,mxk){
+  rows=rows.filter(vis);
   const mk=mxk||"main", CT=COLL_BY[mk]||COLL_THEME;   // SDL view: each matrix has its own expanded / collapsed themes
   const i=scnIdx(), m=S.metric, t=S.sel.type, lv=scopeLevels(), clv=lv.slice(1);   // columns are one level below the selection
   const cnt=t==="sdl";   // SDL view: planning unit x theme cells are counts of EWR-objective mappings; no FR / % beyond MRIP shown
@@ -574,16 +606,19 @@ function matrixSvg(rows,mxk){
       if(COLL_REG.has(rg)&&ids.length>1) cols.push({id:"g"+rg,label:`${(REG_ABBR[rg]||rg)} (${ids.length})`,full:rg,rows:ids,reg:rg,grp:true});
       else ids.forEach(r=>cols.push({id:"e"+r[3]+"|"+r[2]+"|"+r[0],label:r[3],full:r[3],rows:[r],reg:rg,grp:false})); }
   }
+  if(byReg){const unassigned=rows.filter(r=>r.user&&!r[5].length);if(unassigned.length)cols.push({id:"gUnclassified",label:"Unclassified",full:"Unclassified",rows:unassigned,reg:"Unclassified",grp:true});}
+  if(t==="gauge")for(const r of rows.filter(r=>r.user&&!r[5].length))cols.push({id:"e"+r[3]+"|"+r[2]+"|"+r[0],label:r[3],full:r[3],rows:[r],reg:"Unclassified",grp:false});
   const present=new Set(rows.flatMap(r=>r[4])), orows=[];
   META.themes.forEach((th,ti)=>{ const ids=[...present].filter(o=>META.objTheme[o]===ti).sort((a,b)=>META.objs[a].localeCompare(META.objs[b],undefined,{numeric:true})); if(!ids.length) return;
     if(CT.has(th)) orows.push({id:"t"+th,label:th,objs:ids,theme:th,grp:true});
     else ids.forEach(o=>orows.push({id:"o"+META.objs[o],label:META.objs[o],objs:[o],theme:th,grp:false,desc:META.objDesc[o]})); });
-  for(const o of orows){ const set=new Set(o.objs); o.rows=rows.filter(r=>r[4].some(x=>set.has(x))); o.vals=Object.fromEntries(METRICS.map(k=>[k,agg(o.rows,lv,k,i).mean])); o.cn=cnts(o.rows,m); o.sv=agg(o.rows,lv,"sev",i); }
+  if(rows.some(r=>r.user&&!r[4].length))orows.push({id:"tUserUnclassified",label:"Unclassified",objs:[],theme:"Unclassified",grp:true,unclassified:true});
+  for(const o of orows){ o.rows=rows.filter(r=>objectiveMatch(r,o)); o.vals=Object.fromEntries(METRICS.map(k=>[k,agg(o.rows,lv,k,i).mean])); o.cn=cnts(o.rows,m); o.sv=agg(o.rows,lv,"sev",i); }
   for(const c of cols){ const a=agg(c.rows,clv,m,i); c.v=a.mean; c.who=a.who; c.cn=cnts(c.rows,m); }
-  // missing data is not shown: rows and columns with no value for the selected metric are dropped (differential: unless every EWR in them meets the target in both)
-  const mc=(rs,o)=>{ const set=new Set(o.objs); return rs.reduce((n,r)=>n+r[4].filter(x=>set.has(x)).length,0); };
+  // Keep user definitions visible when not run or stale. Review rows without data are dropped unless they meet the target in both differential scenarios.
+  const mc=(rs,o)=>{ const set=new Set(o.objs); return rs.reduce((n,r)=>n+(o.unclassified?Number(objectiveMatch(r,o)):r[4].filter(x=>set.has(x)).length),0); };
   if(cnt){ for(let k=orows.length-1;k>=0;k--) if(!mc(rows,orows[k])) orows.splice(k,1); for(let k=cols.length-1;k>=0;k--) if(!orows.some(o=>mc(cols[k].rows,o))) cols.splice(k,1); }
-  else{ const keep=x=>isDiff()&&x.cn.met>0; for(let k=orows.length-1;k>=0;k--) if(orows[k].vals[m]==null&&!keep(orows[k])) orows.splice(k,1);
+  else{ const keep=x=>x.rows.some(r=>r.user)||(isDiff()&&x.cn.met>0); for(let k=orows.length-1;k>=0;k--) if(orows[k].vals[m]==null&&!keep(orows[k])) orows.splice(k,1);
     for(let k=cols.length-1;k>=0;k--) if(cols[k].v==null&&!keep(cols[k])) cols.splice(k,1); }
   if(!orows.length||!cols.length) return "<i>No data for this selection and scenario.</i>";
   cols.forEach(c=>{ c.sv=cnt?orows.reduce((n,o)=>n+mc(c.rows,o),0):c.v??0; });
@@ -593,7 +628,7 @@ function matrixSvg(rows,mxk){
     else { const out=[]; for(let a=0;a<cols.length;){ let b=a; while(b+1<cols.length&&cols[b+1].reg===cols[a].reg) b++; out.push(...cols.slice(a,b+1).sort(cmp)); a=b+1; } cols.splice(0,cols.length,...out); }   // expanded flow regimes: sort within each regime so the bands stay intact
   }
   LASTMX[mk]={cols,orows,cnt};
-  const cell=cols.map(c=>orows.map(o=>{ const set=new Set(o.objs), rs=c.rows.filter(r=>r[4].some(x=>set.has(x))); return cnt?{n:mc(rs,o),v:null}:(a=>({n:rs.length,v:a.mean,who:a.who,cn:cnts(rs,m),rows:rs}))(agg(rs,clv,m,i)); }));
+  const cell=cols.map(c=>orows.map(o=>{ const rs=c.rows.filter(r=>objectiveMatch(r,o)); return cnt?{n:mc(rs,o),v:null}:(a=>({n:rs.length,v:a.mean,who:a.who,cn:cnts(rs,m),rows:rs}))(agg(rs,clv,m,i)); }));
   const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+"…":s;
   cols.forEach(c=>c.show=trunc(c.label,t==="sdl"?30:26));
   const C=isDiff()&&!cnt?28:24, PH=cnt?0:64, bandH=t==="gauge"?18:0, bandGap=t==="gauge"?6:0, TB=18;   // cell size, bar panel height, regime band, theme band width: scaled with the 10-11px type
@@ -682,12 +717,12 @@ function singlePU(sel){
 function cellDetail(){
   const L=S.cell&&LASTMX[S.cell.mx]; if(!L) return "";
   const c=L.cols.find(x=>x.id===S.cell.c), o=L.orows.find(x=>x.id===S.cell.r); if(!c||!o){ S.cell=null; return ""; }
-  const set=new Set(o.objs), m=S.metric, D=isDiff(), cnt=L.cnt, t=S.sel.type, bin=isBin(m), fam=m==="sev"||m==="dr"?m:FAM[m]==="f"?"fr":"et";
-  const rs=c.rows.filter(r=>r[4].some(x=>set.has(x)));
+  const m=S.metric, D=isDiff(), cnt=L.cnt, t=S.sel.type, bin=isBin(m), fam=m==="sev"||m==="dr"?m:FAM[m]==="f"?"fr":"et";
+  const set=new Set(o.objs), rs=c.rows.filter(r=>objectiveMatch(r,o));
   if(!cnt) rs.sort(byThrR);
   const shown=rs.slice(0,300), k1=scnIdx(), k0=scnIdx(S.bpol,S.bcli), f=v=>v==null?"–":fam==="et"?(v*100).toFixed(1)+"%":fam==="sev"?v.toFixed(2)+"×":fam==="dr"?v.toFixed(2):v.toFixed(3);
   const kn=(r,i)=>{ const w=win(r), T=r[8].T, n=w.n[i], x=src(r,"fr",i); return x==null?"–":`<span style="color:#9ca3af" title="Too few complete years in the window to expect one achieved year at a ${T}% target (n < 100 / T): not in the means">${Math.round(x*T/100*n)} of ${n} years</span>`; };
-  const fv=(r,i)=>fam==="fr"&&shortWin(r,i)?kn(r,i):f(src(r,fam,i));   // the record's value, or the drought window's
+  const fv=(r,i)=>r.user&&!userFresh(r,i)?`<span title="${r[8]?.uewrVerAt?.[i]!=null?"Stale results: re-run this EWR":"Not run on this scenario"}">–</span>`:fam==="fr"&&shortWin(r,i)?kn(r,i):f(src(r,fam,i));   // the record's value, or the drought window's
   const words={ach:["achieved","not achieved"],fb:["failed badly","ok"],mz:["achieved","not achieved"]};
   const res=r=>{ const v=val(r,m); if(v==null) return "–"; if(!D) return v?words[m][0]:words[m][1]; return v>0?"improved":v<0?"declined":"unchanged"; };
   const good=d=>d==null?"":(d>0.01?"color:#1d5a99":d<-0.01?"color:#b3261e":"");   // blue = better, red = worse, as on the matrix
@@ -706,12 +741,13 @@ function cellDetail(){
 // McNemar p for an EWR of two uploaded scenarios (server: ewr_years -> paired.p_mcnemar), fetched after the table is drawn
 const MCN=new Map();   // key -> p, null (no year differs) or "err"
 const mcnKey=r=>{ if(!isDiff()) return null; const b=customOf(S.bpol), c=customOf(S.pol), g=META.gauges[r[2]];
-  return b&&c&&b.flowGauges.includes(g)&&c.flowGauges.includes(g)?JSON.stringify([b.id,c.id,g,r[3],META.pus[r[0]]]):null; };
+  const spec=r.user&&typeof UEWR!=="undefined"?UEWR.specs.get(r.user):null,field=spec?.kind==="L"?"levelGauges":spec?.kind==="S"?"salinityGauges":"flowGauges";
+  return b&&c&&userFresh(r,scnIdx())&&userFresh(r,scnIdx(S.bpol,S.bcli))&&b[field]?.includes(g)&&c[field]?.includes(g)?JSON.stringify([b.id,c.id,g,r[3],META.pus[r[0]]]):null; };
 const mcnFmt=p=>p==="err"?"–":p==null?"–":p<0.001?"<0.001":p.toFixed(3);
 const mcnTd=r=>{ const k=mcnKey(r); return !k?"<td>–</td>":`<td data-mcn="${esc(k)}">${MCN.has(k)?mcnFmt(MCN.get(k)):"…"}</td>`; };
-async function loadMcn(){ for(const td of document.querySelectorAll("td[data-mcn]")){ const k=td.dataset.mcn; if(MCN.has(k)) continue; const [b,c,g,e,pu]=JSON.parse(k);
-    try{ const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(b)}&comp=${encodeURIComponent(c)}&gauge=${encodeURIComponent(g)}&ewr=${encodeURIComponent(e)}&pu=${encodeURIComponent(pu)}`); MCN.set(k,d.paired?d.paired.p_mcnemar??null:null); }
-    catch(er){ MCN.set(k,"err"); }
+async function loadMcn(){ const gen=FLOWGEN; for(const td of document.querySelectorAll("td[data-mcn]")){ const k=td.dataset.mcn; if(MCN.has(k)) continue; const [b,c,g,e,pu]=JSON.parse(k);
+    try{ const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(b)}&comp=${encodeURIComponent(c)}&gauge=${encodeURIComponent(g)}&ewr=${encodeURIComponent(e)}&pu=${encodeURIComponent(pu)}`); if(gen!==FLOWGEN)return; MCN.set(k,d.paired?d.paired.p_mcnemar??null:null); }
+    catch(er){ if(gen!==FLOWGEN)return; MCN.set(k,"err"); }
     document.querySelectorAll("td[data-mcn]").forEach(x=>{ if(x.dataset.mcn===k) x.textContent=mcnFmt(MCN.get(k)); }); } }
 // ---- flow analysis (uploaded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
 // colour scales as in the reference plots (plotly express RdBu: red = negative, blue = positive; Blues for absolute values)
@@ -726,7 +762,9 @@ function divScale(lo,hi){ const m=Math.max(-lo,hi)||1, at=t=>{ const x=Math.max(
   return Array.from({length:41},(_,k)=>{ const p=k/40, v=lo+p*(hi-lo); return [p,at((v/m+1)/2)]; }); }
 const CEWR=(()=>{ try{ return JSON.parse(localStorage.getItem("ewrCustomEwr")||"[]"); }catch(e){ return []; } })();   // user-defined constraints: {code (name), thr, dur, sm, em, consecutive, target}
 const saveCEWR=()=>{ try{ localStorage.setItem("ewrCustomEwr",JSON.stringify(CEWR)); }catch(e){} };
-const ewrsFor=g=>(EWRLIST.get(g)||[]).concat(CEWR);
+const ewrsFor=g=>(EWRLIST.get(g)||[]).filter(e=>!e.custom).concat(typeof UEWR!=="undefined"?UEWR.atGauge(g):[],CEWR);
+const flowCompatible=e=>!e.kind||e.kind==="F"||e.kind==="V";
+const flowEwrsFor=g=>ewrsFor(g).filter(e=>flowCompatible(e)&&(S.flow.chart!=="heat"||!e.user||(e.kind==="F"&&["flow_handle","lowflow_handle"].includes(e.handler))));
 const EWRLIST=new Map();   // gauge -> EWRs handled by flow_handle / lowflow_handle
 const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], FLOWCACHE=new Map();
 let FLOWTOKEN=0;
@@ -735,10 +773,9 @@ function flowCtx(){
   if(S.src!=="user"||S.sel.type!=="gauge"||!CUSTOM.some(c=>!c.removed)) return null;
   const g=META.gauges[S.sel.i], comp=customOf(S.pol), base=customOf(S.bpol);
   const need=isDiff()?"In Differential mode both the Base and the Comparison must be uploaded scenarios.":"Select one of your uploaded scenarios.";
-  const has=c=>c&&c.flowGauges.includes(g);
-  if(isDiff()){ if(has(comp)&&has(base)) return {ok:true,gauge:g,base:base.id,comp:comp.id,bn:base.name,cn:comp.name}; }
-  else if(has(comp)) return {ok:true,gauge:g,base:comp.id,comp:null,bn:comp.name};
-  return {ok:false,msg:"Flow charts need uploaded flows for this gauge. "+need};
+  const has=(c,kind)=>!!c&&(c[kind]||[]).includes(g), any=c=>["flowGauges","levelGauges","salinityGauges"].some(k=>has(c,k));
+  if(any(comp)&&(!isDiff()||any(base))) return {ok:true,gauge:g,base:isDiff()?base.id:comp.id,comp:isDiff()?comp.id:null,bn:isDiff()?base.name:comp.name,cn:comp.name,flowAvailable:has(comp,"flowGauges")&&(!isDiff()||has(base,"flowGauges"))};
+  return {ok:false,msg:"Charts need uploaded daily series for this gauge. "+need};
 }
 const DROUGHTS=META.droughts.map(d=>[d.name,`${d.w0}-07-01`,`${d.w1+1}-06-30`]);   // drought quick filters: the drought windows' water years (src/drought_windows.py)
 // every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
@@ -753,8 +790,8 @@ const byThrE=(a,b)=>(a.thr-b.thr)||a.code.localeCompare(b.code,undefined,{numeri
 const rowThr=r=>META.ewrThr?.[META.gauges[r[2]]+"|"+r[3]]??Infinity;
 const byThrR=(a,b)=>{ const x=rowThr(a), y=rowThr(b); return (x===y?0:x<y?-1:1)||a[3].localeCompare(b[3],undefined,{numeric:true}); };
 // differential FDC: EWRs with the same flow threshold and timing window and a common stem (BF2_a, BF2_b) are one line, named by the stem (BF2)
-const stemOf=c=>c.replace(/_[^_]+$/,"");
-function thrGroups(list,g){ const rk=new Map(), rn=new Map(); ROWS.forEach(r=>{ if(META.gauges[r[2]]!==g) return; r[5].forEach(x=>{ const n=META.regimes[x], i=REG_ORDER.indexOf(n), v=i<0?99:i; if(!rk.has(r[3])||v<rk.get(r[3])){ rk.set(r[3],v); rn.set(r[3],n); } }); });   // flow regime of each EWR at this gauge, smallest regime first
+const stemOf=c=>c.startsWith("U_")?c:c.replace(/_[^_]+$/,"");
+function thrGroups(list,g){ list=list.filter(flowCompatible); const rk=new Map(), rn=new Map(); ROWS.forEach(r=>{ if(META.gauges[r[2]]!==g) return; r[5].forEach(x=>{ const n=META.regimes[x], i=REG_ORDER.indexOf(n), v=i<0?99:i; if(!rk.has(r[3])||v<rk.get(r[3])){ rk.set(r[3],v); rn.set(r[3],n); } }); });   // flow regime of each EWR at this gauge, smallest regime first
   list.forEach(e=>{ if(!rk.has(e.code)){ const o=list.find(x=>rk.has(x.code)&&stemOf(x.code)===stemOf(e.code)); if(o){ rk.set(e.code,rk.get(o.code)); rn.set(e.code,rn.get(o.code)); } } });   // an EWR with no result row takes the regime of its stem (BF2_P like BF2_S)
   const m=new Map(); list.forEach(e=>{ const k=[stemOf(e.code),e.thr,e.sm,e.em].join("|"); (m.get(k)||m.set(k,[]).get(k)).push(e); });
   return [...m].map(([k,es])=>({key:"g:"+k,code:es.length>1?stemOf(es[0].code):es[0].code,thr:es[0].thr,sm:es[0].sm,em:es[0].em,codes:es.map(e=>e.code),pu:es[0].pu,pus:es[0].pus,members:es,rank:rk.get(es[0].code)??99,reg:rn.get(es[0].code)||""}))
@@ -763,8 +800,8 @@ const TCOLS=["#c0392b","#a65200","#8e44ad","#0e7a62","#2c3e50","#9c3d00","#5f6b6
 function flowPanel(){
   const c=flowCtx();
   const f=S.flow, D=isDiff();
-  const groups=c?.ok?CHART_GROUPS(D):[["EWR performance",["joint"]]];
-  if(!f.chart||!groups.flatMap(g=>g[1]).includes(f.chart)) f.chart=c?.ok?"heat":"joint";
+  const groups=c?.ok?CHART_GROUPS(D).filter(([name])=>c.flowAvailable!==false||name==="EWR performance"):[["EWR performance",["joint"]]];
+  if(!f.chart||!groups.flatMap(g=>g[1]).includes(f.chart)) f.chart=c?.ok&&c.flowAvailable!==false?"heat":"joint";
   const tabs=(items,cur,act)=>`<span class="tabs sm">${items.map(([v,l])=>`<button data-fl="${act}" data-v="${v}" class="${cur===v?"on":""}">${l}</button>`).join("")}</span>`;
   const mo=(cur,k)=>`<select data-fl="${k}">${MONTHS.map((m,i)=>`<option value="${i+1}"${cur===i+1?" selected":""}>${m}</option>`).join("")}</select>`;
   const multi=f.chart==="dfdc", fam=famOf(f.chart);
@@ -790,7 +827,7 @@ function flowPanel(){
     </div>${customForm(mo)}<div id="flowMsg" class="note"></div><div id="flowPlot"></div><div id="flowPlot2"></div><div id="flowVolNote" class="note"></div></details>`;
 }
 function customForm(mo){   // user-defined constraint: a name, a flow threshold, a duration and a timing window; it joins the EWR lists
-  const f=S.flow, list=CEWR.map((e,i)=>`<span class="chip">${esc(e.code)}: ≥${e.thr.toLocaleString()} ML/d × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.consecutive?"":" (any days)"}${e.target!=null?` · target ${e.target}%`:""} <button data-cdel="${i}" title="Remove" class="ghost">×</button></span>`).join(" ");
+  const f=S.flow, list=CEWR.map((e,i)=>`<span class="chip">${esc(e.code)}: ≥${e.thr.toLocaleString()} ${e.kind==="L"?"m":e.kind==="S"?"EC":"ML/d"} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.consecutive?"":" (any days)"}${e.target!=null?` · target ${e.target}%`:""} <button data-cdel="${i}" title="Remove" class="ghost">×</button></span>`).join(" ");
   return `<div class="mxbar" style="margin:2px 0"><button class="ghost" id="cewrToggle">${f.cform?"▾":"▸"} Custom constraints</button>${list}</div>`+(f.cform?`<div class="mxbar cform" style="margin:2px 0 6px">
     <label class="seg"><span class="lbl">Name</span><input id="cName" type="text" size="9" maxlength="16" placeholder="e.g. Test1"></label>
     <label class="seg"><span class="lbl">Threshold (ML/d)</span><input id="cThr" type="number" min="0" step="10" style="width:84px"></label>
@@ -839,8 +876,8 @@ function contourLevels(z){
 const niceUp=x=>{ const k=Math.pow(10,Math.max(Math.floor(Math.log10(x))-1,0)); return Math.ceil(x/k)*k; };
 async function fillEwrSelect(){
   const g=META.gauges[S.sel.i]; if(!$("flowEwr")&&!$("flowThr")) return;
-  if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await inventoryFor(g)).ewrs); }catch(e){ return []; } }
-  const list=ewrsFor(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${e.custom?" (custom)":cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
+  if(!EWRLIST.has(g)){ const gen=FLOWGEN;try{ const inv=await inventoryFor(g);if(gen!==FLOWGEN)return [];EWRLIST.set(g,inv.ewrs); }catch(e){ return []; } }
+  const list=flowEwrsFor(g), cur=S.flow.ewr, cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map()), puN=false, key=thrKey, lab=e=>`${esc(e.code)}${e.custom?" (custom)":cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+(e.pus&&e.pus.length>1?" +"+(e.pus.length-1):"")+")":""} · ≥${e.thr.toLocaleString()} ML/d`;
   if(S.flow.gaugeFor!==g){   // the gauge changed: keep the same EWR if this gauge has it (and take its settings), otherwise reset the heat map settings
     const first=S.flow.gaugeFor===undefined; S.flow.gaugeFor=g;
     if(!first){ const code=(cur||"").split("|")[0], e=list.find(x=>key(x)===cur)||(code&&list.find(x=>x.code===code)); let changed=false;
@@ -890,7 +927,7 @@ function volumes(d,c){   // volume (sum of daily flow) of each complete water ye
     :`Annual volume (sum of daily flow) of each of the ${y.length} complete water years: mean ${fx(G(b))} GL a year.`; }
 }
 S.ev={ewr:""}; S.sp={thr:""}; let EVTOKEN=0, SPTOKEN=0, RGTOKEN=0;
-async function ewrsAt(g){ if(!EWRLIST.has(g)){ try{ EWRLIST.set(g,(await inventoryFor(g)).ewrs); }catch(e){ return []; } } return EWRLIST.get(g); }
+async function ewrsAt(g){ if(!EWRLIST.has(g)){ const gen=FLOWGEN;try{ const inv=await inventoryFor(g);if(gen===FLOWGEN)EWRLIST.set(g,inv.ewrs); }catch(e){ return typeof UEWR!=="undefined"?UEWR.atGauge(g):[]; } } return ewrsFor(g).filter(e=>!CEWR.includes(e)); }
 // water years an EWR's statistics are taken over: one scenario, its complete years; two, the years complete in both
 function keptYears(d,D){ const own=k=>{ const y=d.scenarios[k].years; return new Set(y.wy.filter((_,i)=>y.complete[i])); };
   if(!D) return {base:own("base")}; const p=new Set(d.paired.wy); return {base:p,comp:p}; }
@@ -901,7 +938,7 @@ const ayMid=(w,ys)=>`${w+(ys+6>12?1:0)}-${String((ys+5)%12+1).padStart(2,"0")}-0
 const ayName=ys=>ys===7?"Water year (July–June)":`EWR assessment year (${MONTHS[ys-1]}–${MONTHS[(ys+10)%12]})`;
 function ewrDef(e,d){   // the EWR's rule as the EWR tool applies it
   const hi=d.thr_max!=null&&d.thr_max<1e5, ms=d.min_spell??d.dur, py=d.per_year||1;
-  return `${e.code}: flow ${hi?`${d.thr.toLocaleString()}–${d.thr_max.toLocaleString()}`:`≥ ${d.thr.toLocaleString()}`} ML/d, ${MONTHS[d.sm-1]}–${MONTHS[d.em-1]}. `+
+  return `${e.code}: ${d.kind==="S"?"salinity":d.kind==="L"?"level":"flow"} ${hi?`${d.thr.toLocaleString()}–${d.thr_max.toLocaleString()}`:`≥ ${d.thr.toLocaleString()}`} ${d.unit||"ML/d"}, ${MONTHS[d.sm-1]}–${MONTHS[d.em-1]}. `+
     `An event is successful when it lasts at least ${ms} day${ms===1?"":"s"}${d.gap_tol?` (dips below the threshold of up to ${d.gap_tol} days are bridged)`:""}; `+
     `a year is achieved under the EWR tool's annual rule (${d.dur} day${d.dur===1?"":"s"} ${e.consecutive?"in an event":"in the year, any days"}${py>1?`, ${py} events a year`:""})`+
     `${d.target!=null?`; target ${d.target}% of years`:""}${d.mrip_days?`; max inter-event period ${+(d.mrip_days/365).toFixed(2)} yr`:""}.`;
@@ -910,12 +947,17 @@ async function drawEwr(){
   const c=flowCtx(); if(!c||!c.ok||!S.flow.open||!$("evPlot")) return;
   const msg=$("evMsg"), tok=++EVTOKEN, D=!!c.comp; msg.style.whiteSpace="pre-wrap";
   if(typeof Plotly==="undefined"){ msg.textContent="The chart library could not be loaded (needs internet access to cdnjs.cloudflare.com)."; return; }
+  Plotly.purge($("evPlot"));$("evPlot").replaceChildren();$("evTbl").innerHTML="";
   const list=[...await ewrsAt(c.gauge)].sort(byThrE); if(tok!==EVTOKEN) return;
-  if(!list.length){ $("evEwr").innerHTML=""; msg.textContent="No single-gauge flow-threshold EWRs at this gauge."; return; }
+  if(!list.length){ $("evEwr").innerHTML=""; msg.textContent="No EWRs available at this gauge."; return; }
   if(!list.some(e=>thrKey(e)===S.ev.ewr)){ const fe=list.find(e=>thrKey(e)===S.flow.ewr); S.ev.ewr=thrKey(fe||list[0]); }   // start from the flow chart's EWR when it has one
   const cc=list.reduce((m,e)=>m.set(e.code,(m.get(e.code)||0)+1),new Map());
-  $("evEwr").innerHTML=list.map(e=>`<option value="${esc(thrKey(e))}"${thrKey(e)===S.ev.ewr?" selected":""}>${esc(e.code)}${cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+")":""} · ≥${e.thr.toLocaleString()} ML/d × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
+  $("evEwr").innerHTML=list.map(e=>`<option value="${esc(thrKey(e))}"${thrKey(e)===S.ev.ewr?" selected":""}>${e.user?"★ ":""}${esc(e.code)}${cc.get(e.code)>1?" ("+esc(e.pu.slice(0,24))+")":""} · ≥${e.thr.toLocaleString()} ${e.kind==="L"?"m":e.kind==="S"?"EC":"ML/d"} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}</option>`).join("");
   const e=list.find(x=>thrKey(x)===S.ev.ewr);
+  if(e.user){
+    const rows=(gaugeRows[S.sel.i]||[]).filter(r=>r[3]===e.code&&META.pus[r[0]]===e.pu),indices=[scnIdx(),...(D?[scnIdx(S.bpol,S.bcli)]:[])];
+    if(indices.some(i=>!rows.some(r=>userFresh(r,i)))){msg.textContent=rows.some(r=>indices.some(i=>r[8]?.uewrVerAt?.[i]!=null))?'Stale results: re-run this user EWR on the selected scenarios.':'Not run on this scenario. Run this user EWR to see its performance charts.';return;}
+  }
   msg.textContent="Loading … (the EWR tool runs on this EWR the first time)"; $("evTbl").innerHTML="";
   try{
     const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(c.base)}${D?"&comp="+encodeURIComponent(c.comp):""}&gauge=${encodeURIComponent(c.gauge)}&ewr=${encodeURIComponent(e.code)}&pu=${encodeURIComponent(e.pu)}`); if(tok!==EVTOKEN) return;
@@ -927,7 +969,7 @@ async function drawEwr(){
   }catch(er){ if(tok===EVTOKEN) msg.textContent="Could not draw: "+er.message; }
 }
 function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment year (the EWR tool's verdict), and how close each year came
-  const D=!!c.comp, B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, low=e.handler==="lowflow_handle", ys=d.ystart, py=d.per_year||1;
+  const D=!!c.comp, B=d.scenarios.base.years, C=D?d.scenarios.comp.years:null, low=e.handler?.startsWith("lowflow_handle"), ys=d.ystart, py=d.per_year||1;
   const all=[...new Set([...B.wy,...(C?C.wy:[])])].sort((a,b)=>a-b), x=all.map(w=>ayMid(w,ys)), lab=all.map(w=>ayLab(w,ys));
   const at=(Y,f)=>{ const m=new Map(Y.wy.map((w,i)=>[w,i])); return all.map(w=>{ const i=m.get(w); return i==null||!Y.complete[i]?null:f(Y,i); }); };
   // the bar: what the annual rule mostly turns on — events in the year when several are needed, else days in the year (any-days EWRs) or the longest event
@@ -963,10 +1005,11 @@ function evYears(d,c,e,def,msg){   // achieved / not achieved in each assessment
   $("evTbl").innerHTML=annualKey()+(D?`<div class="swl">change row: <span><i style="background:${UPC}"></i>achieved in ${esc(c.cn)} only</span><span><i style="background:${DNC}"></i>in ${esc(c.bn)} only</span><span><i style="background:#f5f6f8"></i>no change</span></div>`:"");
 }
 function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how long, how big
+  const fluid=!d.kind||["F","V"].includes(d.kind), unit=d.unit||"ML/d";
   const D=!!c.comp, K=keptYears(d,D), ms=d.min_spell??d.dur, ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, tr=[], st={};
   const mag=x=>x.vol==null||!(d.thr>0)||!(d.dur>0)?null:x.vol/(d.thr*d.dur);   // event magnitude index: volume ÷ (threshold × required duration), a description, not better or worse
   ks.forEach(k=>{ const ev=d.scenarios[k].events.filter(x=>K[k].has(x.wy)), ok=ev.filter(x=>x.ok), no=ev.filter(x=>!x.ok), col=D?SCOL[k]:"#1f4e8c";
-    const cd=a=>a.map(x=>[x.start,x.end,x.peak,fmtML(x.vol),x.qual<x.days?` (${x.qual} at or above the threshold)`:"",mag(x)==null?"–":mag(x).toFixed(2)]), ht=t=>`<b>${esc(nm[k])}</b> · ${t}<br>%{customdata[0]} to %{customdata[1]} · <b>%{y} days</b>%{customdata[4]}<br>peak %{customdata[2]:,.0f} ML/d · volume %{customdata[3]}<br>magnitude index %{customdata[5]}<extra></extra>`;
+    const cd=a=>a.map(x=>[x.start,x.end,x.peak,fmtML(x.vol),x.qual<x.days?` (${x.qual} at or above the threshold)`:"",mag(x)==null?"–":mag(x).toFixed(2)]), ht=t=>`<b>${esc(nm[k])}</b> · ${t}<br>%{customdata[0]} to %{customdata[1]} · <b>%{y} days</b>%{customdata[4]}<br>peak %{customdata[2]:,.2f} ${unit}${fluid?" · volume %{customdata[3]}<br>magnitude index %{customdata[5]}":""}<extra></extra>`;
     tr.push({type:"scatter",mode:"markers",name:`${nm[k]} · successful`,x:ok.map(x=>x.start),y:ok.map(x=>x.days),customdata:cd(ok),marker:{size:8,color:col,line:{color:"white",width:1}},hovertemplate:ht("successful")});
     if(no.length) tr.push({type:"scatter",mode:"markers",name:`${nm[k]} · too short`,x:no.map(x=>x.start),y:no.map(x=>x.days),customdata:cd(no),marker:{size:7,color:"white",line:{color:col,width:1.5}},hovertemplate:ht("too short")});
     const n=K[k].size; st[k]={yrs:n,n:ok.length,per10:n?ok.length/n*10:null,dur:med(ok.map(x=>x.days)),peak:med(ok.map(x=>x.peak)),vol:med(ok.map(x=>x.vol)),mag:med(ok.map(mag))}; });
@@ -975,11 +1018,11 @@ function evEvents(d,c,e,def,msg){   // every event the EWR tool found: when, how
     annotations:[{xref:"paper",x:1,y:ms,text:`minimum: ${ms} d`,showarrow:false,xanchor:"right",yanchor:"bottom",font:{size:10}}]}),PCFG);
   const b=st.base, q=st.comp, ch=(f,dp,u)=>D?sgn(q[f]!=null&&b[f]!=null?q[f]-b[f]:null,dp,u):null, yr=d.ystart===7?"Water years":"Assessment years";
   const rows=[[`${yr} counted`,b.yrs,D?q.yrs:null,null],["Successful events",b.n,D?q.n:null,ch("n",0)],["… per 10 years",fx(b.per10),D?fx(q.per10):null,ch("per10",1)],
-    ["Median length (days)",fx(b.dur),D?fx(q.dur):null,ch("dur",1)],["Median peak (ML/d)",fx(b.peak,0),D?fx(q.peak,0):null,ch("peak",0)],
+    ["Median length (days)",fx(b.dur),D?fx(q.dur):null,ch("dur",1)],[`Median peak (${unit})`,fx(b.peak,0),D?fx(q.peak,0):null,ch("peak",0)],
     ["Median volume",fmtML(b.vol),D?fmtML(q.vol):null,D&&q.vol!=null&&b.vol!=null?(q.vol>=b.vol?"+":"−")+fmtML(Math.abs(q.vol-b.vol)):null],
     [`<span title="Event volume ÷ (flow threshold × required duration): 1 = as much water as the threshold flow for the required days. A description of the events, not better or worse">Median magnitude index</span>`,fx(b.mag,2),D?fx(q.mag,2):null,D?sgn(q.mag!=null&&b.mag!=null?q.mag-b.mag:null,2):null]];
-  msg.textContent=`${def}\nEach dot is one event the EWR tool found in the timing window: filled = successful (at least ${ms} days), hollow = too short. Length runs from the event's first to its last day${d.gap_tol?" (bridged dips included)":""}; volume = sum of the daily flows over those days (ML), not only the part above the threshold. Whether a year is achieved also depends on the annual rule (EWR achievement by year). `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
-  $("evTbl").innerHTML=statTbl(rows,D,c);
+  msg.textContent=`${def}\nEach dot is one event the EWR tool found in the timing window: filled = successful (at least ${ms} days), hollow = too short. Length runs from the event's first to its last day${d.gap_tol?" (bridged dips included)":""}${fluid?"; volume = sum of the daily flows over those days (ML), not only the part above the threshold":""}. Whether a year is achieved also depends on the annual rule (EWR achievement by year). `+(D?`Only the ${d.paired.n} years complete in both scenarios.`:`Only complete years.`);
+  $("evTbl").innerHTML=statTbl(fluid?rows:rows.filter(r=>!String(r[0]).includes("volume")&&!String(r[0]).includes("magnitude")),D,c);
 }
 function evTiming(d,c,e,def,msg){   // in which months the successful events start, per 10 years
   const D=!!c.comp, K=keptYears(d,D), ks=D?["base","comp"]:["base"], nm={base:c.bn,comp:c.cn}, ys=d.ystart, ord=Array.from({length:12},(_,i)=>(ys-1+i)%12+1), ml=ord.map(m=>MONTHS[m-1]), per={};
@@ -1100,11 +1143,11 @@ async function drawMonthly(){
     msg.style.whiteSpace="pre-wrap"; msg.textContent=`${c.cn} minus ${c.bn} at ${c.gauge}: for each month, the change in the % of that month's days at or above each flow (blue = more time at or above that flow). The colour range fits the cells in view, so it changes when you zoom.`;
   }catch(e){ if(tok===MTOKEN) msg.textContent="Could not draw: "+e.message; }
 }
-const curEwr=()=>{ const l=ewrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
+const curEwr=()=>{ const l=flowEwrsFor(META.gauges[S.sel.i]); return l.find(e=>thrKey(e)===S.flow.ewr)||null; };
 const sameWin=(grp,keys)=>{ const on=keys.map(k=>grp.find(e=>e.key===k)).filter(Boolean), w=on[0]; return w?on.filter(e=>e.sm===w.sm&&e.em===w.em):[]; };   // only EWRs sharing the first one's timing window stay selected
-const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(ewrsFor(gg),gg), on=sameWin(g,S.flow.thr); S.flow.thr=on.map(e=>e.key); return on; };
+const curThr=()=>{ const gg=META.gauges[S.sel.i], g=thrGroups(flowEwrsFor(gg),gg), on=sameWin(g,S.flow.thr); S.flow.thr=on.map(e=>e.key); return on; };
 let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): cached responses are dropped and replies to older requests are not cached
-const flowsChanged=()=>{ FLOWGEN++; FLOWCACHE.clear(); MCN.clear(); };
+const flowsChanged=()=>{ FLOWGEN++;FLOWTOKEN++;EVTOKEN++;SPTOKEN++;RGTOKEN++;MTOKEN++; FLOWCACHE.clear(); MCN.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 const heatCols=()=>{ const w=($("flowPlot")&&$("flowPlot").clientWidth)||600; return Math.max(60,Math.min(1200,Math.round((w-150)/3/20)*20)); };   // ~3 px per heat-map column, bucketed so small drags don't refetch
 const r0=v=>v==null||!isFinite(v)?"–":Math.round(v).toLocaleString(), r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: whole flows, one-decimal percentages
@@ -1242,25 +1285,24 @@ function guardSame(){   // differential mode: base and comparison cannot be the 
   const dis=(sel,val,on)=>[...$(sel).options].forEach(o=>{ o.disabled=on&&+o.value===val; });
   dis("pol",S.bpol,S.cli===S.bcli); dis("bpol",S.pol,S.cli===S.bcli); dis("cli",S.bcli,S.pol===S.bpol); dis("bcli",S.cli,S.pol===S.bpol);
 }
-function refresh(){ guardSame(); if(typeof syncSrc==="function") syncSrc(); if(typeof updateClimDisable==="function") updateClimDisable(); S.sel=singlePU(S.sel); paintMap(); render(); if(typeof pushHash==="function") pushHash(); }
+function refresh(){ guardSame(); if(typeof syncSrc==="function") syncSrc(); if(typeof updateClimDisable==="function") updateClimDisable(); S.sel=singlePU(S.sel); paintMap(); render(); if(typeof UEWR!=="undefined") { window.ewrGuide?.refresh?.(); UEWR.renderUI?.(); } if(typeof pushHash==="function") pushHash(); }
 
 // ---- user scenarios: py_ewr is run by server.py on an uploaded Standard time-series file; the results join the picker as extra policies --
 const isCustom=p=>CUSTOM.some(c=>c.P===p);   // explicit registration, independent of the number of built-in policies
 const VALK=["pu","gauge","ewr","fr","et","ey","ny","sev","dr","nm","win"];   // a run_scenario row as stored in a scenario's vals (server.VAL_KEYS)
-function putVals(r,P,v){ const i=P*NC; r[6][i]=v[3]??null; r[7][i]=v[4]??null; if(r[9]) r[9][i]=v[5]??null; if(r[8]) (r[8].nyAt??={})[i]=v[6]??null;
+function putVals(r,P,v){ const i=P*NC; if(r.user) (r[8].uewrVerAt??={})[i]=v[11]?.uewrVer??null; r[6][i]=v[3]??null; r[7][i]=v[4]??null; if(r[9]) r[9][i]=v[5]??null; if(r[8]) (r[8].nyAt??={})[i]=v[6]??null;
   if(r.length>10&&(r[10]||v[7]!=null)) (r[10]??=r[6].map(()=>null))[i]=v[7]??null;   // severity: the column exists once an upload has a value
   if(r.length>11){ if(r[11]||v[8]!=null) (r[11]??=r[6].map(()=>null))[i]=v[8]??null; if(r[8]) (r[8].nmAt??={})[i]=v[9]??null;   // duration ratio; near misses [k, failed years]
     if(r[12]||v[10]) for(const d of META.droughts){ const w=((r[12]??={})[d.k]??={}), x=v[10]&&v[10][d.k]||{}; for(const f of ["fr","et","sev","dr","n"]) (w[f]??=r[6].map(()=>null))[i]=x[f]??null; } } }   // one upload's results into its scenario column; [] clears it
-const PUKEY=new Map(); ROWS.forEach(r=>{ const k=META.pus[r[0]]+"|"+META.gauges[r[2]]+"|"+r[3]; (PUKEY.get(k)||PUKEY.set(k,[]).get(k)).push(r); });   // a planning unit / gauge / EWR can sit in more than one SDL unit
-function addCustom(name,vals,id,flowGauges,fmt){
-  performanceRevision++;
+function addCustom(name,vals,id,flowGauges,fmt,seriesInfo={}){
+  reindexRows(); performanceRevision++;
   const P=META.policies.length, key="custom:"+name; META.policies.push(key); POL_L[key]=name;
   ROWS.forEach(r=>{ for(let k=0;k<NC;k++){ r[6].push(null); r[7].push(null); if(r[9]) r[9].push(null); } });
   const matched=[], sdls=new Set(); for(const v of vals){ const rs=PUKEY.get(v[0]+"|"+v[1]+"|"+v[2]); if(!rs) continue; rs.forEach(r=>{ putVals(r,P,v); sdls.add(META.sdls[r[1]]); }); matched.push(v); }   // the file's results go onto every SDL unit that uses the gauge
-  CUSTOM.push({key,name,sdls:[...sdls],P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],fmt:fmt||"Standard time-series"}); persistCustom(); return {P,matched:matched.length};
+  CUSTOM.push({key,name,sdls:[...sdls],P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],levelGauges:seriesInfo.levelGauges||[],salinityGauges:seriesInfo.salinityGauges||[],fmt:fmt||"Standard time-series"}); persistCustom(); return {P,matched:matched.length};
 }
-function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,fmt:c.fmt})))); }catch(e){} }
-function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt); }catch(e){} }
+function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,levelGauges:c.levelGauges||[],salinityGauges:c.salinityGauges||[],fmt:c.fmt})))); }catch(e){} }
+function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt,c); }catch(e){} }
 function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>putVals(r,c.P,[]));
   if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
   persistCustom(); fillPolicyOptions(); renderCustomList(); refresh(); }
@@ -1268,15 +1310,15 @@ function fillInto(){ const live=CUSTOM.filter(c=>!c.removed), cur=$("scnInto").v
   $("scnInto").innerHTML=`<option value="">a new scenario</option>`+live.map(c=>`<option value="${esc(c.key)}">existing scenario: ${esc(c.name)}</option>`).join("");
   $("scnInto").value=live.some(c=>c.key===cur)?cur:""; $("scnNameWrap").style.display=$("scnInto").value?"none":""; }
 $("scnInto").onchange=()=>{ $("scnNameWrap").style.display=$("scnInto").value?"none":""; };
-function mergeCustom(c,vals,flowGauges){ performanceRevision++;   // add a second file's results to an existing scenario; the same EWR at the same gauge is replaced
+function mergeCustom(c,vals,flowGauges,seriesInfo={}){ reindexRows(); performanceRevision++;   // add a second file's results to an existing scenario; the same EWR at the same gauge is replaced
   const have=new Map(c.vals.map(v=>[v[0]+"|"+v[1]+"|"+v[2],v])), sdls=new Set(c.sdls);
   for(const v of vals){ const k=v[0]+"|"+v[1]+"|"+v[2], rs=PUKEY.get(k); if(!rs) continue; rs.forEach(r=>{ putVals(r,c.P,v); sdls.add(META.sdls[r[1]]); }); have.set(k,v); }
-  c.vals=[...have.values()]; c.sdls=[...sdls]; c.flowGauges=[...new Set([...(c.flowGauges||[]),...flowGauges])]; persistCustom(); return {matched:vals.filter(v=>PUKEY.has(v[0]+"|"+v[1]+"|"+v[2])).length};
+  c.vals=[...have.values()]; c.sdls=[...sdls]; c.flowGauges=[...new Set([...(c.flowGauges||[]),...flowGauges])]; for(const kind of ["levelGauges","salinityGauges"]) c[kind]=[...new Set([...(c[kind]||[]),...(seriesInfo[kind]||[])])]; persistCustom(); return {matched:vals.filter(v=>PUKEY.has(v[0]+"|"+v[1]+"|"+v[2])).length};
 }
 function renderCustomList(){ fillInto(); const live=CUSTOM.map((c,i)=>[c,i]).filter(([c])=>!c.removed);
   $("scnList").innerHTML=live.length?`<b style="font-size:12px">Your scenarios</b>`+live.map(([c,i])=>`<div><span>${esc(c.name)} · ${c.sdls.length} SDL unit${c.sdls.length===1?"":"s"} · ${esc(c.fmt)} · ${c.vals.length} EWRs</span><button class="ghost" data-rm="${i}" title="Remove">remove</button></div>`).join(""):""; }
 const FORMATS={
-  "Standard time-series":{hint:"CSV. First column Date (YYYY-MM-DD or DD/MM/YYYY), then one column per gauge named <gauge>_flow or <gauge>_level, e.g. 409025_flow.",tpl:true,flows:true,accept:".csv,.txt,text/csv"},
+  "Standard time-series":{hint:"CSV. First column Date (YYYY-MM-DD or DD/MM/YYYY), then gauge columns such as 404216_flow (ML/day), 404216_level (metres), and 404216_salinity or 404216_ec (EC, µS/cm).",tpl:true,flows:true,accept:".csv,.txt,text/csv"},
   "Bigmod - MDBA":{hint:"Bigmod formatted output file (MDBA). Columns are matched to gauges through the EWR tool's Bigmod node list.",accept:".csv,.txt,text/csv"},
   "FIRM - MDBA":{hint:"FIRM ID formatted output file (MDBA). Columns are matched to gauges through the EWR tool's FIRM site list.",accept:".csv,.txt,text/csv"},
   "res.csv - MDBA":{hint:"MDBA res.csv formatted output. Columns are matched to gauges by the EWR tool.",accept:".csv,.txt,text/csv"},
@@ -1288,8 +1330,8 @@ function syncFormat(){ const f=FORMATS[$("scnFmt").value]; $("scnFmtHint").textC
 $("scnFmt").innerHTML=Object.keys(FORMATS).map(k=>`<option>${esc(k)}</option>`).join(""); $("scnFmt").onchange=syncFormat; syncFormat();
 const allGauges=[...new Set(ROWS.map(r=>META.gauges[r[2]]))];
 const STEPS=[["Reading the file","Read the file and match its sites to gauges"],["Evaluating gauges","Run the EWR tool on each gauge"],["Summarising results","Work out FR, ETP, gaps and drought windows"]];  // upload and adding to the dashboard are near-instant, so they get no step of their own
-function showSteps(stage,p,elapsed){ if(stage==="Uploading") stage="Reading the file"; const ol=$("scnSteps"), i=stage==="Adding to the dashboard"?STEPS.length:STEPS.findIndex(x=>x[0]===stage); ol.hidden=i<0;
-  if(i<0) return; ol.innerHTML=STEPS.map((x,k)=>`<li class="${k<i?"done":k===i?"cur":""}">${x[1]}${k===i&&p&&p.total>1?`<small>${p.done} of ${p.total}</small>`:""}${k===i&&elapsed!=null?`<small>${Math.round(elapsed)} s</small>`:""}</li>`).join(""); }
+function showSteps(stage,p,elapsed,steps=STEPS,target="scnSteps"){ if(stage==="Uploading") stage="Reading the file"; const ol=$(target), i=stage==="Adding to the dashboard"?steps.length:steps.findIndex(x=>x[0]===stage); ol.hidden=i<0;
+  if(i<0) return; ol.innerHTML=steps.map((x,k)=>`<li class="${k<i?"done":k===i?"cur":""}">${x[1]}${k===i&&p&&p.total>1?`<small>${p.done} of ${p.total}</small>`:""}${k===i&&elapsed!=null?`<small>${Math.round(elapsed)} s</small>`:""}</li>`).join(""); }
 function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=cls||""; }
 async function serverUp(){ try{ const r=await fetch("/api/ping",{cache:"no-store"}); return r.ok; }catch(e){ return false; } }
 $("addScn").onclick=async()=>{
@@ -1322,8 +1364,9 @@ $("scnRun").onclick=async()=>{
       if(q.status==="error") throw new Error(q.message||"run failed");
       showSteps("Adding to the dashboard"); $("scnBar").value=100;
       const vals=q.rows.map(x=>VALK.map(k=>x[k]??null)), st=q.stats||{}, sk=Object.keys(st.skipped||{});
-      flowsChanged(); let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[]); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt);
+      flowsChanged(); let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[],{levelGauges:st.level_gauges,salinityGauges:st.salinity_gauges}); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt,{levelGauges:st.level_gauges,salinityGauges:st.salinity_gauges});
       fillPolicyOptions(); renderCustomList();
+      if(UEWR.specs.size) UEWR.offerRun([scnId]);
       S.pol=res.P; S.cli=0; $("pol").value=S.pol; $("cli").value=0;
       const cs=into||CUSTOM[CUSTOM.length-1]; select(cs.sdls.length===1?{type:"sdl",i:META.sdls.indexOf(cs.sdls[0])}:{type:"none"});   // one SDL unit: open it; several: pick from the list
       setStatus(`${into?"Added to":"Added"} "${name}" (${fmt}, ${q.elapsed} s). ${vals.length} EWR results calculated from your file; ${res.matched} are mapped to ecological objectives and shown${res.matched<vals.length?` (${vals.length-res.matched} have no objective mapping in the review and are left out)`:""}, across ${cs.sdls.length} SDL unit${cs.sdls.length===1?"":"s"} (${st.gauges_in_file} gauge${st.gauges_in_file===1?"":"s"} found in the file).`+(sk.length?`\nCould not evaluate: ${sk.join(", ")} (${st.skipped[sk[0]]}).`:"")+
@@ -1492,10 +1535,11 @@ $("share").onclick=()=>{ pushHash(); const done=()=>{ $("shareT").textContent="c
 window.addEventListener("hashchange",()=>{ if(location.hash.slice(1)!==encodeState()){ applyHash(); refresh(); } });
 // Joint views use an explicit ecological target, independent of the exploratory header threshold.
 const JOINT_TARGET = 1, JOINT_EPS = 1e-9;
-const ruleFR = (row, scenario) => scenario == null ? null : row[6][scenario];
+const ruleCurrent = (row, scenario) => !row.user || row[8]?.uewrVerAt?.[scenario] === row.userVer;
+const ruleFR = (row, scenario) => scenario == null || !ruleCurrent(row, scenario) ? null : row[6][scenario];
 // ETP is a time proportion: values above 1 (in source data or older saved uploads) mean exceeded for the whole record.
 const ruleETP = (row, scenario) => {
-  const et = scenario == null ? null : row[7][scenario];
+  const et = scenario == null || !ruleCurrent(row, scenario) ? null : row[7][scenario];
   return Number.isFinite(et) && et > 1 ? 1 : et;
 };
 const ruleCode = row => row[3];
@@ -1577,6 +1621,7 @@ function disposePerformance() {
   performanceView = null;
 }
 function preparePerformance(rows) {
+  rows = rows.filter(row => !row.user || S.src === 'user');
   const key = performanceKey();
   if (performanceView?.key === key) return performanceView;
   disposePerformance();
@@ -1622,6 +1667,13 @@ function performancePanels(view) {
     <details id="robustnessDetails"><summary>Policy × climate robustness · target FR 1.0</summary>
       <p class="note">Joint score counts an EWR as meeting both when its frequency ratio is at least 1.0 and its time beyond the maximum gap is within the allowed limit. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Cells with no data are greyed out. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
       <div id="robustnessTable"></div><div id="robustnessValues"></div></details>
+    ${view.gauge && view.ctx?.ok && S.src === 'user' ? `<details id="annualDetails"><summary>Annual EWR achievement and gaps</summary>
+      <p class="note">Evaluate the selected rules against uploaded daily series. Stale user EWRs must be re-run first.</p>
+      <button id="loadSequence">Load annual diagnostics</button> <button id="cancelSequence" class="ghost" hidden>Cancel</button>
+      <p id="sequenceNote" role="status"></p><p id="performanceCoverage" class="note"></p>
+      <div id="sequenceRaster"></div><div id="sequenceSeries"></div><div id="sequenceSince"></div><div id="sequenceRolling"></div>
+      <details id="inventoryDetails"><summary>Rule inventory</summary><div id="diagnosticInventory"></div></details>
+    </details>` : ''}
     </details></section>`;
 }
 /** Attach the retained view to the panel and bind detail handlers when first mounted. */
@@ -1629,6 +1681,11 @@ function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
+  if ($('loadSequence')) {
+    $('loadSequence').onclick = () => loadSequences(view);
+    $('cancelSequence').onclick = () => view.sequence?.abort();
+    $('inventoryDetails').ontoggle = e => { if (e.target.open) loadInventoryView(view); };
+  }
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('.jointTable').innerHTML = detailTable(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
@@ -1771,19 +1828,25 @@ async function performanceJSON(url, signal) {
 }
 // Share pending and resolved inventory requests with the existing event selector. Evict failures for retry.
 const inventoryRequests = new Map();
+function invalidateInventory(gauge) { if (gauge) inventoryRequests.delete(gauge); else inventoryRequests.clear(); }
 function inventoryFor(gauge) {
   if (!inventoryRequests.has(gauge)) {
     const pending = performanceJSON('/api/ewrs?gauge='+encodeURIComponent(gauge)).catch(error => {
-      inventoryRequests.delete(gauge); throw error;
+      if (inventoryRequests.get(gauge) === pending) inventoryRequests.delete(gauge); throw error;
     });
     inventoryRequests.set(gauge,pending);
   }
   return inventoryRequests.get(gauge);
 }
+function currentInventory(gauge,data) {
+  if (typeof UEWR === 'undefined') return data;
+  const user = UEWR.atGauge(gauge);
+  return {ewrs:data.ewrs.filter(e => !e.custom).concat(user), inventory:data.inventory.filter(e => !e.custom).concat(user.map(e => ({...e,detailed:true})))};
+}
 async function loadInventoryView(view) {
   if (!view.gauge) { $('diagnosticInventory').textContent = 'Select a gauge to inspect its inventory.'; return; }
   try {
-    const inv = await inventoryFor(view.gauge); if (!currentPerformance(view)) return;
+    const inv = currentInventory(view.gauge,await inventoryFor(view.gauge)); if (!currentPerformance(view)) return;
     $('diagnosticInventory').innerHTML = '<table><tr><th>Rule / planning unit</th><th>Type / handler</th><th>Annual diagnostics</th></tr>'+inv.inventory.map(r => `<tr><td>${esc(r.code+' · '+r.pu)}</td><td>${esc(r.kind+' / '+r.handler)}</td><td>${r.detailed ? 'Available' : 'Not supported'}</td></tr>`).join('')+'</table>';
   } catch (error) { if (currentPerformance(view)) $('diagnosticInventory').textContent = 'Inventory unavailable: '+error.message; }
 }
@@ -1831,11 +1894,13 @@ async function loadSequences(view) {
   const controller = new AbortController(); view.sequence = controller;
   const button = $('loadSequence'), cancel = $('cancelSequence'), note = $('sequenceNote');
   const active = () => currentPerformance(view) && view.sequence === controller && !controller.signal.aborted;
+  if (!button || !cancel || !note) return;
   button.disabled = true; cancel.hidden = false; note.textContent = 'Loading supported rule inventory…';
   try {
     if (typeof Plotly === 'undefined') throw Error('Plotly is unavailable; annual charts require the chart library.');
-    const inv = await abortable(inventoryFor(view.gauge),controller.signal); if (!active()) return;
-    const list = selectedAnnualRules(inv,view.rows);
+    const inv = currentInventory(view.gauge,await abortable(inventoryFor(view.gauge),controller.signal)); if (!active()) return;
+    const eligible = view.rows.filter(r => !r.user || (ruleCurrent(r,view.i) && (view.base == null || ruleCurrent(r,view.base))));
+    const list = selectedAnnualRules(inv,eligible);
     if (!list.length) { note.textContent = 'No supported annual rules in this selection.'; return; }
     const c = view.ctx; let completed = 0;
     const results = await boundedMap(list,4,controller.signal,async e => {
@@ -1849,7 +1914,7 @@ async function loadSequences(view) {
       if (result.error) { errors.push(list[i].code+': '+result.error.message); return; }
       const {e,data:d} = result.value;
       const r = view.rows.find(r => ruleCode(r) === e.code && rulePU(r) === e.pu);
-      const group = r ? [...new Set(r[4].map(o => META.themes[META.objTheme[o]]))].sort().join(' / ') : 'Unclassified';
+      const group = r ? [...new Set(r[4].map(o => META.themes[META.objTheme[o]]))].sort().join(' / ') || 'Unclassified' : 'Unclassified';
       for (const [key,s] of Object.entries(d.scenarios)) {
         const name = `${group} · ${e.code} · ${e.pu} · ${key === 'base' ? c.bn : c.cn} · ${ayName(d.ystart)}`;
         series.push({name,group,thr:e.thr,years:s.years,stats:sequenceStats(s.years)});
@@ -1862,7 +1927,7 @@ async function loadSequences(view) {
     await plotSequences(series,active);
     if (!active()) return;
     note.textContent = `${series.length} rule/scenario rows. Blue = achieved, dark grey with × = failed, white = incomplete/unavailable (not a failure). Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
-    $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily flow records. '+coverage.join(' | ');
+    $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily series. '+coverage.join(' | ');
   } catch (error) { if (active()) note.textContent = 'Could not load annual diagnostics: '+error.message; }
   finally {
     // Captured elements cannot mutate replacement controls. A superseded request must not enable a newer one.
@@ -2054,7 +2119,7 @@ function searchEwrs(rows, q) {
     if (gauge && !(`${r.g} ${r.gn || ""}`.toLowerCase().includes(gauge))) return false;
     if (code && !r.c.toLowerCase().includes(code)) return false;
     if (words.length) {
-      const hay = `${r.c} ${r.g} ${r.gn || ""} ${r.pu} ${r.ca || ""} ${r.sdl || ""} ${r.eo || ""} ${regimeName(r.c)}`.toLowerCase();
+      const hay = `${r.c} ${r.g} ${r.gn || ""} ${r.pu} ${r.ca || ""} ${r.sdl || ""} ${r.eo || ""} ${r.name || ""} ${regimeName(r.c)}`.toLowerCase();
       if (!words.every(w => hay.includes(w))) return false;
     }
     return true;
@@ -2082,7 +2147,7 @@ function ewrSpec(r) {
   const epy = Math.max(1, Math.min(epyReq, Math.floor((maxLen + 6) / (dur + 6))));   // how many events fit in the window
   const spec = {
     mode: "other", lo: 0, hi: null, unit: "ML/d", dur, ms, epy, epyReq, segs, maxLen, sm, sd, em, ed, tf: pos(r.tf), tfl: pos(r.tfl), tfh: pos(r.tfh),
-    mi: pos(r.mi), gap: pos(r.gap) || 0, vol: null, acc: null, whole: segs.length === 1 && segs[0][0] === 0 && segs[0][1] === WY_DAYS - 1,
+    mi: pos(r.mi) > 0 ? pos(r.mi) : null, gap: pos(r.gap) || 0, vol: null, acc: null, whole: segs.length === 1 && segs[0][0] === 0 && segs[0][1] === WY_DAYS - 1,
   };
   if (r.k === "V") {
     if (pos(r.vol) > 0) {
@@ -2097,6 +2162,7 @@ function ewrSpec(r) {
     if (lo > 0) { spec.mode = "flow"; spec.lo = lo; spec.hi = hi != null && hi > lo ? hi : null; }
     else if (hi != null && hi > 0) { spec.mode = "dry"; spec.lo = 0; spec.hi = hi; }
   }
+  if(r.k==="S") spec.unit="EC";
   return spec;
 }
 
@@ -2207,7 +2273,8 @@ function genYear(spec, type, seed) {
 /** Keep a generated value just inside the thresholds; leave volume values unchanged. */
 function clampZone(spec, v) {
   if (spec.mode === "volume") return v;
-  const eps = spec.mode === "level" ? 0.02 : Math.max(spec.lo, spec.hi || spec.lo) * 0.01;
+  const proposed = spec.mode === "level" ? 0.02 : Math.max(spec.lo, spec.hi || spec.lo) * 0.01;
+  const eps = spec.hi != null ? Math.min(proposed, (spec.hi - spec.lo) / 4) : proposed;
   return Math.max(spec.lo + eps, spec.hi != null ? Math.min(spec.hi - eps, v) : v);
 }
 
@@ -2280,11 +2347,12 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   function windowText(sp) { return sp.whole ? "all year" : `${dm(sp.sm, sp.sd)} – ${dm(sp.em, sp.ed)}`; }
   /** Describe the threshold condition and units for the tutorial rule. */
   function ruleText(sp) {
-    if (sp.mode === "other") return "the flow conditions set out in the parameter sheet";
+    const unit=sp.unit||"ML/d",subject=unit==="EC"?"salinity":"flow";
+    if (sp.mode === "other") return "the conditions set out in the parameter sheet";
     if (sp.mode === "volume") return `${fmt(sp.vol)} ML of flow accumulated within ${sp.acc} days`;
     if (sp.mode === "level") return sp.hi != null ? `water level between ${fmt(sp.lo)} and ${fmt(sp.hi)} m` : `water level of ${fmt(sp.lo)} m or higher`;
-    if (sp.mode === "dry") return `flow of no more than ${fmt(sp.hi)} ML/d`;
-    return sp.hi != null ? `flow between ${fmt(sp.lo)} and ${fmt(sp.hi)} ML/d` : `flow of at least ${fmt(sp.lo)} ML/d`;
+    if (sp.mode === "dry") return `${subject} of no more than ${fmt(sp.hi)} ${unit}`;
+    return sp.hi != null ? `${subject} between ${fmt(sp.lo)} and ${fmt(sp.hi)} ${unit}` : `${subject} of at least ${fmt(sp.lo)} ${unit}`;
   }
   /** Describe duration, event count, minimum spell, and allowed gaps for non-volume rules. */
   function durText(sp) {
@@ -2314,7 +2382,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     s += `<line x1="${X0}" x2="${X1}" y1="${Y1}" y2="${Y1}" stroke="${C.mut}"/><line x1="${X0}" x2="${X0}" y1="${Y0 - 8}" y2="${Y1}" stroke="${C.mut}"/>`;
     let d0 = 0;
     for (const mo of WY_MONTHS) { s += T(X(d0 + MONTH_LEN[mo] / 2), Y1 + 14, MON3[mo - 1], { size: 9.5, a: "middle", fill: C.mut }); d0 += MONTH_LEN[mo]; }
-    s += T(11, (Y0 + Y1) / 2, sp.mode === "level" ? "Water level (m)" : "Flow (ML/d)", { size: 10, a: "middle", fill: C.mut }).replace("<text ", `<text transform="rotate(-90 11 ${(Y0 + Y1) / 2})" `);
+    s += T(11, (Y0 + Y1) / 2, sp.unit === "EC" ? "Salinity (EC)" : sp.mode === "level" ? "Water level (m)" : "Flow (ML/d)", { size: 10, a: "middle", fill: C.mut }).replace("<text ", `<text transform="rotate(-90 11 ${(Y0 + Y1) / 2})" `);
     if (wa) s += T((X(sp.segs[0][0]) + X(sp.segs[0][1] + 1)) / 2, Y0 - 12, `EWR window: ${windowText(sp)}`, { size: 10.5, a: "middle", w: 600, fill: C.acc, op: wa });
     const ta = o.thr ?? 0;
     if (ta && sp.mode !== "volume") {
@@ -2377,7 +2445,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     const common = [];
     const intro = {
       title: "What this EWR is", ms: 3200,
-      cap: `An <b>environmental water requirement</b> (EWR) says how much water a river site needs, when, and how often. <b>${esc(m.row.c)}</b>${regimeName(m.row.c) ? ` is a <b>${regimeName(m.row.c).toLowerCase()}</b> requirement` : ""} at gauge ${esc(m.row.g)}${m.row.gn ? ` (${esc(m.row.gn)})` : ""}, planning unit ${esc(m.row.pu)}.`,
+      cap: `${sp.unit === "EC" ? "A <b>salinity requirement</b> sets water-quality limits, when they apply, and how often they must be met." : "An <b>environmental water requirement</b> (EWR) says how much water a river site needs, when, and how often."} <b>${esc(m.row.c)}</b>${regimeName(m.row.c) ? ` is a <b>${regimeName(m.row.c).toLowerCase()}</b> requirement` : ""} at gauge ${esc(m.row.g)}${m.row.gn ? ` (${esc(m.row.gn)})` : ""}, planning unit ${esc(m.row.pu)}.`,
       draw: p => {
         let s = T(W / 2, 54, m.row.c, { size: 34, w: 700, a: "middle", fill: C.acc, op: ease(sub(0, 0.3, p)) });
         const lines = [[`Gauge ${m.row.g}${m.row.gn ? " · " + m.row.gn : ""}`, 0.2], [`${m.row.pu} · ${m.row.st}`, 0.3], [`Needs ${ruleText(sp)}`, 0.45], [sp.mode === "volume" ? `Window: ${windowText(sp)}` : `${durText(sp)} · window: ${windowText(sp)}`, 0.6], [`Target: ${targetText(sp)}${sp.mi != null ? ` · at most ${yrs(sp.mi)} between events` : ""}`, 0.75]];
@@ -2397,13 +2465,13 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
       const ex = m.metEx, bad = m.missEx;
       common.push(intro,
         {
-          title: sp.mode === "volume" ? "Flow through the year" : sp.mode === "level" ? "The level threshold" : "The flow threshold", ms: 3600,
-          cap: sp.mode === "volume" ? `Here is one year of daily flow at the gauge. This EWR is about the <b>total volume</b> of water, not a single flow rate.` : `Here is one year of daily ${sp.mode === "level" ? "water level" : "flow"} at the gauge (an illustrative record, not real data). The EWR needs <b>${esc(ruleText(sp))}</b>${sp.mode === "dry" ? " (the river nearly stops flowing)" : ""}.`,
+          title: sp.mode === "volume" ? "Flow through the year" : sp.unit === "EC" ? "The salinity threshold" : sp.mode === "level" ? "The level threshold" : "The flow threshold", ms: 3600,
+          cap: sp.mode === "volume" ? `Here is one year of daily flow at the gauge. This EWR is about the <b>total volume</b> of water, not a single flow rate.` : `Here is one year of daily ${sp.unit === "EC" ? "salinity" : sp.mode === "level" ? "water level" : "flow"} at the gauge (an illustrative record, not real data). The EWR needs <b>${esc(ruleText(sp))}</b>${sp.mode === "dry" && sp.unit !== "EC" && sp.hi <= 1 ? " (the river nearly stops flowing)" : ""}.`,
           draw: p => yearSvg(m, ex, { line: ease(sub(0, 0.6, p)), thr: ease(sub(0.55, 0.95, p)) }),
         },
         {
           title: "The EWR window", ms: 2800,
-          cap: sp.whole ? "The requirement can be met at any time of the <b>July–June year</b>, so every day counts." : `Only <b>${esc(windowText(sp))}</b> counts. Water outside this window does not help meet the EWR.`,
+          cap: sp.whole ? "The requirement can be met at any time of the <b>July–June year</b>, so every day counts." : `Only <b>${esc(windowText(sp))}</b> counts. Values outside this window do not count towards the EWR.`,
           draw: p => yearSvg(m, ex, { thr: 1, win: ease(sub(0, 0.5, p)) }),
         },
         {
@@ -2473,9 +2541,9 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
       },
       {
         title: "Putting it together", ms: 3800,
-        cap: `<b>${esc(m.row.c)}</b> asks for ${esc(ruleText(sp))}${sp.mode === "other" || sp.mode === "volume" ? "" : " " + esc(durText(sp))}, ${sp.whole ? "at any time of year" : "between " + esc(windowText(sp))}, ${esc(targetText(sp))}${sp.mi != null ? `, with no more than ${yrs(sp.mi)} between events` : ""}. The dashboard scores how close the modelled flows come to that.`,
+        cap: `<b>${esc(m.row.c)}</b> asks for ${esc(ruleText(sp))}${sp.mode === "other" || sp.mode === "volume" ? "" : " " + esc(durText(sp))}, ${sp.whole ? "at any time of year" : "between " + esc(windowText(sp))}, ${esc(targetText(sp))}${sp.mi != null ? `, with no more than ${yrs(sp.mi)} between events` : ""}. The dashboard scores how close the modelled ${sp.unit === "EC" ? "salinity series" : "flows"} come to that.`,
         draw: p => {
-          const items = [["1", "Flow", ruleText(sp)], ["2", "Window", windowText(sp)], ["3", sp.mode === "volume" ? "Volume" : "Duration", sp.mode === "volume" ? `within ${sp.acc} days` : durText(sp).replace(/^for /, "")], ["4", "Frequency", sp.tf != null ? `${fmt(sp.tf)}% of years` : "–"], ["5", "Gap", sp.mi != null ? `≤ ${yrs(sp.mi)}` : "–"]];
+          const items = [["1", sp.unit === "EC" ? "Salinity" : "Flow", ruleText(sp)], ["2", "Window", windowText(sp)], ["3", sp.mode === "volume" ? "Volume" : "Duration", sp.mode === "volume" ? `within ${sp.acc} days` : durText(sp).replace(/^for /, "")], ["4", "Frequency", sp.tf != null ? `${fmt(sp.tf)}% of years` : "–"], ["5", "Gap", sp.mi != null ? `≤ ${yrs(sp.mi)}` : "–"]];
           return items.map(([n, h, v], i) => {
             const a = ease(sub(i * 0.15, i * 0.15 + 0.3, p)), y = 56 + i * 44;
             return `<g opacity="${a}">` + T(60, y + 4, n, { size: 22, w: 700, fill: C.acc }) + T(94, y - 2, h, { size: 11, fill: C.mut }) + T(94, y + 16, v.length > 70 ? v.slice(0, 68) + "…" : v, { size: 14, w: 700 }) + "</g>";
@@ -2489,17 +2557,17 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   function missText(m, bad) {
     const sp = m.spec, r = bad.res;
     const text = {
-      short: () => `The flow reaches the threshold, but for only <b>${r.all ?? 0} day${r.all === 1 ? "" : "s"}</b> – it was needed for <b>${sp.dur}</b>. Not enough.`,
-      outside: () => `Flow is right and lasts long enough, but <b>outside the EWR window</b> (${esc(windowText(sp))}), so it does not count.`,
-      over: () => `Flow rises <b>above the upper limit</b> of ${fmt(sp.hi)} ${sp.unit}, outside the range the EWR wants, so those days do not count.`,
+      short: () => `The ${sp.unit === "EC" ? "salinity" : "flow"} reaches the threshold, but for only <b>${r.all ?? 0} day${r.all === 1 ? "" : "s"}</b> – it was needed for <b>${sp.dur}</b>. Not enough.`,
+      outside: () => `${sp.unit === "EC" ? "Salinity" : "Flow"} is right and lasts long enough, but <b>outside the EWR window</b> (${esc(windowText(sp))}), so it does not count.`,
+      over: () => `${sp.unit === "EC" ? "Salinity" : "Flow"} rises <b>above the upper limit</b> of ${fmt(sp.hi)} ${sp.unit}, outside the range the EWR wants, so those days do not count.`,
       low: () => sp.mode === "volume" ? `Only about <b>${fmt(r.volume)} ML</b> builds up – short of the <b>${fmt(sp.vol)} ML</b> needed.`
-        : sp.mode === "dry" ? `The river never drops low enough: flow stays above <b>${fmt(sp.hi)} ML/d</b>, so the EWR is not met.`
-        : `Flow peaks <b>below the threshold</b> of ${fmt(sp.lo)} ${sp.unit}, so no day counts.`,
+        : sp.mode === "dry" ? `${sp.unit === "EC" ? "Salinity remains too high" : "The river never drops low enough: flow stays above"} <b>${fmt(sp.hi)} ${sp.unit}</b>, so the EWR is not met.`
+        : `${sp.unit === "EC" ? "Salinity" : "Flow"} peaks <b>below the threshold</b> of ${fmt(sp.lo)} ${sp.unit}, so no day counts.`,
     };
     return "Now a year with a different outcome. " + (text[bad.type] || text.low)();
   }
 
-  if (typeof window !== "undefined") window.ewrGuideApi = { stages, rows: ROWS_ALL };   // for tests/test_ewr_guide.js
+  if (typeof window !== "undefined") window.ewrGuideApi = { stages, rows: ROWS_ALL, ruleText, durText, buildTutorial, ewrSpec };   // for tests/test_ewr_guide.js
 
   // ---- the panel ----
   const lp = document.getElementById("lpanel");
@@ -2509,40 +2577,41 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   let sel = load("ewrGuideSel", []).filter(k => BY_KEY.has(k)).slice(0, GUIDE_MAX);
   const opts = (vals, all) => `<option value="">${all}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join("");
   const uniq = f => [...new Set(ROWS_ALL.map(f).filter(Boolean))].sort();
-  lp.innerHTML = `<h2>EWR guide</h2><div class="crumbs">Search the EWR parameter sheet (${ROWS_ALL.length.toLocaleString()} rows) and pick up to ${GUIDE_MAX} to see how each one works.</div>
+  lp.innerHTML = `<div class="uewr-heading"><h2>EWR guide</h2><button id="uewrAdd" class="ghost" hidden>＋ Add EWR</button></div><div class="crumbs">Search the EWR parameter sheet (${ROWS_ALL.length.toLocaleString()} rows) and pick up to ${GUIDE_MAX} to see how each one works.</div>
     <div class="gq"><input id="gqText" type="search" placeholder="Search code, gauge, name, planning unit, objective…" aria-label="Search EWRs">
     <div class="gqrow"><select id="gqState" aria-label="State">${opts(uniq(r => r.st), "Any state")}</select>
     <select id="gqPu" aria-label="Planning unit">${opts(uniq(r => r.pu), "Any planning unit")}</select>
-    <select id="gqKind" aria-label="Type"><option value="">Flow, level or volume</option><option value="F">Flow</option><option value="L">Level</option><option value="V">Volume</option></select></div>
+    <select id="gqKind" aria-label="Type"><option value="">Flow, level, salinity or volume</option><option value="F">Flow</option><option value="L">Level</option><option value="V">Volume</option><option value="S">Salinity</option></select></div>
     <div class="gqrow"><input id="gqGauge" type="search" placeholder="Gauge (ID or name)" aria-label="Gauge"><input id="gqCode" type="search" placeholder="EWR code" aria-label="EWR code"></div></div>
     <div id="gqMsg" class="gmsg" role="status"></div><div id="gqList" class="glist"></div>
-    <div class="gsel"><div class="gselh"><b id="gselN"></b><button id="gselClear" class="ghost">Clear all</button></div><div id="gCards"></div></div>`;
+    <section id="uewrList" hidden aria-label="Your EWRs"></section><div class="gsel"><div class="gselh"><b id="gselN"></b><button id="gselClear" class="ghost">Clear all</button></div><div id="gCards"></div></div>`;
   const $g = id => document.getElementById(id);
   const query = () => ({ text: $g("gqText").value, state: $g("gqState").value, pu: $g("gqPu").value, kind: $g("gqKind").value, gauge: $g("gqGauge").value, code: $g("gqCode").value });
   let notice = "";
 
   /** Render the first 60 search matches and update the selection controls and status. */
   function renderList() {
-    const res = searchEwrs(ROWS_ALL, query()), shown = res.slice(0, 60);
+    const res = searchEwrs(ROWS_ALL.filter(r=>!r.u||(typeof S!=="undefined"&&S.src==="user")), query()), shown = res.slice(0, 60);
     $g("gqMsg").textContent = notice || `${res.length.toLocaleString()} EWR${res.length === 1 ? "" : "s"} match${res.length > 60 ? " – showing the first 60, refine the search" : ""}`;
     $g("gqList").innerHTML = shown.map(r => {
       const on = sel.includes(r.key);
-      return `<div class="gitem${on ? " on" : ""}"><div class="gtxt"><b>${esc(r.c)}</b> · ${esc(r.g)}${r.gn ? " · " + esc(r.gn) : ""}<br><span>${esc(r.pu)} · ${esc(r.st)}${regimeName(r.c) ? " · " + regimeName(r.c) : ""}${ewrSupported(r) ? "" : " · demo in development"}</span></div><button class="gadd" data-key="${esc(r.key)}" aria-pressed="${on}"${!on && sel.length >= GUIDE_MAX ? " disabled" : ""}>${on ? "✓ Added" : "＋ Add"}</button></div>`;
+      return `<div class="gitem${on ? " on" : ""}"><div class="gtxt"><b>${r.u?"★ ":""}${esc(r.c)}</b> · ${esc(r.g)}${r.gn ? " · " + esc(r.gn) : ""}<br><span>${esc(r.pu)} · ${esc(r.st)}${regimeName(r.c) ? " · " + regimeName(r.c) : ""}${ewrSupported(r) ? "" : " · demo in development"}</span></div><button class="gadd" data-key="${esc(r.key)}" aria-pressed="${on}"${!on && sel.length >= GUIDE_MAX ? " disabled" : ""}>${on ? "✓ Added" : "＋ Add"}</button></div>`;
     }).join("");
   }
   const tutorials = new Map();   // key -> {card, ctl}
   /** Reconcile tutorial cards with the selection, stopping and removing deselected cards. */
   function renderSel() {
-    $g("gselN").textContent = `Selected EWRs (${sel.length} of ${GUIDE_MAX})`;
+    const visible=sel.filter(k=>BY_KEY.has(k)&&(!BY_KEY.get(k).u||(typeof S!=="undefined"&&S.src==="user")));
+    $g("gselN").textContent = `Selected EWRs (${visible.length} of ${GUIDE_MAX})`;
     $g("gselClear").style.display = sel.length ? "" : "none";
-    for (const [k, t] of tutorials) if (!sel.includes(k)) { t.ctl.stop(); t.card.remove(); tutorials.delete(k); }
-    sel.forEach((k, i) => {
-      if (!tutorials.has(k)) tutorials.set(k, makeCard(BY_KEY.get(k), i === sel.length - 1));
+    for (const [k, t] of tutorials) if (!visible.includes(k)) { t.ctl.stop(); t.card.remove(); tutorials.delete(k); }
+    visible.forEach((k, i) => {
+      if (!tutorials.has(k)) tutorials.set(k, makeCard(BY_KEY.get(k), i === visible.length - 1));
       const t = tutorials.get(k);
       if ($g("gCards").children[i] !== t.card) $g("gCards").insertBefore(t.card, $g("gCards").children[i] || null);
     });
-    if (!sel.length && !$g("gCards").firstChild) $g("gCards").innerHTML = `<div class="gempty">Nothing selected yet.</div>`;
-    else if (sel.length) $g("gCards").querySelector(".gempty")?.remove();
+    if (!visible.length && !$g("gCards").firstChild) $g("gCards").innerHTML = `<div class="gempty">Nothing selected yet.</div>`;
+    else if (visible.length) $g("gCards").querySelector(".gempty")?.remove();
   }
   /** Persist the new selection and refresh the selected cards, results, and notice. */
   function setSel(next, note) { sel = next; notice = note || ""; store("ewrGuideSel", sel); renderSel(); renderList(); }
@@ -2619,13 +2688,592 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   });
   $g("gselClear").addEventListener("click", () => setSel([]));
   renderList(); renderSel();
-  window.ewrGuide = { stopAll: () => [...ACTIVE].forEach(c => c.stop()) };
+  window.ewrGuide = {
+    stopAll: () => [...ACTIVE].forEach(c => c.stop()), getSel:()=>sel.slice(), setSel:(next)=>setSel(next.filter(k=>BY_KEY.has(k)).slice(0,GUIDE_MAX)),
+    refresh:()=>{ renderList();renderSel(); },
+    addRows(rows){
+      for(const r of rows){const old=ROWS_ALL.findIndex(x=>x.key===r.key);if(old>=0)ROWS_ALL[old]=r;else ROWS_ALL.push(r);BY_KEY.set(r.key,r);}
+      sel=load("ewrGuideSel",sel).filter(k=>BY_KEY.has(k)).slice(0,GUIDE_MAX);renderList();renderSel();
+    },
+    removeRows(keys,{preserveSelection=false}={}){
+      for(const key of keys){const t=tutorials.get(key);if(t){t.ctl.stop();t.card.remove();tutorials.delete(key);}BY_KEY.delete(key);}
+      for(let i=ROWS_ALL.length-1;i>=0;i--)if(keys.includes(ROWS_ALL[i].key))ROWS_ALL.splice(i,1);
+      if(!preserveSelection){sel=sel.filter(k=>!keys.includes(k));store("ewrGuideSel",sel);}renderList();renderSel();
+    },
+  };
 })();
 
+// User EWRs. Part 1 is pure and shared with Node tests; part 2 connects the authoritative server registry to dashboard state.
+// ---- part 1: definitions, validation and row/result transforms ------------------------------------------------------
+const UEWR_KEY='ewrUserEwrs', UEWR_DELETED_KEY='ewrUserEwrsDeleted';
+const CODE_RE=/^U_[A-Za-z0-9]{1,20}(_[A-Za-z0-9]{1,8})?$/;
+const userResultKey=v=>[v[0],v[1],v[2]].join('|');
+const userIdentity=s=>[s.gauge,s.code,...s.pus.slice().sort()].join('|');
+const userVersion=v=>v?.[11]?.uewrVer??null;
+const userUnit=s=>s.kind==='S'?'EC':s.kind==='L'?'m':'ML/d';
+const userClone=v=>Array.isArray(v)?v.map(userClone):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,userClone(x)])):v;
+const userMonthLength=m=>new Date(Date.UTC(2000,m,0)).getUTCDate();
+
+function validateSpec(spec,schema,ctx={}){
+  const errors=Object.create(null), d=spec&&typeof spec==='object'&&!Array.isArray(spec)?userClone(spec):null;
+  if(!d)return {ok:false,errors:{spec:'Expected an object'},spec:null};
+  const allowed=['id','ver','code','name','kind','handler','gauge','second_gauge','pus','objectives','regime','params','salinity','created','updated'];
+  for(const k of Object.keys(d))if(!allowed.includes(k))errors[k]='Unknown field';
+  if(!CODE_RE.test(d.code||''))errors.code='Use a valid U_ code without hyphens';
+  if(d.id!=null&&(typeof d.id!=='string'||!/^[a-z0-9_]{1,24}$/.test(d.id)))errors.id='Invalid user EWR id';
+  if(typeof d.name!=='string'||!d.name.trim()||d.name.length>80)errors.name='A name of 1–80 characters is required';
+  const kind=typeof d.kind==='string'&&schema&&Object.hasOwn(schema,d.kind)?schema[d.kind]:null;
+  const def=kind&&typeof d.handler==='string'&&Object.hasOwn(kind,d.handler)?kind[d.handler]:null;
+  if(!kind)errors.kind='Choose F, V, L or S';
+  if(!def)errors.handler='Handler is not offered for this kind';
+  const gs=ctx.gauges||[], pus=Array.isArray(ctx.pusByGauge?.[d.gauge])?ctx.pusByGauge[d.gauge]:[];
+  if(!gs.includes(d.gauge)||!pus.length)errors.gauge='Choose a review gauge with parameter-sheet rows';
+  if(!Array.isArray(d.pus)||!d.pus.length||d.pus.some(p=>!pus.includes(p)))errors.pus='Choose at least one review planning unit at this gauge';
+  d.objectives??=[];d.regime??=null;d.second_gauge??=null;
+  if(!Array.isArray(d.objectives)||d.objectives.some(o=>!(ctx.objs||[]).includes(o)))errors.objectives='Choose objectives from the review';
+  if(d.regime!=null&&!(ctx.regimes||[]).includes(d.regime))errors.regime='Choose a regime from the review';
+  if((ctx.specs||[]).some(s=>s.code===d.code&&s.id!==d.id)||(ctx.sheetCodes||[]).includes(d.code))errors.code='Code is already in use';
+  if(!def)return {ok:false,errors,spec:null};
+  let input=d.params===undefined?{}:d.params;if(input===null||typeof input!=='object'||Array.isArray(input)){errors.params='Expected an object';input={};}
+  for(const k of Object.keys(input))if(!def.fields.includes(k))errors['params.'+k]='Parameter is not used by this handler';
+  const p={},tds=d.kind==='S'&&d.salinity?.unit==='TDS';
+  for(const f of def.fields){
+    let v=input[f];const blank=v==null||v==='';if(blank)v=def.defaults[f]??null;
+    if(f==='MinSpell'&&blank)v=d.handler.startsWith('lowflow_handle')?1:p.Duration;
+    if(v==null){p[f]=null;continue;}
+    const n=typeof v==='number'||typeof v==='string'&&v.trim()!==''?Number(v):NaN,b=def.bounds[f]||{},integer=b.integer&&!(tds&&['FlowThresholdMin','FlowThresholdMax'].includes(f));
+    if(!Number.isFinite(n)||(integer&&!Number.isInteger(n))||(b.min!=null&&n<b.min)||(b.max!=null&&n>b.max)){
+      errors['params.'+f]='Enter a finite number within the allowed bounds'+(integer?' (integer required)':'');p[f]=null;
+    }else p[f]=n;
+  }
+  for(const f of ['Duration','MinSpell','TargetFrequency'])if(p[f]==null)errors['params.'+f]??='Required';
+  if(p.MinSpell!=null&&p.Duration!=null&&p.MinSpell>p.Duration)errors['params.MinSpell']='MinSpell must be between 1 and Duration';
+  if(p.MaxSpell!=null&&p.Duration!=null&&p.MaxSpell<p.Duration)errors['params.MaxSpell']='MaxSpell must be at least Duration';
+  if(p.DrawdownRate!=null&&p.DrawdownRate<=0)errors['params.DrawdownRate']='Must be positive';
+  for(const prefix of ['Start','End'])if(p[prefix+'Month']!=null&&p[prefix+'Day']!=null&&p[prefix+'Day']>userMonthLength(p[prefix+'Month']))errors['params.'+prefix+'Day']='Invalid day for this month';
+  if(!['StartMonth','EndMonth','StartDay','EndDay'].some(f=>errors['params.'+f])){
+    const sm=p.StartMonth,em=p.EndMonth,sd=p.StartDay||1,ed=p.EndDay||userMonthLength(em);
+    const start=Date.UTC(2000,sm-1,sd),end=Date.UTC(2000,em-1,ed),window=end>=start?(end-start)/86400000+1:367-(start-end)/86400000;
+    if(sm===em&&sd>ed)errors['params.EndDay']='End day must not precede start day within the same month';
+    if(p.Duration!=null&&p.Duration>window)errors['params.Duration']='Duration is longer than the timing window';
+    if(d.handler==='flow_handle_anytime'&&(sm!==7||sd!==1||em!==6||ed!==30))errors['params.StartMonth']='Across-year spells require a July–June whole-year window';
+  }
+  for(const f of ['Flow','Level']){
+    const lo=p[f+'ThresholdMin'],hi=p[f+'ThresholdMax'];
+    if(f==='Level'&&d.handler==='level_handle'&&(lo==null||hi==null))errors['params.LevelThresholdMin']='Both level limits are required';
+    if(lo!=null&&hi!=null&&hi<=lo)errors['params.'+f+'ThresholdMax']='Upper limit must exceed lower limit';
+  }
+  if(p.TargetFrequency!=null&&((p.TargetFrequencyMin!=null&&p.TargetFrequencyMin>p.TargetFrequency)||(p.TargetFrequencyMax!=null&&p.TargetFrequencyMax<p.TargetFrequency)))errors['params.TargetFrequency']='Target must lie within the acceptable frequency range';
+  if(d.kind==='V'){
+    if(p.VolumeThreshold==null||p.VolumeThreshold<=0)errors['params.VolumeThreshold']='A positive volume is required';
+    if(p.AccumulationPeriod==null||(p.Duration!=null&&p.AccumulationPeriod<p.Duration))errors['params.AccumulationPeriod']='AccumulationPeriod must be at least Duration';
+  }
+  if(d.handler.endsWith('_multi')){
+    if(d.second_gauge===d.gauge||!gs.includes(d.second_gauge))errors.second_gauge='Choose a different review gauge with stored flows';
+    else if(!d.id&&!(ctx.flowScenarios||[]).some(g=>g.includes(d.gauge)&&g.includes(d.second_gauge)))errors.second_gauge='Both gauges need stored flows in at least one uploaded scenario';
+  }else if(d.second_gauge!=null)errors.second_gauge='Only multigauge handlers accept a second gauge';
+  if(d.handler==='rise_and_fall_handle'){
+    const rise=d.kind==='L'?['RateOfRiseRiverLevel']:['RateOfRiseMax1','RateOfRiseMax2','RateOfRiseThreshold1','RateOfRiseThreshold2'],fall=d.kind==='L'?'RateOfFallRiverLevel':'RateOfFallMin';
+    const r=rise.some(f=>p[f]!=null),f=p[fall]!=null;if(r===f||(r&&rise.some(f=>p[f]==null)))errors['params.rates']='Supply all rise limits or one fall limit, for exactly one direction';
+  }
+  if(d.kind==='S'){
+    const s=d.salinity;
+    if(!s||!['EC','TDS'].includes(s.unit)||Object.keys(s).some(k=>!['unit','tds_factor'].includes(k)))errors.salinity='Specify EC or TDS and a positive TDS-to-EC factor';
+    else{
+      const raw=s.tds_factor??.6,factor=typeof raw==='number'||typeof raw==='string'&&raw.trim()!==''?Number(raw):NaN;
+      if(!Number.isFinite(factor)||factor<=0)errors['salinity.tds_factor']='Factor must be finite and positive';
+      else{
+        if(tds)for(const k of ['FlowThresholdMin','FlowThresholdMax'])if(p[k]!=null){const value=p[k]*factor;if(Math.abs(value-Math.round(value))>1e-9)errors['params.'+k]='Converted EC must be a whole number (py_ewr threshold requirement)';else if(def.bounds[k]?.max!=null&&value>def.bounds[k].max)errors['params.'+k]='Converted EC is above the allowed maximum';else p[k]=Math.round(value);}
+        d.salinity={unit:'EC',tds_factor:factor};
+      }
+    }
+  }else if(d.salinity!=null)errors.salinity='Only salinity EWRs accept salinity units';
+  d.params=p;d.name=typeof d.name==='string'?d.name.trim():d.name;
+  return {ok:!Object.keys(errors).length,errors,spec:d};
+}
+
+// Portable files contain definitions only. Import always creates a draft, never an update to a server id.
+const UEWR_FILE_FORMAT='ewr-user-definition',UEWR_FILE_LIMIT=64*1024;
+const UEWR_FILE_FIELDS=['code','name','kind','handler','gauge','second_gauge','pus','objectives','regime','params','salinity'];
+function exportDefinition(spec){
+  const definition=Object.fromEntries(UEWR_FILE_FIELDS.map(k=>[k,userClone(spec[k]??null)]));
+  return JSON.stringify({format:UEWR_FILE_FORMAT,version:1,spec:definition},null,2)+'\n';
+}
+function parseDefinition(text,schema,ctx){
+  const fail=message=>{throw Error('Cannot import EWR: '+message);};
+  if(typeof text!=='string'||new TextEncoder().encode(text).length>UEWR_FILE_LIMIT)fail('choose a UTF-8 JSON file no larger than 64 KiB.');
+  text=text.replace(/^\uFEFF/,'');
+  let data;try{data=JSON.parse(text);}catch{fail('the file is not valid JSON. Export an EWR from this dashboard to get a valid example.');}
+  // Scan the JSON tokens, rather than parsed objects, so duplicate and escaped dangerous keys cannot be hidden by JSON.parse.
+  const stack=[];
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c==='{'||c==='['){stack.push(c==='{'?new Set():null);if(stack.length>12)fail('the JSON is nested too deeply.');}
+    else if(c==='}'||c===']')stack.pop();
+    else if(c==='"'){
+      const start=i++;for(;i<text.length;i++){if(text[i]==='\\')i++;else if(text[i]==='"')break;}
+      let j=i+1;while(/\s/.test(text[j]||'')&&j<text.length)j++;
+      if(text[j]===':'){
+        const key=JSON.parse(text.slice(start,i+1)),keys=stack.at(-1);
+        if(['__proto__','prototype','constructor'].includes(key))fail('unsafe property names are not allowed.');
+        if(keys?.has(key))fail('duplicate property "'+key+'" is not allowed.');keys?.add(key);
+      }
+    }
+  }
+  const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
+  if(!object(data)||Object.keys(data).some(k=>!['format','version','spec'].includes(k))||data.format!==UEWR_FILE_FORMAT||data.version!==1)fail('expected an ewr-user-definition file with version 1.');
+  const s=data.spec;
+  if(!object(s)||Object.keys(s).some(k=>!UEWR_FILE_FIELDS.includes(k)))fail('the definition contains unsupported fields. Server ids, versions and results cannot be imported.');
+  const required=['code','name','kind','handler','gauge','pus','objectives','regime','params'];
+  for(const k of required)if(!Object.hasOwn(s,k))fail('missing required field: '+k+'.');
+  for(const k of ['code','name','kind','handler','gauge'])if(typeof s[k]!=='string')fail(k+' must be text.');
+  for(const k of ['pus','objectives'])if(!Array.isArray(s[k])||s[k].some(x=>typeof x!=='string')||new Set(s[k]).size!==s[k].length)fail(k+' must be a list of unique text values.');
+  for(const k of ['regime','second_gauge'])if(s[k]!=null&&typeof s[k]!=='string')fail(k+' must be text or null.');
+  if(!['F','V','L','S'].includes(s.kind)||!Object.hasOwn(schema?.[s.kind]||{},s.handler))fail('the measurement kind or rule type is not supported.');
+  if(!object(s.params))fail('params must be an object of parameter values.');
+  for(const k of ['StartMonth','EndMonth','Duration','MinSpell','TargetFrequency'])if(!Object.hasOwn(s.params,k)||s.params[k]===null)fail('missing required parameter: '+k+'.');
+  for(const [k,v] of Object.entries(s.params))if(v!==null&&(typeof v!=='number'||!Number.isFinite(v)))fail(k+' must be a finite JSON number or null.');
+  if(s.kind==='S'){
+    if(!object(s.salinity)||!['EC','TDS'].includes(s.salinity.unit)||typeof s.salinity.tds_factor!=='number'||!Number.isFinite(s.salinity.tds_factor)||s.salinity.tds_factor<=0)fail('salinity needs EC or TDS units and a positive numeric tds_factor.');
+  }else if(s.salinity!=null)fail('salinity units are only valid for salinity EWRs.');
+  // A code collision is resolved explicitly in the draft form; it never overwrites the existing definition.
+  const checked=validateSpec(s,schema,{...ctx,specs:[]});
+  if(!checked.ok)fail(Object.entries(checked.errors).map(([k,v])=>k+': '+v).join('; '));
+  const canonical=validateSpec(checked.spec,schema,{...ctx,specs:[]});
+  if(!canonical.ok)fail(Object.entries(canonical.errors).map(([k,v])=>k+': '+v).join('; '));
+  return canonical.spec;
+}
+
+function ruleSentence(s){
+  const p=s.params||{},unit=userUnit(s),lo=p[s.kind==='L'?'LevelThresholdMin':'FlowThresholdMin'],hi=p[s.kind==='L'?'LevelThresholdMax':'FlowThresholdMax'];
+  const range=lo!=null&&hi!=null?`${lo}–${hi} ${unit}`:lo!=null?`at least ${lo} ${unit}`:hi!=null?`at most ${hi} ${unit}`:'the specified range';
+  return `${s.code}: ${s.kind==='V'?`${p.VolumeThreshold} ML over ${p.AccumulationPeriod} days`:range} at ${s.gauge}${s.second_gauge?' plus '+s.second_gauge:''}, for ${p.Duration} ${s.handler.startsWith('lowflow_handle')?'total':'consecutive'} days; minimum spell ${p.MinSpell} days, ${p.EventsPerYear??1} event(s) per year, window ${p.StartMonth}${p.StartDay?'.'+p.StartDay:''}–${p.EndMonth}${p.EndDay?'.'+p.EndDay:''}; target ${p.TargetFrequency}%, maximum gap ${p['MaxInter-event']??0} years.`;
+}
+function guideRow(s,pu,base={}){
+  const p=s.params;return {...base,key:`${s.gauge}|${s.code}|${pu}`,g:s.gauge,c:s.code,pu,k:s.kind,h:s.handler,u:true,user:s.id,name:s.name,eo:s.objectives.join('+'),
+    sm:p.StartMonth,sd:p.StartDay,em:p.EndMonth,ed:p.EndDay,dur:p.Duration,ms:p.MinSpell,tmin:p.FlowThresholdMin,tmax:p.FlowThresholdMax,lmin:p.LevelThresholdMin,lmax:p.LevelThresholdMax,
+    vol:p.VolumeThreshold,acc:p.AccumulationPeriod,mi:p['MaxInter-event'],tf:p.TargetFrequency,tfl:p.TargetFrequencyMin,tfh:p.TargetFrequencyMax,epy:p.EventsPerYear,gap:p.WithinEventGapTolerance,mg:s.second_gauge};
+}
+function synthRows(spec,meta,sheetIdx){
+  const {rows=[],sheet=[]}=Array.isArray(sheetIdx)?{rows:sheetIdx}:sheetIdx||{},width=meta.policies.length*meta.climates.length,blank=()=>Array(width).fill(null),out=[];
+  const gauge=meta.gauges.indexOf(spec.gauge);if(gauge<0)throw Error('Unknown review gauge '+spec.gauge);
+  for(const pu of spec.pus){
+    const pi=meta.pus.indexOf(pu);if(pi<0)throw Error('Unknown planning unit '+pu);
+    let sdls=[...new Set(rows.filter(r=>!r.user&&r[0]===pi&&r[2]===gauge).map(r=>r[1]))];
+    if(!sdls.length)sdls=[...new Set(sheet.filter(r=>r.g===spec.gauge&&r.pu===pu).map(r=>meta.sdls.indexOf(r.sdl)).filter(i=>i>=0))];
+    if(!sdls.length)throw Error('No SDL mapping for '+pu+' / '+spec.gauge);
+    for(const sdl of sdls){
+      const objectives=spec.objectives.map(o=>meta.objs.indexOf(o)).filter(i=>i>=0),regime=meta.regimes.indexOf(spec.regime);
+      const r=[pi,sdl,gauge,spec.code,objectives,regime<0?[]:[regime],blank(),blank(),{T:spec.params.TargetFrequency,ny:null,dur:spec.params.Duration,mrip:spec.params['MaxInter-event'],uewrVerAt:{}},blank(),null,null,null];
+      r.user=spec.id;r.userVer=spec.ver;r.t=[...new Set(objectives.map(o=>meta.objTheme[o]))];if(!r.t.length)r.t=[meta.themes.indexOf('Unclassified')];out.push(r);
+    }
+  }return out;
+}
+function mergeResults(vals,rows,specVer){
+  const merged=new Map(vals.map(v=>[userResultKey(v),userClone(v)]));
+  for(const row of rows){const v=Array.isArray(row)?userClone(row):['pu','gauge','ewr','fr','et','ey','ny','sev','dr','nm','win'].map(k=>row[k]??null),version=Array.isArray(row)?userVersion(row):row.uewr_ver;
+    v[11]={uewrVer:version??specVer??null};merged.set(userResultKey(v),v);
+  }return [...merged.values()];
+}
+function cascadePlan(spec,state){
+  const matches=v=>v[1]===spec.gauge&&v[2]===spec.code,guidePrefix=spec.gauge+'|'+spec.code+'|';
+  return {scenarioKeys:(state.scenarios||[]).filter(c=>c.vals.some(matches)).map(c=>c.key),rowIndices:(state.rows||[]).flatMap((r,i)=>r.user===spec.id?[i]:[]),
+    guideKeys:(state.guideSelection||[]).filter(k=>k.startsWith(guidePrefix)),flowSelected:[state.flowEwr,state.eventEwr].some(k=>k?.startsWith(spec.code+'|')),
+    thresholdKeys:(state.thresholdKeys||[]).filter(k=>k.startsWith('g:'+spec.code+'|')),
+    cellSelected:!!state.cell&&(state.cell.code===spec.code||state.cell.ewr===spec.code||String(state.cell.c||'').startsWith('e'+spec.code+'|'))};
+}
+// ---- part 2: registry and dashboard state -------------------------------------------------------------------------
+const UEWR=(()=>{
+  const specs=new Map(),orphaned=new Set(),unmapped=new Set(),pendingDeletes=new Set(),retired=new Set(),statuses=new Map();
+  let schema=null,online=false,loaded=false,syncing=null,epoch=0;
+  const read=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}};
+  const write=(key,value)=>{try{localStorage.setItem(key,JSON.stringify(value));}catch{}};
+  const persist=()=>{write(UEWR_KEY,[...specs.values()]);write(UEWR_DELETED_KEY,[...pendingDeletes]);};
+  const sheet=()=>window.ewrGuideApi?.rows?.filter(r=>!r.u)||ewrRows(EWRIDX);
+  const context=()=>{
+    const pairs={};for(const r of ROWS)if(!r.user)(pairs[META.gauges[r[2]]]??=new Set()).add(META.pus[r[0]]);
+    const table=sheet();for(const g of Object.keys(pairs))pairs[g]=[...pairs[g]].filter(pu=>table.some(r=>r.g===g&&r.pu===pu));
+    return {gauges:META.gauges,pusByGauge:pairs,objs:META.objs,regimes:META.regimes,sheetCodes:table.map(r=>r.c),specs:[...specs.values()].filter(s=>!orphaned.has(s.id)),flowScenarios:CUSTOM.filter(c=>!c.removed&&c.id).map(c=>c.flowGauges||[])};
+  };
+  const announce=()=>{if(typeof window.dispatchEvent==='function')window.dispatchEvent(new CustomEvent('uewr-change'));};
+  const invalidate=gauge=>{performanceRevision++;flowsChanged();if(gauge)EWRLIST.delete(gauge);if(typeof invalidateInventory==='function')invalidateInventory(gauge);};
+  const redraw=()=>{if(typeof refresh==='function')refresh();announce();};
+  const assertUser=()=>{if(S.src!=='user')throw Error('User EWRs are available only in Your data mode.');};
+  const assertOnline=()=>{assertUser();if(!online||!schema)throw Error('Connect to the local analysis server to change or evaluate user EWRs.');};
+  async function request(path,options){
+    const response=await fetch(path,{cache:'no-store',...options}),payload=await response.json();
+    if(!response.ok){const error=Error(payload.message||payload.error||Object.values(payload.errors||{}).join('; ')||'User EWR request failed');error.errors=payload.errors||{};throw error;}
+    return payload;
+  }
+  const post=(path,body,options={})=>request(path,{...options,method:'POST',headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  function clearSelections(spec){
+    const plan=cascadePlan(spec,{scenarios:CUSTOM,rows:ROWS,guideSelection:window.ewrGuide?.getSel?.()||read('ewrGuideSel',[]),flowEwr:S.flow.ewr,eventEwr:S.ev.ewr,thresholdKeys:S.flow.thr,cell:S.cell});
+    if(plan.flowSelected){if(S.flow.ewr.startsWith(spec.code+'|'))S.flow.ewr='';if(S.ev.ewr.startsWith(spec.code+'|'))S.ev.ewr='';}
+    S.flow.thr=S.flow.thr.filter(k=>!plan.thresholdKeys.includes(k));if(plan.cellSelected)S.cell=null;
+    const selected=read('ewrGuideSel',[]).filter(k=>!plan.guideKeys.includes(k));write('ewrGuideSel',selected);window.ewrGuide?.setSel?.(selected);
+    return plan;
+  }
+  function clearStatuses(spec){for(const key of statuses.keys())if(key.endsWith('|'+spec.code))statuses.delete(key);}
+  function removeRows(spec,preserveGuide=false){
+    for(let i=ROWS.length-1;i>=0;i--)if(ROWS[i].user===spec.id)ROWS.splice(i,1);
+    delete META.ewrThr[spec.gauge+'|'+spec.code];reindexRows();
+    window.ewrGuide?.removeRows?.(spec.pus.map(pu=>`${spec.gauge}|${spec.code}|${pu}`),{preserveSelection:preserveGuide});
+  }
+  function replay(spec){
+    for(const c of CUSTOM)if(!c.removed)for(const v of c.vals||[])if(v[1]===spec.gauge&&v[2]===spec.code){
+      for(const r of PUKEY.get(userResultKey(v))||[])putVals(r,c.P,v);
+    }
+  }
+  function addRows(spec){
+    const rows=synthRows(spec,META,{rows:ROWS,sheet:sheet()});
+    removeRows(spec,true);ROWS.push(...rows);
+    const threshold=spec.params[spec.kind==='L'?'LevelThresholdMin':'FlowThresholdMin'];if(threshold!=null)META.ewrThr[spec.gauge+'|'+spec.code]=threshold;
+    reindexRows();replay(spec);
+    window.ewrGuide?.addRows?.(spec.pus.map(pu=>guideRow(spec,pu,sheet().find(r=>r.g===spec.gauge&&r.pu===pu)||{})));
+  }
+  function loadLocal(){
+    if(loaded)return;loaded=true;
+    const deleted=read(UEWR_DELETED_KEY,[]);if(Array.isArray(deleted))for(const id of deleted)if(typeof id==='string'&&/^[a-z0-9_]{1,24}$/.test(id))pendingDeletes.add(id);
+    const mirror=read(UEWR_KEY,[]);if(!Array.isArray(mirror))return;
+    for(const s of mirror){
+      if(!s||typeof s.id!=='string'||!/^[a-z0-9_]{1,24}$/.test(s.id)||pendingDeletes.has(s.id)||!CODE_RE.test(s.code)||!Array.isArray(s.pus)||!Array.isArray(s.objectives)||!s.params||!(s.params.MinSpell>=1&&s.params.MinSpell<=s.params.Duration))continue;
+      try{addRows(s);specs.set(s.id,userClone(s));}catch{/* Invalid or unmappable local mirrors do not stop the dashboard loading. */}
+    }
+  }
+  async function retryDelete(id){
+    try{await post('/api/uewr/delete?id='+encodeURIComponent(id));pendingDeletes.delete(id);}
+    catch(error){if(error.errors?.id==='User EWR does not exist')pendingDeletes.delete(id);else throw error;}
+    finally{persist();}
+  }
+  async function sync(){
+    loadLocal();if(syncing)return syncing;
+    const generation=epoch;
+    syncing=(async()=>{
+      try{
+        const [definitions,nextSchema]=await Promise.all([request('/api/uewr'),request('/api/uewr/schema')]);
+        if(!Array.isArray(definitions.specs)||!nextSchema.F)throw Error('Invalid user EWR server response');
+        online=true;schema=nextSchema;
+        const deletedAtStart=new Set(pendingDeletes);
+        for(const id of [...pendingDeletes])try{await retryDelete(id);}catch{/* Keep tombstones for the next sync. */}
+        if(generation!==epoch)return false;
+        const received=new Set();
+        for(const s of definitions.specs){
+          if(pendingDeletes.has(s.id)||deletedAtStart.has(s.id))continue;
+          received.add(s.id);
+          // One definition this page cannot map must not take the registry offline: keep it orphaned so it can still be deleted.
+          try{
+          for(const previous of [...specs.values()])if(previous.id!==s.id&&previous.code===s.code){
+            clearSelections(previous);clearStatuses(previous);for(const c of CUSTOM)c.vals=c.vals.filter(v=>v[1]!==previous.gauge||v[2]!==previous.code);
+            removeRows(previous);specs.delete(previous.id);orphaned.delete(previous.id);retired.add(previous.id);invalidate(previous.gauge);
+          }
+          const old=specs.get(s.id);
+          if(old&&userIdentity(old)!==userIdentity(s)){
+            clearSelections(old);for(const c of CUSTOM)c.vals=c.vals.filter(v=>v[1]!==old.gauge||v[2]!==old.code);removeRows(old);invalidate(old.gauge);
+          }
+          if(!old||unmapped.has(s.id)||JSON.stringify(old)!==JSON.stringify(s)){if(old)clearStatuses(old);addRows(s);specs.set(s.id,userClone(s));invalidate(s.gauge);}
+          orphaned.delete(s.id);unmapped.delete(s.id);
+          }catch{
+            const stale=specs.get(s.id);if(stale)try{removeRows(stale);}catch{/* Rows were never added. */}
+            specs.set(s.id,userClone(s));orphaned.add(s.id);unmapped.add(s.id);
+          }
+        }
+        for(const id of specs.keys())if(!received.has(id)){orphaned.add(id);unmapped.delete(id);}
+        persist();persistCustom();redraw();return true;
+      }catch(error){online=false;announce();return false;}
+      finally{syncing=null;}
+    })();return syncing;
+  }
+  async function save(draft){
+    assertOnline();const lost=orphaned.has(draft.id)&&!unmapped.has(draft.id)?specs.get(draft.id):null;const input=userClone(draft);if(lost)delete input.id;const check=validateSpec(input,schema,context());if(!check.ok){const error=Error('Fix the highlighted definition fields.');error.errors=check.errors;throw error;}
+    const {spec}=await post('/api/uewr',check.spec);
+    if(retired.has(spec.id)||pendingDeletes.has(spec.id))throw Error('This user EWR was deleted while saving.');
+    const latest=specs.get(spec.id);if(latest&&latest.ver>spec.ver)return userClone(latest);
+    epoch++;
+    if(lost){if(userIdentity(lost)!==userIdentity(spec)){clearSelections(lost);for(const c of CUSTOM)c.vals=c.vals.filter(v=>v[1]!==lost.gauge||v[2]!==lost.code);}else for(const c of CUSTOM)for(const v of c.vals)if(v[1]===lost.gauge&&v[2]===lost.code)v[11]={uewrVer:null};removeRows(lost);specs.delete(lost.id);orphaned.delete(lost.id);}
+    const old=specs.get(spec.id);
+    if(old&&userIdentity(old)!==userIdentity(spec)){
+      clearSelections(old);for(const c of CUSTOM)c.vals=c.vals.filter(v=>v[1]!==old.gauge||v[2]!==old.code);removeRows(old);invalidate(old.gauge);
+    }
+    if(old)clearStatuses(old);if(lost)clearStatuses(lost);
+    specs.set(spec.id,userClone(spec));addRows(spec);orphaned.delete(spec.id);unmapped.delete(spec.id);persist();persistCustom();invalidate(spec.gauge);redraw();return spec;
+  }
+  function applyResults(job,evaluated=null){
+    const current=code=>{const s=[...specs.values()].find(s=>s.code===code);return s&&!orphaned.has(s.id)&&(!evaluated||evaluated.get(s.id)===s.ver)?s:null;};
+    for(const [scn,rows] of Object.entries(job.results||{})){
+      const c=CUSTOM.find(c=>!c.removed&&c.id===scn);if(!c)continue;
+      const valid=rows.filter(row=>{const spec=current(row.ewr);return spec&&spec.gauge===row.gauge&&spec.pus.includes(row.pu)&&row.uewr_ver===spec.ver;});
+      c.vals=mergeResults(c.vals,valid);
+      for(const row of valid){const v=mergeResults([], [row])[0];for(const r of PUKEY.get(userResultKey(v))||[]){putVals(r,c.P,v);if(!c.sdls.includes(META.sdls[r[1]]))c.sdls.push(META.sdls[r[1]]);}}
+      for(const row of valid)statuses.delete(scn+'|'+row.ewr);
+    }
+    for(const family of ['skipped','errors'])for(const [scn,codes] of Object.entries(job[family]||{}))for(const [code,reason] of Object.entries(codes))if(current(code)&&CUSTOM.some(c=>!c.removed&&c.id===scn))statuses.set(scn+'|'+code,{state:family,reason});
+    persistCustom();performanceRevision++;flowsChanged();EWRLIST.clear();if(typeof invalidateInventory==='function')invalidateInventory();redraw();
+  }
+  async function run(ids,scns,onProgress=()=>{}){
+    assertOnline();const selected=ids.map(id=>specs.get(id));if(selected.some(s=>!s||orphaned.has(s.id)))throw Error('Re-save orphaned user EWRs before evaluating them.');
+    const allowed=new Set(CUSTOM.filter(c=>!c.removed&&c.id).map(c=>c.id));if(!scns.length||scns.some(id=>!allowed.has(id)))throw Error('Select uploaded scenarios with stored series.');
+    const evaluated=new Map(selected.map(s=>[s.id,s.ver]));
+    const {job}=await post('/api/uewr/run',{ids,scns});
+    for(;;){
+      await new Promise(resolve=>setTimeout(resolve,500));const result=await request('/api/job?id='+encodeURIComponent(job));
+      onProgress(result.progress,result.elapsed);if(result.status==='running')continue;
+      if(result.status!=='done')throw Error(result.message||'User EWR evaluation failed');applyResults(result,evaluated);return result;
+    }
+  }
+  async function remove(id){
+    assertUser();const spec=specs.get(id);if(!spec)return;
+    epoch++;retired.add(id);const plan=clearSelections(spec);for(const c of CUSTOM)c.vals=c.vals.filter(v=>v[1]!==spec.gauge||v[2]!==spec.code);
+    clearStatuses(spec);removeRows(spec);specs.delete(id);orphaned.delete(id);unmapped.delete(id);pendingDeletes.add(id);persist();persistCustom();invalidate(spec.gauge);redraw();
+    if(online)try{await retryDelete(id);}catch{/* Local deletion is complete; the tombstone prevents resurrection after a failed request. */}
+    return {...plan,pending:pendingDeletes.has(id)};
+  }
+  function atGauge(gauge){
+    if(S.src!=='user')return [];
+    return [...specs.values()].filter(s=>s.gauge===gauge&&!orphaned.has(s.id)).flatMap(s=>s.pus.map(pu=>({code:s.code,pu,pus:[pu],kind:s.kind,custom:true,user:true,name:s.name,handler:s.handler,
+      consecutive:!s.handler.startsWith('lowflow_handle'),thr:s.params[s.kind==='L'?'LevelThresholdMin':'FlowThresholdMin']??0,thr_max:s.params[s.kind==='L'?'LevelThresholdMax':'FlowThresholdMax'],dur:s.params.Duration,sm:s.params.StartMonth,em:s.params.EndMonth,target:s.params.TargetFrequency,maxint:s.params['MaxInter-event'],detailed:['F','V'].includes(s.kind)})));
+  }
+  function offerRun(scns){const available=scns.filter(id=>CUSTOM.some(c=>!c.removed&&c.id===id));if(!specs.size||!available.length||S.src!=='user')return null;api.pendingScenarios=available;announce();return {ids:[...specs.keys()].filter(id=>!orphaned.has(id)),scns:available};}
+  const api={specs,orphaned,unmapped,pendingDeletes,statuses,get schema(){return schema;},get online(){return online;},context,loadLocal,sync,save,run,applyResults,remove,addRows,removeRows,atGauge,offerRun,pendingScenarios:[],request,post};
+  return api;
+})();
+if(typeof window!=='undefined')window.UEWR=UEWR;
+// ---- part 3: guide controls and configuration form ----------------------------------------------------------------
+(()=>{
+  const add=document.getElementById('uewrAdd'),list=document.getElementById('uewrList');if(!add||!list)return;
+  const KINDS={F:'Flow',V:'Accumulated volume',L:'Level',S:'Salinity'};
+  const RULES={flow_handle:'Continuous spell',lowflow_handle:'Total days in the window',ctf_handle:'Cease-to-flow spell',flow_handle_anytime:'Spell across 30 June',flow_handle_check_ctf:'Spell after a dry period',cumulative_handle:'Accumulated volume',rise_and_fall_handle:'Rate of rise or fall',flow_handle_multi:'Continuous spell: two gauges',lowflow_handle_multi:'Total days: two gauges',ctf_handle_multi:'Cease to flow: two gauges',cumulative_handle_multi:'Accumulated volume: two gauges',level_handle:'Level spell with drawdown limit'};
+  const STEPS_USER=[['Reading series','Read stored daily series'],['Evaluating','Evaluate your EWRs'],['Summarising','Summarise results']];
+  const dialog=document.createElement('dialog');dialog.id='uewrDlg';dialog.className='uewr-dialog';dialog.setAttribute('aria-labelledby','uewrTitle');document.body.append(dialog);
+  let draft=null,original=null,busy=false,minAuto=true,notice='',noticeTone='success',deleteId=null,previewKey='',previewSignature='',formEpoch=0,previewController=null,tutorial=null,tutorialRAF=0;
+  const pendingActions=new Set();
+  const importInput=document.createElement('input');importInput.type='file';importInput.id='uewrImportFile';importInput.accept='.json,application/json';importInput.hidden=true;document.body.append(importInput);
+  const toast=document.createElement('div');toast.id='uewrToast';toast.className='uewr-toast';toast.hidden=true;toast.innerHTML='<span></span><button type="button" class="ghost" aria-label="Dismiss notification" title="Dismiss notification">×</button>';document.body.append(toast);
+  toast.querySelector('button').onclick=()=>{toast.hidden=true;};
+  const el=id=>document.getElementById(id),live=()=>CUSTOM.filter(c=>!c.removed&&c.id);
+  const errorText=e=>(Object.entries(e.errors||{}).map(([k,v])=>k+': '+v).join('\n')||e.message||'Something went wrong. Please try again.').slice(0,1200);
+  function formStatus(text,tone='info'){const node=el('uewrStatus');if(!node)return;node.textContent=text;node.dataset.tone=tone;node.setAttribute('role',tone==='error'?'alert':'status');}
+  const showNotice=(text,tone='success')=>{notice=text;noticeTone=tone;toast.querySelector('span').textContent=text;toast.dataset.tone=tone;toast.setAttribute('role',tone==='error'?'alert':'status');toast.hidden=S.src!=='user';render();};
+  const safeAsync=fn=>{Promise.resolve().then(fn).catch(e=>{if(dialog.open&&el('uewrStatus'))formStatus(errorText(e),'error');else showNotice(errorText(e),'error');});};
+  async function actionTask(key,work){if(pendingActions.has(key))return;pendingActions.add(key);render();try{return await work();}finally{pendingActions.delete(key);render();}}
+  const currentForm=token=>dialog.open&&token===formEpoch;
+  function stopTutorial(){if(tutorialRAF)cancelAnimationFrame(tutorialRAF);tutorialRAF=0;if(tutorial)tutorial.playing=false;const play=el('uewrTutorialPlay');if(play){play.textContent='Play';play.setAttribute('aria-pressed','false');}}
+  function paintTutorial(progress=1){
+    if(!tutorial||!el('uewrTutorialSvg'))return;const stage=tutorial.steps[tutorial.index];
+    el('uewrTutorialSvg').innerHTML=stage.draw(progress);el('uewrTutorialStage').textContent=`Step ${tutorial.index+1} of ${tutorial.steps.length} · ${stage.title}`;
+    if(el('uewrTutorialCaption').dataset.index!==String(tutorial.index)){el('uewrTutorialCaption').innerHTML=stage.cap;el('uewrTutorialCaption').dataset.index=tutorial.index;}
+    el('uewrTutorialPrev').disabled=tutorial.index===0;el('uewrTutorialNext').disabled=tutorial.index===tutorial.steps.length-1;
+  }
+  function tutorialTick(now){
+    tutorialRAF=0;if(!tutorial?.playing||!dialog.open||document.hidden)return stopTutorial();
+    const stage=tutorial.steps[tutorial.index],elapsed=now-tutorial.start;paintTutorial(Math.min(1,elapsed/stage.ms));
+    if(elapsed>=stage.ms+750){if(tutorial.index===tutorial.steps.length-1)return stopTutorial();tutorial.index++;tutorial.start=now;}
+    tutorialRAF=requestAnimationFrame(tutorialTick);
+  }
+  function renderTutorial(spec){
+    stopTutorial();tutorial=null;const target=el('uewrTutorial'),api=window.ewrGuideApi;
+    if(!['flow_handle','lowflow_handle'].includes(spec.handler)||!['F','S'].includes(spec.kind)||!api){
+      target.innerHTML='<p class="note">Read the timing window, thresholds, minimum spell and target above. This advanced rule has no illustrative animation; Test on one scenario uses py_ewr to check its full rule against your daily series.</p>';return;
+    }
+    const row=guideRow(spec,spec.pus[0]),illustration=api.ewrSpec(row);
+    const unavailable=()=>{target.textContent='This rule does not fit the illustrative 365-day record. Use Test on one scenario to evaluate the full rule, including leap days and the complete timing window.';};
+    if(illustration.dur!==spec.params.Duration||illustration.ms!==spec.params.MinSpell){unavailable();return;}
+    let model;try{model={...api.buildTutorial(illustration),row};}catch{unavailable();return;}
+    if(!model.metEx||!model.missEx||!Object.values(model.L||{}).every(Number.isFinite)||model.record.some(y=>y.flow.some(v=>!Number.isFinite(v)))){unavailable();return;}
+    tutorial={steps:api.stages(model),index:0,playing:false,start:0};
+    target.innerHTML='<div class="uewr-tutorial"><b id="uewrTutorialStage" aria-live="polite"></b><svg id="uewrTutorialSvg" viewBox="0 0 520 300" role="img" aria-label="Illustrative EWR rule animation"></svg><p id="uewrTutorialCaption"></p><div class="uewr-actions"><button type="button" id="uewrTutorialPrev" data-tutorial="prev" title="Show the previous explanation step">Previous</button><button type="button" id="uewrTutorialPlay" data-tutorial="play" aria-pressed="false" title="Play or pause the illustrative rule explanation">Play</button><button type="button" id="uewrTutorialNext" data-tutorial="next" title="Show the next explanation step">Next</button><button type="button" data-tutorial="replay" title="Restart the explanation">Replay</button></div><small>Illustrative examples generated from this rule, not your gauge data. Test on one scenario gives evaluated results. Reduced-motion settings are respected.</small></div>';paintTutorial();
+  }
+  dialog.addEventListener('close',()=>{if(dialog.open)return;formEpoch++;previewController?.abort();previewController=null;busy=false;stopTutorial();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopTutorial();});
+  const uploadedGauges=kind=>new Set(live().flatMap(c=>c[kind==='L'?'levelGauges':kind==='S'?'salinityGauges':'flowGauges']||[]));
+  function scenarioState(s,c){
+    const values=c.vals.filter(v=>v[1]===s.gauge&&v[2]===s.code),status=UEWR.statuses.get(c.id+'|'+s.code);
+    if(status)return (status.state==='skipped'?'Skipped':'Could not evaluate')+': '+status.reason;
+    return values.length?values.every(v=>userVersion(v)===s.ver)?'evaluated':'stale':'not run';
+  }
+  function render(){
+    const opened=new Set([...list.querySelectorAll('details.uewr-item[open]')].map(x=>x.dataset.spec));const visible=S.src==='user';add.hidden=!visible;list.hidden=!visible;
+    if(!visible){toast.hidden=true;if(dialog.open)dialog.close();return;}
+    add.disabled=!UEWR.online||!UEWR.schema||!live().length;
+    add.title=add.disabled?'Upload a scenario and connect to the local analysis server to define user EWRs.':'Define an EWR for your uploaded scenarios';
+    const scns=live(),specs=[...UEWR.specs.values()];
+    list.innerHTML=`<div class="uewr-heading"><h3>Your EWRs (${specs.length})</h3><div class="uewr-actions"><button class="ghost" data-u="import" title="Open an exported JSON definition as a new draft"${!UEWR.online||!UEWR.schema||!scns.length?' disabled':''}>Import JSON</button><button class="ghost" data-u="sync" title="Reconnect and reconcile definitions with the local server"${pendingActions.has('sync')?' disabled':''}>${pendingActions.has('sync')?'Connecting…':'Reconnect / sync'}</button></div></div>`+
+      (!UEWR.online?'<p class="note">Offline: saved definitions and results are available to read. Start the local analysis server to save or run EWRs.</p>':'')+
+      (notice?`<p class="uewr-notice" data-tone="${noticeTone}">${esc(notice)}</p>`:'')+
+      (UEWR.pendingScenarios.length?`<p class="uewr-offer">Evaluate your EWRs on the newly uploaded scenario? <button data-u="offer">Run</button> <button class="ghost" data-u="dismiss">Dismiss</button></p>`:'')+
+      specs.map(s=>{
+        const states=scns.map(c=>scenarioState(s,c)),ok=states.filter(x=>x==='evaluated').length,stale=states.includes('stale'),orphan=UEWR.orphaned.has(s.id);
+        return `<details class="uewr-item" data-spec="${esc(s.id)}"${opened.has(s.id)?' open':''}><summary><b>★ ${esc(s.code)}</b> · ${esc(s.name)}<small>${esc(KINDS[s.kind])} · ${esc(s.gauge)} · ${UEWR.unmapped.has(s.id)?'cannot be shown on this dashboard: delete it, or edit its gauge or planning units':orphan?'orphaned: re-save required':stale?'stale · re-run':ok+'/'+scns.length+' scenarios evaluated'}</small></summary>
+          <p>${esc(ruleSentence(s))}</p>${scns.map(c=>`<div>${esc(c.name)}: ${esc(scenarioState(s,c))}</div>`).join('')}
+          <div class="uewr-actions"><button data-u="run" data-id="${esc(s.id)}"${!UEWR.online||orphan||!scns.length||pendingActions.has('run:'+s.id)?' disabled':''} title="Evaluate this definition on all uploaded scenarios">${pendingActions.has('run:'+s.id)?'Running…':stale?'Re-run':'Run all'}</button><button class="ghost" data-u="edit" data-id="${esc(s.id)}"${!UEWR.online?' disabled':''}>${orphan?'Re-save':'Edit'}</button><button class="ghost" data-u="duplicate" data-id="${esc(s.id)}"${!UEWR.online?' disabled':''}>Duplicate</button><button class="ghost" data-u="export" data-id="${esc(s.id)}" title="Download this definition as JSON; scenario data and results are excluded">Export JSON</button><button class="ghost" data-u="delete" data-id="${esc(s.id)}" title="Remove this definition and its results from every view">Delete</button></div>
+          ${deleteId===s.id?`<p role="alert">Delete ${esc(s.code)}? This removes its rows and results from ${scns.filter(c=>c.vals.some(v=>v[1]===s.gauge&&v[2]===s.code)).length} scenarios and clears its chart and guide selections.</p><button data-u="confirm-delete" data-id="${esc(s.id)}">Delete EWR</button> <button class="ghost" data-u="cancel-delete">Cancel</button>`:''}</details>`;
+      }).join('')+(specs.length?'':'<p class="note">Add a flow, level or salinity rule and evaluate it on your uploaded scenarios.</p>');
+  }
+  UEWR.renderUI=render;window.addEventListener('uewr-change',render);
+  list.addEventListener('click',event=>{
+    const button=event.target.closest('[data-u]');if(!button)return;const action=button.dataset.u,id=button.dataset.id,s=UEWR.specs.get(id);
+    if(action==='sync')return safeAsync(()=>actionTask('sync',async()=>{await UEWR.sync();showNotice(UEWR.online?'Connected. Your EWR definitions are up to date.':'The local analysis server is unavailable. Start it, then reconnect.',UEWR.online?'success':'error');}));
+    if(action==='import'){importInput.value='';importInput.click();return;}
+    if(action==='export')return safeAsync(async()=>{
+      if(!s)return;const blob=new Blob([exportDefinition(s)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download=s.code+'.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);showNotice('Exported '+s.code+'. The file contains its definition only.');
+    });
+    if(action==='edit')return openForm(s);
+    if(action==='duplicate'){const copy=userClone(s);delete copy.id;delete copy.ver;delete copy.created;delete copy.updated;let n=2,stem=copy.code.split('_')[1].slice(0,20);while([...UEWR.specs.values()].some(x=>x.code===`U_${stem}_${n}`))n++;copy.code=`U_${stem}_${n}`;return openForm(copy);}
+    if(action==='delete'){deleteId=id;render();const details=list.querySelector(`[data-u="confirm-delete"][data-id="${id}"]`)?.closest('details');if(details)details.open=true;return;}
+    if(action==='cancel-delete'){deleteId=null;return render();}
+    if(action==='confirm-delete')return safeAsync(()=>actionTask('delete:'+id,async()=>{await UEWR.remove(id);deleteId=null;showNotice('Deleted '+s.code+(UEWR.pendingDeletes.has(id)?'; server deletion will retry after reconnecting.':'.'),UEWR.pendingDeletes.has(id)?'warning':'success');}));
+    if(action==='dismiss'){UEWR.pendingScenarios=[];return render();}
+    if(action==='run'||action==='offer')return safeAsync(()=>actionTask('run:'+(id||'offer'),async()=>{
+      const ids=action==='run'?[id]:[...UEWR.specs.keys()].filter(k=>!UEWR.orphaned.has(k)),scns=action==='run'?live().map(c=>c.id):UEWR.pendingScenarios.slice();
+      showNotice('Evaluating user EWRs…','info');const job=await UEWR.run(ids,scns,p=>showNotice(p?`${p.stage}: ${p.done}/${p.total}`:'Evaluating…','info'));
+      const partial=Object.keys(job.skipped||{}).length||Object.keys(job.errors||{}).length;UEWR.pendingScenarios=[];showNotice('Evaluation complete.'+(partial?' Some scenarios were skipped or failed; expand the EWR for details.':''),partial?'warning':'success');
+    }));
+  });
+  importInput.addEventListener('change',()=>safeAsync(async()=>{
+    const file=importInput.files?.[0];if(!file)return;
+    if(file.size>UEWR_FILE_LIMIT)throw Error('Cannot import EWR: choose a JSON file no larger than 64 KiB.');
+    let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());}catch{throw Error('Cannot import EWR: the file must use UTF-8 text encoding.');}
+    if(S.src!=='user'||!UEWR.online||!UEWR.schema||!live().length)throw Error('Connect to the local server and upload a scenario in Your data before importing.');
+    const imported=parseDefinition(text,UEWR.schema,UEWR.context());openForm(imported);
+    const collision=[...UEWR.specs.values()].some(s=>s.code===imported.code);
+    formStatus(collision?'Imported as a new draft. This code already exists; choose a new U_ code before saving.':'Imported as a new draft. Review the rule, test a scenario, then Save or Save & run.','info');
+  }));
+  const option=(value,label,selected=false,disabled=false)=>`<option value="${esc(value)}"${selected?' selected':''}${disabled?' disabled':''}>${esc(label)}</option>`;
+  function openForm(s){
+    if(S.src!=='user'||!UEWR.online||!UEWR.schema||!live().length)return;
+    formEpoch++;previewController?.abort();previewController=null;stopTutorial();previewKey='';previewSignature='';
+    original=s?.id?userClone(s):null;draft=s?userClone(s):{code:'U_',name:'',kind:'F',handler:'flow_handle',gauge:'',pus:[],objectives:[],regime:null,second_gauge:null,params:{Duration:5,TargetFrequency:50,MinSpell:5},salinity:null};
+    minAuto=!s?.params?.MinSpell;busy=false;
+    const context=UEWR.context();if(!draft.gauge)draft.gauge=context.gauges.find(g=>uploadedGauges(draft.kind).has(g))||'';
+    if(!draft.pus.length)draft.pus=(context.pusByGauge[draft.gauge]||[]).slice(0,1);
+    dialog.innerHTML=`<form id="uewrForm" novalidate><div class="uewr-heading"><h2 id="uewrTitle">${original?'Edit':'New'} EWR</h2><button type="button" class="ghost" data-form="close" aria-label="Close EWR form">×</button></div>
+      <div class="uewr-layout"><nav aria-label="Configuration steps">${['Basics','Rule type','Parameters','Review & run'].map((name,i)=>`<button type="button" data-step="${i+1}">${i+1}. ${name} <span id="uewrStep${i+1}"></span></button>`).join('')}</nav><div class="uewr-sections">
+      <fieldset id="uewrSection1"><legend>1. Basics</legend><div class="uewr-fields"><label>What does it measure?<select id="uewrKind">${Object.entries(KINDS).map(([k,v])=>option(k,v,draft.kind===k)).join('')}</select></label><label>Gauge<select id="uewrGauge"></select><small data-error="gauge"></small></label>
+      <label>Code<input id="uewrCode" maxlength="31" value="${esc(draft.code)}" placeholder="U_FRESH1" required><small data-error="code"></small></label><label>Name<input id="uewrName" maxlength="80" value="${esc(draft.name)}" required><small data-error="name"></small></label></div>
+      <div id="uewrPus"></div><small data-error="pus"></small><div class="uewr-fields"><label>Objectives<select id="uewrObjectives" multiple size="4">${META.objs.map(o=>option(o,o,draft.objectives.includes(o))).join('')}</select><small>Leave empty for Unclassified.</small></label><label>Flow regime<select id="uewrRegime">${option('','Unclassified')+META.regimes.map(r=>option(r,r,draft.regime===r)).join('')}</select></label><label>Start from an existing EWR<select id="uewrCopy"></select></label></div></fieldset>
+      <fieldset id="uewrSection2"><legend>2. Rule type</legend><div id="uewrRules" class="uewr-rules" role="radiogroup" aria-label="Rule type"></div><label id="uewrSecondWrap" hidden>Second gauge<select id="uewrSecond"></select><small data-error="second_gauge"></small></label><p class="note">Specialised barrage, Coorong, nesting and weir-pool rules use site-specific logic and are not offered at arbitrary gauges.</p></fieldset>
+      <fieldset id="uewrSection3"><legend>3. Parameters</legend><div id="uewrSalinity" class="uewr-fields" hidden><label>Input salinity units<select id="uewrUnit"><option value="EC">EC (µS/cm)</option><option value="TDS">TDS (mg/L)</option></select></label><label>TDS → EC multiplier<input id="uewrFactor" type="number" step="any" min="0" value="${esc(draft.salinity?.tds_factor??.6)}"><small data-error="salinity.tds_factor"></small></label></div><div id="uewrParams"></div><small data-error="params.rates"></small><small data-error="salinity"></small></fieldset>
+      <fieldset id="uewrSection4"><legend>4. Review & run</legend><p id="uewrSentence"></p><div id="uewrTutorial"></div><p id="uewrIdentityWarning" class="note"></p><div id="uewrScenarios">${live().map(c=>`<label class="uewr-check"><input type="checkbox" data-scenario="${esc(c.id)}" checked> ${esc(c.name)}</label>`).join('')}</div><label>Preview scenario<select id="uewrPreviewScenario">${live().map(c=>option(c.id,c.name)).join('')}</select></label><div class="uewr-actions"><button type="button" id="uewrPreview" title="Evaluate this unsaved definition on the chosen scenario without changing dashboard results">Test on one scenario</button><button type="button" id="uewrPreviewCancel" class="ghost" hidden>Cancel test</button><button type="submit" id="uewrSave">Save</button><button type="button" id="uewrSaveRun">Save & run</button><button type="button" class="ghost" data-form="close">Cancel</button></div><p class="note">Tests use stored daily series and do not save the definition or its results. Save & run evaluates the scenarios checked above.</p><p id="uewrStatus" role="status" class="uewr-notice"></p><div id="uewrPreviewResults"></div><ol id="uewrSteps" class="steps" hidden></ol></fieldset>
+      </div></div></form>`;
+    el('uewrUnit').value=draft.salinity?.unit||'EC';populateGauge();renderRules();renderParams();if(!dialog.open)dialog.showModal();validate();el('uewrCode').focus();
+  }
+  UEWR.openForm=openForm;add.onclick=()=>openForm();
+  function populateGauge(){
+    const context=UEWR.context(),available=uploadedGauges(draft.kind);
+    el('uewrGauge').innerHTML=option('','Choose a gauge')+context.gauges.filter(g=>context.pusByGauge[g]?.length).map(g=>option(g,g+' · '+(GAUGES.find(x=>x.id===g)?.name||''),g===draft.gauge,!available.has(g)&&g!==draft.gauge)).join('');
+    el('uewrPus').innerHTML='<b>Planning units</b>'+(context.pusByGauge[draft.gauge]||[]).map(pu=>`<label class="uewr-check"><input type="checkbox" data-pu="${esc(pu)}"${draft.pus.includes(pu)?' checked':''}> ${esc(pu)}</label>`).join('');
+    el('uewrSecond').innerHTML=option('','Choose a second gauge')+context.gauges.filter(g=>g!==draft.gauge&&context.pusByGauge[g]?.length).map(g=>option(g,g,g===draft.second_gauge,!uploadedGauges('F').has(g))).join('');
+    const candidates=window.ewrGuideApi.rows.filter(r=>!r.u&&r.g===draft.gauge&&UEWR.schema[r.k]?.[r.h]);
+    el('uewrCopy').innerHTML=option('','Choose an existing EWR')+candidates.map(r=>option(r.key,r.c+' · '+r.pu)).join('');
+  }
+  function renderRules(){
+    if(!UEWR.schema[draft.kind][draft.handler])draft.handler=Object.keys(UEWR.schema[draft.kind])[0];
+    el('uewrRules').innerHTML=Object.keys(UEWR.schema[draft.kind]).map(h=>`<button type="button" data-handler="${h}" role="radio" aria-checked="${h===draft.handler}" class="${h===draft.handler?'on':''}">${esc(RULES[h]||h)}</button>`).join('');
+    el('uewrSecondWrap').hidden=!draft.handler.endsWith('_multi');el('uewrSalinity').hidden=draft.kind!=='S';
+  }
+  function renderParams(){
+    const def=UEWR.schema[draft.kind][draft.handler],old=draft.params;draft.params={};
+    const groups={Timing:[],Thresholds:[],Events:[],Volume:[],Rates:[],Targets:[]};
+    for(const f of def.fields){
+      let v=old[f];if(v==null||v==='')v=def.defaults[f]??'';if(f==='MinSpell'&&(v===''||v==='Duration'||minAuto))v=draft.handler.startsWith('lowflow_handle')?1:Number(old.Duration||5);
+      draft.params[f]=v;const b=def.bounds[f]||{},group=f.startsWith('Start')||f.startsWith('End')?'Timing':f.startsWith('Target')||f==='MaxInter-event'?'Targets':f.includes('Threshold')&&!f.startsWith('Rate')?'Thresholds':f==='VolumeThreshold'||f==='AccumulationPeriod'?'Volume':f.startsWith('Rate')||f==='DrawdownRate'?'Rates':'Events';
+      const label=f.startsWith('FlowThreshold')&&draft.kind==='S'?(f.endsWith('Min')?'Lower':'Upper')+' salinity limit (input units above)':f.startsWith('LevelThreshold')?(def.labels[f]||f)+' (m)':def.labels[f]||f;
+      groups[group].push(`<label>${esc(label)}${f.endsWith('Month')?`<select data-param="${f}">${MONTHS.map((m,i)=>option(i+1,m,Number(v)===i+1)).join('')}</select>`:`<input type="number" data-param="${f}" value="${esc(v)}"${b.min!=null?` min="${b.min}"`:''}${b.max!=null?` max="${b.max}"`:''} step="${b.integer?'1':'any'}"${['Duration','MinSpell','TargetFrequency'].includes(f)?' required':''}>`}<small data-error="params.${f}"></small>${f==='MinSpell'?`<small id="uewrMinHelp">Default: ${draft.handler.startsWith('lowflow_handle')?'1 day for total-day rules':'Duration for spell rules'}. Always at least 1 and at most Duration.</small>`:f==='MaxInter-event'?'<small>0 means no maximum gap; ETP and MRIP metrics remain empty.</small>':''}</label>`);
+    }
+    el('uewrParams').innerHTML=Object.entries(groups).filter(([,fields])=>fields.length).map(([name,fields])=>`<h4>${name}</h4><div class="uewr-fields">${fields.join('')}</div>`).join('');
+  }
+  function collect(){
+    const s=userClone(draft);s.code=el('uewrCode').value.trim();s.name=el('uewrName').value.trim();s.gauge=el('uewrGauge').value;s.pus=[...dialog.querySelectorAll('[data-pu]:checked')].map(x=>x.dataset.pu);
+    s.objectives=[...el('uewrObjectives').selectedOptions].map(x=>x.value);s.regime=el('uewrRegime').value||null;s.second_gauge=s.handler.endsWith('_multi')?el('uewrSecond').value||null:null;
+    for(const field of dialog.querySelectorAll('[data-param]'))s.params[field.dataset.param]=field.value;
+    s.salinity=s.kind==='S'?{unit:el('uewrUnit').value,tds_factor:el('uewrFactor').value}:null;return s;
+  }
+  function validate(){
+    if(!draft)return null;const raw=collect(),check=validateSpec(raw,UEWR.schema,UEWR.context());
+    if(raw.params.MinSpell===''){check.errors['params.MinSpell']='Enter the minimum spell shown in the default hint.';check.ok=false;}
+    for(const node of dialog.querySelectorAll('[data-error]'))node.textContent=check.errors[node.dataset.error]||'';
+    for(const input of dialog.querySelectorAll('[data-param]'))input.setAttribute('aria-invalid',String(!!check.errors['params.'+input.dataset.param]));
+    for(const id of ['uewrPreview','uewrSave','uewrSaveRun'])el(id).disabled=busy||!check.ok||!UEWR.online||S.src!=='user';
+    const selected=dialog.querySelectorAll('[data-scenario]:checked').length;el('uewrSaveRun').disabled||=!selected;
+    el('uewrSentence').textContent=check.ok?ruleSentence(check.spec):'Complete the required fields to review your EWR.';
+    if(check.ok){const key=JSON.stringify(check.spec);if(key!==previewKey){previewKey=key;renderTutorial(check.spec);}}
+    else {stopTutorial();tutorial=null;previewKey='';el('uewrTutorial').textContent='Complete the required fields to see the rule guidance.';}
+    if(previewSignature&&previewSignature!==JSON.stringify(check.spec)){previewSignature='';el('uewrPreviewResults').replaceChildren();formStatus('Definition changed. Test again to update the preview.');}
+    for(const input of dialog.querySelectorAll('input,select,[data-handler]'))input.disabled=busy;
+    dialog.setAttribute('aria-busy',String(busy));el('uewrPreviewCancel').hidden=!previewController;
+    el('uewrPreview').textContent=previewController?'Testing…':'Test on one scenario';
+    const compatible=live().filter(c=>(c[raw.kind==='L'?'levelGauges':raw.kind==='S'?'salinityGauges':'flowGauges']||[]).includes(raw.gauge)&&(!raw.second_gauge||(c.flowGauges||[]).includes(raw.second_gauge)));
+    const chosen=el('uewrPreviewScenario').value;el('uewrPreviewScenario').innerHTML=compatible.map(c=>option(c.id,c.name,c.id===chosen)).join('');
+    el('uewrPreview').disabled||=!compatible.length;
+    el('uewrPreview').title=compatible.length?'Evaluate this unsaved definition without saving it or changing dashboard results':'Upload a scenario with matching daily series to test this rule';
+    el('uewrSave').textContent=original&&live().some(c=>c.vals.some(v=>v[1]===original.gauge&&v[2]===original.code))?'Save & re-run previous scenarios':'Save';
+    el('uewrIdentityWarning').textContent=original&&userIdentity({...raw,pus:raw.pus||[]})!==userIdentity(original)?'Changing code, gauge or planning units removes this EWR’s previous rows and scenario results.':'';
+    for(let i=1;i<=4;i++){const keys=Object.keys(check.errors),bad=keys.some(k=>i===1?['code','name','gauge','pus','objectives','regime'].includes(k):i===2?['kind','handler','second_gauge'].includes(k):i===3?k.startsWith('params')||k.startsWith('salinity'):true);el('uewrStep'+i).textContent=bad?'⚠':'✓';}
+    return check;
+  }
+  dialog.addEventListener('input',event=>{
+    if(event.target.dataset.param==='MinSpell')minAuto=false;
+    if(event.target.dataset.param==='Duration'&&minAuto){const field=dialog.querySelector('[data-param="MinSpell"]');if(field)field.value=draft.handler.startsWith('lowflow_handle')?1:event.target.value;}
+    validate();
+  });
+  dialog.addEventListener('change',event=>{
+    if(event.target.id==='uewrKind'){draft=collect();draft.kind=event.target.value;draft.handler=Object.keys(UEWR.schema[draft.kind])[0];draft.second_gauge=null;minAuto=true;if(!uploadedGauges(draft.kind).has(draft.gauge)){draft.gauge=UEWR.context().gauges.find(g=>uploadedGauges(draft.kind).has(g))||'';draft.pus=(UEWR.context().pusByGauge[draft.gauge]||[]).slice(0,1);}populateGauge();renderRules();renderParams();}
+    if(event.target.id==='uewrGauge'){draft=collect();draft.gauge=event.target.value;draft.pus=(UEWR.context().pusByGauge[draft.gauge]||[]).slice(0,1);populateGauge();}
+    if(event.target.id==='uewrCopy'&&event.target.value){
+      const r=window.ewrGuideApi.rows.find(r=>r.key===event.target.value),mapping={StartMonth:'sm',StartDay:'sd',EndMonth:'em',EndDay:'ed',Duration:'dur',MinSpell:'ms',FlowThresholdMin:'tmin',FlowThresholdMax:'tmax',LevelThresholdMin:'lmin',LevelThresholdMax:'lmax',VolumeThreshold:'vol',AccumulationPeriod:'acc',EventsPerYear:'epy',WithinEventGapTolerance:'gap',TargetFrequency:'tf',TargetFrequencyMin:'tfl',TargetFrequencyMax:'tfh','MaxInter-event':'mi'};
+      draft=collect();draft.kind=r.k;draft.handler=r.h;draft.params={};for(const f of UEWR.schema[r.k][r.h].fields)if(mapping[f]&&r[mapping[f]]!=null)draft.params[f]=r[mapping[f]];
+      draft.params.Duration=Math.max(1,draft.params.Duration||5);draft.params.MinSpell=Math.max(1,draft.params.MinSpell||1);el('uewrKind').value=r.k;minAuto=false;renderRules();renderParams();
+    }validate();
+  });
+  async function submit(run){
+    const check=validate();if(!check.ok)return;const token=formEpoch,selected=[...dialog.querySelectorAll('[data-scenario]:checked')].map(x=>x.dataset.scenario);busy=true;validate();
+    try{
+      const previous=original?live().filter(c=>c.vals.some(v=>v[1]===original.gauge&&v[2]===original.code)).map(c=>c.id):[];
+      formStatus('Saving your definition…');const saved=await UEWR.save(check.spec);
+      if(currentForm(token)){original=userClone(saved);draft=userClone(saved);}
+      const scns=run?selected:previous;
+      if(scns.length){if(currentForm(token))formStatus('Evaluating the selected scenarios…');const job=await UEWR.run([saved.id],scns,(p,t)=>{if(p&&currentForm(token))showSteps(p.stage,p,t,STEPS_USER,'uewrSteps');});showNotice('Saved '+saved.code+'; evaluation complete.'+(Object.keys(job.skipped||{}).length||Object.keys(job.errors||{}).length?' Expand the EWR to review skips or errors.':''));}
+      else showNotice('Saved '+saved.code+'. Run it on uploaded scenarios when ready.');if(currentForm(token))dialog.close();
+    }catch(error){if(currentForm(token))formStatus(errorText(error),'error');else showNotice(errorText(error),'error');}finally{if(currentForm(token)){busy=false;validate();}}
+  }
+  dialog.addEventListener('submit',event=>{event.preventDefault();safeAsync(()=>submit(false));});
+  dialog.addEventListener('click',event=>{
+    const button=event.target.closest('button');if(!button)return;
+    if(button.dataset.form==='close'){dialog.close();return;}
+    if(button.dataset.step){el('uewrSection'+button.dataset.step).scrollIntoView({block:'start',behavior:'smooth'});return;}
+    if(button.dataset.handler){draft=collect();draft.handler=button.dataset.handler;minAuto=true;renderRules();renderParams();validate();return;}
+    if(button.id==='uewrSaveRun')return safeAsync(()=>submit(true));
+    if(button.dataset.tutorial){
+      if(!tutorial)return;const command=button.dataset.tutorial;
+      if(command==='prev'||command==='next'){stopTutorial();tutorial.index=Math.max(0,Math.min(tutorial.steps.length-1,tutorial.index+(command==='next'?1:-1)));paintTutorial();return;}
+      if(command==='play'&&tutorial.playing){stopTutorial();return;}
+      stopTutorial();if(command==='replay'||tutorial.index===tutorial.steps.length-1)tutorial.index=0;
+      if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){stopTutorial();paintTutorial();return;}
+      tutorial.playing=true;tutorial.start=performance.now();el('uewrTutorialPlay').textContent='Pause';el('uewrTutorialPlay').setAttribute('aria-pressed','true');tutorialRAF=requestAnimationFrame(tutorialTick);return;
+    }
+    if(button.id==='uewrPreviewCancel'){previewController?.abort();return;}
+    if(button.id==='uewrPreview')return safeAsync(async()=>{
+      const check=validate();if(!check.ok||busy)return;const token=formEpoch,scn=el('uewrPreviewScenario').value;if(!scn)return;
+      const controller=new AbortController();previewController=controller;busy=true;el('uewrPreviewResults').replaceChildren();validate();formStatus('Testing on '+live().find(c=>c.id===scn).name+'… This may take a moment.');
+      try{
+        const result=await UEWR.post('/api/uewr/preview',{spec:check.spec,scn},{signal:controller.signal});if(!currentForm(token))return;
+        const rows=result.rows?.length?result.rows:result.row?[result.row]:[],fmt=(n,dp=2)=>Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:dp}):'–';
+        formStatus(rows.length?'Preview: test complete. The definition and results have not been saved.':'No result was returned. Check that the scenario contains this rule’s daily series.',rows.length?'success':'warning');
+        if(rows.length)el('uewrPreviewResults').innerHTML='<div class="uewr-preview-table"><table><caption>Unsaved test · '+esc(live().find(c=>c.id===scn)?.name||scn)+'</caption><tr><th>Planning unit</th><th title="Achieved frequency divided by target frequency">FR</th><th>Achieved years</th><th title="Percentage of record beyond the maximum inter-event period">Beyond MRIP</th></tr>'+rows.map(r=>`<tr><td>${esc(r.pu||'–')}</td><td>${fmt(r.fr,3)}</td><td>${fmt(r.ey,0)} / ${fmt(r.ny,0)}</td><td>${r.et==null?'–':fmt(r.et*100,1)+'%'}</td></tr>`).join('')+'</table></div>';
+        previewSignature=JSON.stringify(check.spec);
+      }catch(error){if(currentForm(token))formStatus(error.name==='AbortError'?'Test cancelled. Your definition has not been saved.':errorText(error),error.name==='AbortError'?'info':'error');}
+      finally{if(currentForm(token)){previewController=null;busy=false;validate();}}
+    });
+  });
+  render();
+})();
+
+UEWR.loadLocal();
 restoreCustom();
 for(const c of PRELOADED) if(!CUSTOM.some(x=>!x.removed&&x.name===c.name)) addCustom(c.name,c.vals,null,[],c.fmt||"Standard time-series");
 fillPolicyOptions();
 if(PRELOADED.length&&!location.hash.slice(1)){ S.src="user"; const c=CUSTOM.find(x=>!x.removed&&x.name===PRELOADED[0].name); if(c) S.pol=c.P; fillPolicyOptions(); syncUI(); }   // a page with embedded scenarios opens in Your data
 applyHash();
 refresh();
+void UEWR.sync();
 </script></body></html>

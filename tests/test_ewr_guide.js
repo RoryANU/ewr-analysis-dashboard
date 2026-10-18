@@ -95,3 +95,33 @@ test('the template wires the guide in: slot, panel, three collapse handles', () 
   for (const m of ['__EWRIDX__', '__EWR_GUIDE_JS__', 'id="lpanel"', 'id="barHide"', 'id="gripL"', 'id="gripR"', 'id="tabT"', 'id="guideBtn"'])
     assert.equal(template.split(m).length, 2, `${m} must occur once in the template`);
 });
+
+test('user EWR guide rows are searchable by name and salinity keeps EC units in rule text',()=>{
+ const custom={...rows[0],key:'404216|U_SAL|PU',g:'404216',c:'U_SAL',pu:'PU',name:'Morgan salinity cap',k:'S',h:'lowflow_handle',u:true,tmin:0,tmax:800,dur:30,ms:1};
+ assert.equal(api.searchEwrs([custom],{text:'morgan salinity',kind:'S'}).length,1);
+ const sp=api.ewrSpec(custom);assert.equal(sp.unit,'EC');assert.match(guide.ruleText(sp),/salinity.*EC/);
+});
+
+
+test('salinity tutorial captions and chart axes describe EC rather than low flows',()=>{
+ const row={...rows[0],key:'404216|U_EC|PU',c:'U_EC',g:'404216',pu:'PU',k:'S',h:'flow_handle',tmin:0,tmax:800,dur:5,ms:5,sm:7,em:6,eo:''};
+ const model={...api.buildTutorial(api.ewrSpec(row)),row},steps=guide.stages(model);
+ assert.match(steps[0].cap,/salinity requirement/);assert.match(steps[1].title,/salinity threshold/);assert.match(steps[1].draw(1),/Salinity \(EC\)/);
+ assert.doesNotMatch(steps[1].cap,/river nearly stops flowing/);
+});
+
+
+test('zero MRIP means no maximum gap in the tutorial, and broad limits are not labelled cease-to-flow',()=>{
+ const row={...rows[0],c:'U_WIDE',k:'F',h:'flow_handle',tmin:0,tmax:1000000,mi:0,dur:5,ms:5,sm:7,em:6},spec=api.ewrSpec(row);
+ assert.equal(spec.mi,null);const steps=guide.stages({...api.buildTutorial(spec),row});
+ assert.doesNotMatch(steps[0].cap,/at most/);assert.doesNotMatch(steps[1].cap,/river nearly stops flowing/);
+});
+
+
+test('narrow high thresholds still produce valid successful illustrative events',()=>{
+ for(const kind of ['F','S']){
+  const row={...rows[0],c:'U_TIGHT',k:kind,h:'flow_handle',tmin:1000000,tmax:1000001,dur:5,ms:5,sm:7,em:6};
+  const model={...api.buildTutorial(api.ewrSpec(row)),row};assert.ok(model.metEx);assert.ok(model.missEx);
+  for(const step of guide.stages(model))assert.doesNotMatch(step.draw(1),/NaN|Infinity/);
+ }
+});

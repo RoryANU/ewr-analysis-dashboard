@@ -1,9 +1,10 @@
 // Joint views use an explicit ecological target, independent of the exploratory header threshold.
 const JOINT_TARGET = 1, JOINT_EPS = 1e-9;
-const ruleFR = (row, scenario) => scenario == null ? null : row[6][scenario];
+const ruleCurrent = (row, scenario) => !row.user || row[8]?.uewrVerAt?.[scenario] === row.userVer;
+const ruleFR = (row, scenario) => scenario == null || !ruleCurrent(row, scenario) ? null : row[6][scenario];
 // ETP is a time proportion: values above 1 (in source data or older saved uploads) mean exceeded for the whole record.
 const ruleETP = (row, scenario) => {
-  const et = scenario == null ? null : row[7][scenario];
+  const et = scenario == null || !ruleCurrent(row, scenario) ? null : row[7][scenario];
   return Number.isFinite(et) && et > 1 ? 1 : et;
 };
 const ruleCode = row => row[3];
@@ -85,6 +86,7 @@ function disposePerformance() {
   performanceView = null;
 }
 function preparePerformance(rows) {
+  rows = rows.filter(row => !row.user || S.src === 'user');
   const key = performanceKey();
   if (performanceView?.key === key) return performanceView;
   disposePerformance();
@@ -130,6 +132,13 @@ function performancePanels(view) {
     <details id="robustnessDetails"><summary>Policy × climate robustness · target FR 1.0</summary>
       <p class="note">Joint score counts an EWR as meeting both when its frequency ratio is at least 1.0 and its time beyond the maximum gap is within the allowed limit. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Cells with no data are greyed out. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
       <div id="robustnessTable"></div><div id="robustnessValues"></div></details>
+    ${view.gauge && view.ctx?.ok && S.src === 'user' ? `<details id="annualDetails"><summary>Annual EWR achievement and gaps</summary>
+      <p class="note">Evaluate the selected rules against uploaded daily series. Stale user EWRs must be re-run first.</p>
+      <button id="loadSequence">Load annual diagnostics</button> <button id="cancelSequence" class="ghost" hidden>Cancel</button>
+      <p id="sequenceNote" role="status"></p><p id="performanceCoverage" class="note"></p>
+      <div id="sequenceRaster"></div><div id="sequenceSeries"></div><div id="sequenceSince"></div><div id="sequenceRolling"></div>
+      <details id="inventoryDetails"><summary>Rule inventory</summary><div id="diagnosticInventory"></div></details>
+    </details>` : ''}
     </details></section>`;
 }
 /** Attach the retained view to the panel and bind detail handlers when first mounted. */
@@ -137,6 +146,11 @@ function mountPerformance(view) {
   if (view.node) { $('panel').appendChild(view.node); placeJoint(view); return; }
   $('panel').insertAdjacentHTML('beforeend', performancePanels(view)); view.node = $('performancePanel');
   view.jointNode = $('jointContent'); placeJoint(view);
+  if ($('loadSequence')) {
+    $('loadSequence').onclick = () => loadSequences(view);
+    $('cancelSequence').onclick = () => view.sequence?.abort();
+    $('inventoryDetails').ontoggle = e => { if (e.target.open) loadInventoryView(view); };
+  }
   $('jointDetails').ontoggle = e => { if (e.target.open) e.target.querySelector('.jointTable').innerHTML = detailTable(view, view.i); };
   $('robustnessDetails').ontoggle = e => {
     if (!e.target.open || view.matrixBuilt) return;
@@ -279,19 +293,25 @@ async function performanceJSON(url, signal) {
 }
 // Share pending and resolved inventory requests with the existing event selector. Evict failures for retry.
 const inventoryRequests = new Map();
+function invalidateInventory(gauge) { if (gauge) inventoryRequests.delete(gauge); else inventoryRequests.clear(); }
 function inventoryFor(gauge) {
   if (!inventoryRequests.has(gauge)) {
     const pending = performanceJSON('/api/ewrs?gauge='+encodeURIComponent(gauge)).catch(error => {
-      inventoryRequests.delete(gauge); throw error;
+      if (inventoryRequests.get(gauge) === pending) inventoryRequests.delete(gauge); throw error;
     });
     inventoryRequests.set(gauge,pending);
   }
   return inventoryRequests.get(gauge);
 }
+function currentInventory(gauge,data) {
+  if (typeof UEWR === 'undefined') return data;
+  const user = UEWR.atGauge(gauge);
+  return {ewrs:data.ewrs.filter(e => !e.custom).concat(user), inventory:data.inventory.filter(e => !e.custom).concat(user.map(e => ({...e,detailed:true})))};
+}
 async function loadInventoryView(view) {
   if (!view.gauge) { $('diagnosticInventory').textContent = 'Select a gauge to inspect its inventory.'; return; }
   try {
-    const inv = await inventoryFor(view.gauge); if (!currentPerformance(view)) return;
+    const inv = currentInventory(view.gauge,await inventoryFor(view.gauge)); if (!currentPerformance(view)) return;
     $('diagnosticInventory').innerHTML = '<table><tr><th>Rule / planning unit</th><th>Type / handler</th><th>Annual diagnostics</th></tr>'+inv.inventory.map(r => `<tr><td>${esc(r.code+' · '+r.pu)}</td><td>${esc(r.kind+' / '+r.handler)}</td><td>${r.detailed ? 'Available' : 'Not supported'}</td></tr>`).join('')+'</table>';
   } catch (error) { if (currentPerformance(view)) $('diagnosticInventory').textContent = 'Inventory unavailable: '+error.message; }
 }
@@ -339,11 +359,13 @@ async function loadSequences(view) {
   const controller = new AbortController(); view.sequence = controller;
   const button = $('loadSequence'), cancel = $('cancelSequence'), note = $('sequenceNote');
   const active = () => currentPerformance(view) && view.sequence === controller && !controller.signal.aborted;
+  if (!button || !cancel || !note) return;
   button.disabled = true; cancel.hidden = false; note.textContent = 'Loading supported rule inventory…';
   try {
     if (typeof Plotly === 'undefined') throw Error('Plotly is unavailable; annual charts require the chart library.');
-    const inv = await abortable(inventoryFor(view.gauge),controller.signal); if (!active()) return;
-    const list = selectedAnnualRules(inv,view.rows);
+    const inv = currentInventory(view.gauge,await abortable(inventoryFor(view.gauge),controller.signal)); if (!active()) return;
+    const eligible = view.rows.filter(r => !r.user || (ruleCurrent(r,view.i) && (view.base == null || ruleCurrent(r,view.base))));
+    const list = selectedAnnualRules(inv,eligible);
     if (!list.length) { note.textContent = 'No supported annual rules in this selection.'; return; }
     const c = view.ctx; let completed = 0;
     const results = await boundedMap(list,4,controller.signal,async e => {
@@ -357,7 +379,7 @@ async function loadSequences(view) {
       if (result.error) { errors.push(list[i].code+': '+result.error.message); return; }
       const {e,data:d} = result.value;
       const r = view.rows.find(r => ruleCode(r) === e.code && rulePU(r) === e.pu);
-      const group = r ? [...new Set(r[4].map(o => META.themes[META.objTheme[o]]))].sort().join(' / ') : 'Unclassified';
+      const group = r ? [...new Set(r[4].map(o => META.themes[META.objTheme[o]]))].sort().join(' / ') || 'Unclassified' : 'Unclassified';
       for (const [key,s] of Object.entries(d.scenarios)) {
         const name = `${group} · ${e.code} · ${e.pu} · ${key === 'base' ? c.bn : c.cn} · ${ayName(d.ystart)}`;
         series.push({name,group,thr:e.thr,years:s.years,stats:sequenceStats(s.years)});
@@ -370,7 +392,7 @@ async function loadSequences(view) {
     await plotSequences(series,active);
     if (!active()) return;
     note.textContent = `${series.length} rule/scenario rows. Blue = achieved, dark grey with × = failed, white = incomplete/unavailable (not a failure). Assessment windows differ; aligned start years do not imply simultaneous opportunities. Time since success is unknown before the first observed success or across missing years; rolling values require ${ROLLING_YEARS} consecutive complete years. ${errors.length ? 'Failures: '+errors.join('; ') : ''}`;
-    $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily flow records. '+coverage.join(' | ');
+    $('performanceCoverage').textContent = 'Provenance: py_ewr evaluation of uploaded daily series. '+coverage.join(' | ');
   } catch (error) { if (active()) note.textContent = 'Could not load annual diagnostics: '+error.message; }
   finally {
     // Captured elements cannot mutate replacement controls. A superseded request must not enable a newer one.
