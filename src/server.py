@@ -33,6 +33,7 @@ import hmac
 import ipaddress
 import json
 import math
+import os
 import re
 import secrets
 import socket
@@ -45,6 +46,9 @@ import warnings
 import webbrowser
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
@@ -188,6 +192,50 @@ def load_frames(fmt: str, path: str, sub: str = "") -> tuple[Any, Any]:
     return df_F, df_L
 
 
+_POOL: dict[str, Any] = {}  # per worker process: the frames and parameter sheet shared by every gauge (set once by _pool_init)
+
+
+def _pool_init(df_F: Any, df_L: Any, table: Any, calc_config: Any) -> None:
+    _POOL.update(df_F=df_F, df_L=df_L, table=table, calc_config=calc_config)
+
+
+def _eval_gauge(gauge: Any) -> tuple[Any, Any, str | None]:
+    """py_ewr's calc_sorter for one gauge: (gauge, (results, events) or None, error message or None)."""
+    from py_ewr import evaluate_EWRs
+
+    try:
+        return gauge, evaluate_EWRs.calc_sorter(_POOL["df_F"], _POOL["df_L"], gauge, _POOL["table"], _POOL["calc_config"]), None
+    except Exception as e:
+        return gauge, None, f"{type(e).__name__}: {e}"
+
+
+def evaluate_gauges(df_F: Any, df_L: Any, table: Any, calc_config: Any, progress: Callable[[str, int, int], None]) -> tuple[dict[Any, Any], dict[Any, Any], dict[Any, str]]:
+    """calc_sorter for every gauge in the file, one process per gauge (the gauges are independent and this is most of the run time).
+    Falls back to one gauge at a time when worker processes cannot be started. Returns (results, events, skipped) by gauge."""
+    gauges = sorted(set(df_F.columns) | set(df_L.columns))
+    out: dict[Any, tuple[Any, str | None]] = {}
+    progress("Evaluating gauges", 0, len(gauges))
+    todo = list(gauges)
+    if len(gauges) > 1 and (os.cpu_count() or 1) > 1:
+        try:
+            with ProcessPoolExecutor(min(len(gauges), os.cpu_count() or 1), initializer=_pool_init, initargs=(df_F, df_L, table, calc_config)) as pool:
+                for g, res, err in pool.map(_eval_gauge, gauges):
+                    out[g] = (res, err)
+                    progress("Evaluating gauges", len(out), len(gauges))
+            todo = []
+        except (BrokenProcessPool, OSError):
+            todo = [g for g in gauges if g not in out]
+    if todo:
+        _pool_init(df_F, df_L, table, calc_config)
+        for g in todo:
+            _, res, err = _eval_gauge(g)
+            out[g] = (res, err)
+            progress("Evaluating gauges", len(out), len(gauges))
+    results = {g: out[g][0][0] for g in gauges if out[g][0] is not None}
+    events = {g: out[g][0][1] for g in gauges if out[g][0] is not None}
+    return results, events, {g: out[g][1] for g in gauges if out[g][1] is not None}
+
+
 def run_scenario(
     csv_bytes: bytes,
     sdl_gauges: list[str],
@@ -196,8 +244,12 @@ def run_scenario(
     filename: str = "",
     sub: str = "",
     merge: bool = False,
+    progress: Callable[[str, int, int], None] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats)."""
+    """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats). `progress(stage, done, total)`
+    is called as the run advances."""
+    report = progress or (lambda stage, done, total: None)
+    report("Reading the file", 0, 1)
     import tempfile
 
     import numpy as np
@@ -230,12 +282,7 @@ def run_scenario(
     # A gauge that cannot be evaluated (e.g. level EWRs with no level data in the file) is skipped and reported
     # instead of stopping the whole run.
     calc_config = data_inputs.get_ewr_calc_config(None)
-    results, events, skipped = {}, {}, {}
-    for gauge in sorted(set(df_F.columns) | set(df_L.columns)):
-        try:
-            results[gauge], events[gauge] = evaluate_EWRs.calc_sorter(df_F, df_L, gauge, table, calc_config)
-        except Exception as e:
-            skipped[gauge] = f"{type(e).__name__}: {e}"
+    results, events, skipped = evaluate_gauges(df_F, df_L, table, calc_config, report)
     if not results:
         raise ValueError("No gauge in the file could be evaluated: " + "; ".join(f"{g} ({m})" for g, m in skipped.items()))
     flow_gauges = sorted({str(g) for g in df_F.columns} & set(sdl_gauges))
@@ -278,7 +325,9 @@ def run_scenario(
     res_by, ev_by = {str(g): v for g, v in results.items()}, {str(g): v for g, v in events.items()}  # py_ewr's yearly results and events by gauge
     prm_by = {(str(p.Gauge), p.PlanningUnitName, p.Code): p for p in table.drop_duplicates(["Gauge", "Code", "PlanningUnitName"]).itertuples()}
     handlers = diagnostic_handlers()
-    for r in res.itertuples():
+    for i, r in enumerate(res.itertuples()):
+        if i % 5 == 0:
+            report("Summarising results", i, len(res))
         k = (str(r.Gauge), r.PlanningUnit, r.Code)
         mi = pd.to_numeric(r.MaxInterEventYears, errors="coerce")
         if k[0] not in daily:
@@ -349,7 +398,10 @@ def worker(
 ) -> None:
     job = JOBS[job_id]
     try:
-        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge)
+        def progress(stage: str, done: int, total: int) -> None:
+            job["progress"] = {"stage": stage, "done": done, "total": total}
+
+        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge, progress)
         job["status"] = "done"
     except Exception as e:  # reported to the page
         job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"

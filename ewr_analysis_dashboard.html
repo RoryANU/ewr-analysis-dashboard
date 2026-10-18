@@ -53,7 +53,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 #scnDlg{position:fixed}#scnClose{position:absolute;top:8px;right:10px;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#4b5563;padding:2px 8px}#scnClose:hover{color:#111}
 #scnDlg h3{margin:0 0 4px;font-size:15px}#scnDlg .fld{display:flex;flex-direction:column;gap:3px;margin:10px 0}#scnDlg .fld>span{font-size:11.5px;font-weight:600;color:#4b5563}
 #scnDlg input[type=text],#scnDlg select{font:inherit;padding:5px 8px;border:1px solid #c5ccd6;border-radius:6px}#scnDlg .hint{font-size:11.5px;color:var(--mut);line-height:1.5}
-#scnDlg .acts{display:flex;gap:8px;align-items:center;margin-top:12px}#scnStatus{font-size:12px;margin-top:8px;white-space:pre-wrap}#scnStatus.err{color:#b3261e}#scnStatus.ok{color:#1b7a3a}
+#scnDlg .acts{display:flex;gap:8px;align-items:center;margin-top:12px}#scnSteps{list-style:none;margin:10px 0 0;padding:0;font-size:12.5px}#scnSteps li{padding:2px 0 2px 22px;position:relative;color:#8a8f98}#scnSteps li:before{content:"○";position:absolute;left:4px}#scnSteps li.done{color:#1b7a3a}#scnSteps li.done:before{content:"✓"}#scnSteps li.cur{color:inherit;font-weight:600}#scnSteps li.cur:before{content:"●";color:#2a5db0}#scnSteps small{font-weight:400;color:#6b7280;margin-left:6px}#scnStatus{font-size:12px;margin-top:8px;white-space:pre-wrap}#scnStatus.err{color:#b3261e}#scnStatus.ok{color:#1b7a3a}
 #scnList{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}#scnList div{display:flex;align-items:center;gap:8px;padding:2px 0}#scnList span{flex:1}
 .tabs{display:inline-flex}.tabs button{border-radius:0}.tabs button:first-child{border-radius:6px 0 0 6px}.tabs button:last-child{border-radius:0 6px 6px 0}
 .tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -131,7 +131,7 @@ body.nobar #bar{display:none}body.nobar #tabT{display:block}
   <label class="fld" id="scnSubWrap" style="display:none"><span>Scenario in workbook (e.g. CP1A; blank = first)</span><input id="scnSub" type="text" maxlength="40" placeholder="first scenario in the sheet"></label>
   <label class="fld"><span>Time-series file (.csv)</span><input id="scnFile" type="file" accept=".csv,.txt,text/csv"></label>
   <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download an example CSV header (one column per gauge, named <gauge>_flow)">Download template header</button></div>
-  <div id="scnStatus"></div><div id="scnList"></div></dialog>
+  <ol id="scnSteps" hidden></ol><progress id="scnBar" max="100" value="0" hidden style="width:100%;margin-top:8px"></progress><div id="scnStatus"></div><div id="scnList"></div></dialog>
 <button id="tabT" class="ghost" title="Show the title and options bar">▾ Controls</button>
 <div id="main"><button id="tabL" class="ghost edge" title="Show the EWR guide">▸ EWR guide</button><button id="tabR" class="ghost edge" title="Show the results panel">◂ Results</button>
 <div id="lpanel" aria-label="EWR guide"></div><div id="ldivider" title="Drag to resize the guide (double-click to reset)"><button class="grip" id="gripL" title="Hide the EWR guide" aria-label="Hide the EWR guide">◂</button></div>
@@ -1287,6 +1287,9 @@ const FORMATS={
 function syncFormat(){ const f=FORMATS[$("scnFmt").value]; $("scnFmtHint").textContent=f.hint; $("scnFile").accept=f.accept; $("scnTpl").style.display=f.tpl?"":"none"; $("scnSubWrap").style.display=f.sub?"":"none"; }
 $("scnFmt").innerHTML=Object.keys(FORMATS).map(k=>`<option>${esc(k)}</option>`).join(""); $("scnFmt").onchange=syncFormat; syncFormat();
 const allGauges=[...new Set(ROWS.map(r=>META.gauges[r[2]]))];
+const STEPS=[["Reading the file","Read the file and match its sites to gauges"],["Evaluating gauges","Run the EWR tool on each gauge"],["Summarising results","Work out FR, ETP, gaps and drought windows"]];  // upload and adding to the dashboard are near-instant, so they get no step of their own
+function showSteps(stage,p,elapsed){ if(stage==="Uploading") stage="Reading the file"; const ol=$("scnSteps"), i=stage==="Adding to the dashboard"?STEPS.length:STEPS.findIndex(x=>x[0]===stage); ol.hidden=i<0;
+  if(i<0) return; ol.innerHTML=STEPS.map((x,k)=>`<li class="${k<i?"done":k===i?"cur":""}">${x[1]}${k===i&&p&&p.total>1?`<small>${p.done} of ${p.total}</small>`:""}${k===i&&elapsed!=null?`<small>${Math.round(elapsed)} s</small>`:""}</li>`).join(""); }
 function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=cls||""; }
 async function serverUp(){ try{ const r=await fetch("/api/ping",{cache:"no-store"}); return r.ok; }catch(e){ return false; } }
 $("addScn").onclick=async()=>{
@@ -1306,14 +1309,18 @@ $("scnRun").onclick=async()=>{
   if(!into&&CUSTOM.some(c=>!c.removed&&c.name===name)) return setStatus("A scenario with that name already exists; choose another name.","err");
   if(!file) return setStatus("Choose a "+fmt+" file.","err");
   if(!(await serverUp())) return setStatus("The analysis server is not running. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
-  $("scnRun").disabled=true; setStatus("Uploading "+file.name+" …");
+  $("scnRun").disabled=true; $("scnBar").value=0; $("scnBar").hidden=true; setStatus(""); showSteps("Uploading");
   try{
     const scnId=into&&into.id?into.id:"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv",...(into?{"X-Merge":"1"}:{}),"X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Subscenario":$("scnSub").value.trim(),"X-Filename":file.name},body:file}), j=await r.json();
     if(!j.job) throw new Error(j.message||"upload failed");
     for(;;){ await new Promise(res=>setTimeout(res,1000));
       const q=await (await fetch("/api/job?id="+j.job,{cache:"no-store"})).json();
-      if(q.status==="running"){ setStatus(`Running the EWR tool … ${Math.round(q.elapsed)} s`); continue; }
+      if(q.status==="running"){
+        const p=q.progress, W={"Reading the file":[0,5],"Evaluating gauges":[5,80],"Summarising results":[80,100]}[p&&p.stage], bar=$("scnBar"); showSteps(p?p.stage:"Reading the file",p,q.elapsed);
+        if(W){ const f=p.total?p.done/p.total:0; bar.hidden=false; bar.value=W[0]+f*(W[1]-W[0]); }
+        continue; }
       if(q.status==="error") throw new Error(q.message||"run failed");
+      showSteps("Adding to the dashboard"); $("scnBar").value=100;
       const vals=q.rows.map(x=>VALK.map(k=>x[k]??null)), st=q.stats||{}, sk=Object.keys(st.skipped||{});
       flowsChanged(); let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[]); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt);
       fillPolicyOptions(); renderCustomList();
@@ -1322,7 +1329,7 @@ $("scnRun").onclick=async()=>{
       setStatus(`${into?"Added to":"Added"} "${name}" (${fmt}, ${q.elapsed} s). ${vals.length} EWR results calculated from your file; ${res.matched} are mapped to ecological objectives and shown${res.matched<vals.length?` (${vals.length-res.matched} have no objective mapping in the review and are left out)`:""}, across ${cs.sdls.length} SDL unit${cs.sdls.length===1?"":"s"} (${st.gauges_in_file} gauge${st.gauges_in_file===1?"":"s"} found in the file).`+(sk.length?`\nCould not evaluate: ${sk.join(", ")} (${st.skipped[sk[0]]}).`:"")+
         (!(st.flow_gauges||[]).length?"\nFlow charts are not available for this run (no daily flow series kept).":"")+(isDiff()?"\nSet as the Comparison scenario.":"\nSet as the Scenario."),"ok"); break; }
   }catch(e){ setStatus("Failed: "+e.message,"err"); }
-  $("scnRun").disabled=false;
+  $("scnBar").hidden=true; $("scnSteps").hidden=true; $("scnRun").disabled=false;
 };
 function updateClimDisable(){ if(isCustom(S.pol)&&S.cli!==0){ S.cli=0; $("cli").value=0; } if(isCustom(S.bpol)&&S.bcli!==0){ S.bcli=0; $("bcli").value=0; }
   $("cli").disabled=isCustom(S.pol); $("bcli").disabled=isCustom(S.bpol); }
