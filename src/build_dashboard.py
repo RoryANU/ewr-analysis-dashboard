@@ -314,6 +314,86 @@ def ewr_thresholds(lookups: dict[str, Any], table: list[list[Any]], sheet: pd.Da
     return {f"{g}|{c}": float(v) for (g, c), v in sorted(low.items()) if (g, c) in wanted}
 
 
+EWR_COLS = [  # parameter_sheet.csv column -> short key in the page's EWR index (the guide's search and tutorials)
+    ("PlanningUnitName", "pu"),
+    ("State", "st"),
+    ("Gauge", "g"),
+    ("CompliancePoint/Node", "gn"),
+    ("Code", "c"),
+    ("Catchment_BPRegion", "ca"),
+    ("SWSDLName", "sdl"),
+    ("FlowLevelVolume", "k"),
+    ("EcoObj", "eo"),
+    ("TargetFrequency", "tf"),
+    ("TargetFrequencyMin", "tfl"),
+    ("TargetFrequencyMax", "tfh"),
+    ("EventsPerYear", "epy"),
+    ("Duration", "dur"),
+    ("MinSpell", "ms"),
+    ("FlowThresholdMin", "tmin"),
+    ("FlowThresholdMax", "tmax"),
+    ("MaxInter-event", "mi"),
+    ("WithinEventGapTolerance", "gap"),
+    ("LevelThresholdMin", "lmin"),
+    ("LevelThresholdMax", "lmax"),
+    ("VolumeThreshold", "vol"),
+    ("AccumulationPeriod", "acc"),
+    ("Multigauge", "mg"),
+]
+EWR_STR = {"pu", "st", "g", "gn", "c", "ca", "sdl", "k", "eo", "mg", "h"}
+
+
+def ewr_handlers(sheet: pd.DataFrame) -> list[str | None]:
+    """py_ewr's handler for each sheet row, from its calc config (key "<code>-<single|multigauge>-<F|L|V>"); None when py_ewr is not installed.
+    The EWR guide only has a tutorial for flow_handle and lowflow_handle rows."""
+    try:
+        from py_ewr import data_inputs
+
+        cfg = data_inputs.get_ewr_calc_config(None)
+    except Exception:  # noqa: BLE001 - the guide then shows "demo still in development" for every EWR
+        print("py_ewr not available: the EWR guide will have no tutorials")
+        return [None] * len(sheet)
+    by_key = {key: handler for handler, keys in cfg.items() for key in keys}
+    multi = sheet["Multigauge"].notna() & sheet["Multigauge"].astype(str).str.strip().ne("")
+    keys = sheet["Code"].astype(str) + "-" + multi.map({True: "multigauge", False: "single"}) + "-" + sheet["FlowLevelVolume"].astype(str)
+    return [by_key.get(k, "unmapped") for k in keys]
+
+
+def ewr_index(root: Path = ROOT) -> dict[str, Any]:
+    """Every row of data/reference/parameter_sheet.csv (kept equal to the MDBA EWR tool's copy by src/sync_parameter_sheet.py), column-wise:
+    {"keys": [...], "cols": {key: [value per row]}}. Repeated strings are stored once in "strs" and referenced by index."""
+    path = root / "data/reference/parameter_sheet.csv"
+    if not path.exists():  # a test fixture tree has no copy of the sheet: use the repository's
+        path = ROOT / "data/reference/parameter_sheet.csv"
+    sheet = pd.read_csv(path, dtype={"Gauge": str, "Multigauge": str}, low_memory=False)
+    strs: list[str] = []
+    seen: dict[str, int] = {}
+    cols: dict[str, list[Any]] = {}
+    # StartMonth / EndMonth are text such as "9.15" = 15 September; py_ewr splits them at the "." and reads the rest as the day.
+    # No day means the whole month: sd defaults to 1 and ed to null (the page uses the month's last day).
+    raw = pd.read_csv(path, dtype=str, usecols=["StartMonth", "EndMonth"])
+    for src, mk, dk in (("StartMonth", "sm", "sd"), ("EndMonth", "em", "ed")):
+        parts = raw[src].fillna("").str.split(".", n=1, expand=True).reindex(columns=[0, 1]).fillna("")
+        cols[mk] = [int(m) if m else None for m in parts[0]]
+        cols[dk] = [int(d) if d else (1 if dk == "sd" else None) for d in parts[1]]
+    sheet["_handler"] = ewr_handlers(sheet)
+    for src, key in [*EWR_COLS, ("_handler", "h")]:
+        vals = sheet[src] if src in sheet else pd.Series([None] * len(sheet))
+        out: list[Any] = []
+        for v in vals:
+            if pd.isna(v):
+                out.append(None)
+            elif key in EWR_STR:
+                out.append(seen.setdefault(str(v), len(seen)))
+                if len(strs) < len(seen):
+                    strs.append(str(v))
+            else:
+                f = float(v)
+                out.append(int(f) if f.is_integer() else round(f, 4))
+        cols[key] = out
+    return {"n": len(sheet), "strs": strs, "cols": cols}
+
+
 def build_meta(lookups: dict[str, Any], ref: pd.DataFrame, ewr_thr: dict[str, float] | None = None) -> dict[str, Any]:
     objs = lookups["objs"]
     return {
@@ -335,6 +415,7 @@ def build_meta(lookups: dict[str, Any], ref: pd.DataFrame, ewr_thr: dict[str, fl
 def render_html(template_text: str, payload: dict[str, Any]) -> str:
     """Fill the template's `__NAME__` slots with compact JSON, in the order given."""
     html = template_text.replace("__PERFORMANCE_JS__", (HERE / "performance.js").read_text(encoding="utf-8"))
+    html = html.replace("__EWR_GUIDE_JS__", (HERE / "ewr_guide.js").read_text(encoding="utf-8"))
     for tag, val in payload.items():
         html = html.replace(tag, json.dumps(val, separators=(",", ":")).replace("<", "\\u003c"))
     return html
@@ -363,6 +444,7 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
         "__RIVERS__": rivers,
         "__CONSTRAINTS__": load_constraints(root),
         "__META__": build_meta(lookups, ref, ewr_thresholds(lookups, table, sheet)),
+        "__EWRIDX__": ewr_index(root),
         "__SCENARIOS__": [],
     }
 

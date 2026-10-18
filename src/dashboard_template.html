@@ -75,9 +75,33 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
 .nodata{color:#9ca3af;text-align:center;font-style:italic}
 #glossDlg{border:1px solid var(--line);border-radius:10px;padding:16px 18px;width:min(620px,92vw);font-size:13px;max-height:86vh;overflow:auto}#glossDlg::backdrop{background:#0004}#glossDlg h3{margin:0 0 6px;font-size:15px}#glossDlg h4{margin:12px 0 4px;font-size:12.5px}#glossDlg dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:3px 12px}#glossDlg dt{font-weight:700}#glossDlg dd{margin:0}#glossClose{position:absolute;top:8px;right:10px;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#4b5563}
 .perfleg .ramp{height:10px;width:160px;border:1px solid #0004;margin:3px 0}
-</style></head><body><div id="app">
+/* ---- layout: left EWR guide, map, right panel; every panel and the title bar can be hidden so the map fills the window ---- */
+#main{position:relative}#main>#map{min-width:200px}
+#lpanel{flex:0 1 auto;width:var(--lpanel-w,480px);max-width:70%;min-width:260px;overflow:auto;container-type:inline-size;border-right:1px solid var(--line);padding:12px 14px;background:#fff}
+#lpanel h2{font-size:15px;margin:0 0 2px}
+#ldivider{flex:none;width:6px;margin:0 -3px;cursor:col-resize;z-index:500;background:transparent;position:relative}#ldivider:hover,#ldivider.drag{background:#1f4e8c55}
+.grip{position:absolute;top:50%;transform:translateY(-50%);width:16px;height:46px;padding:0;line-height:1;font-size:11px;border-radius:8px;background:#fff;border:1px solid #9aa3b0;color:var(--acc);z-index:600;opacity:.85}.grip:hover{opacity:1}
+#ldivider .grip{left:-5px}#divider .grip{left:-5px}
+.edge{position:absolute;z-index:1100;display:none;box-shadow:0 1px 4px #0003;font-weight:600}
+#tabL,#tabR{top:50%;transform:translateY(-50%);writing-mode:vertical-rl;padding:10px 5px;border-radius:8px}#tabL{left:4px}#tabR{right:4px}#tabT{position:absolute;z-index:1250;display:none;top:0;left:50%;transform:translateX(-50%);border-radius:0 0 8px 8px;box-shadow:0 1px 4px #0003;font-weight:600}
+#app{position:relative}
+body.nol #lpanel,body.nol #ldivider{display:none}body.nol #tabL{display:block}
+body.norp #panel,body.norp #divider{display:none}body.norp #tabR{display:block}
+body.nobar #bar{display:none}body.nobar #tabT{display:block}
+#barHide{padding:2px 7px}
+.gq{display:flex;flex-direction:column;gap:6px;margin:8px 0}.gq input,.gq select{font:inherit;padding:4px 6px;border:1px solid #c5ccd6;border-radius:6px;min-width:0;width:100%;background:#fff}.gqrow{display:flex;gap:6px}.gqrow>*{flex:1 1 0}
+.gmsg{font-size:11.5px;color:var(--mut);margin:2px 0 4px}.glist{max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.gitem{display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--line);font-size:12px}.gitem:last-child{border-bottom:0}.gitem.on{background:#f1f6fc}.gitem .gtxt{flex:1;min-width:0}.gitem span{color:var(--mut);font-size:11px}.gadd:disabled{opacity:.45;cursor:not-allowed}
+.gsel{margin-top:12px}.gselh{display:flex;align-items:center;justify-content:space-between}.gempty{color:var(--mut);font-size:12px;padding:8px 2px}
+.ewrcard>summary{display:flex;align-items:center;gap:8px}.ewrcard .gtitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ewrcard .grm{border:0;background:none;font-size:16px;line-height:1;padding:0 4px;color:var(--mut)}
+.gstage{font-size:11.5px;color:var(--mut);margin:6px 0 2px}.gcap{font-size:12.5px;line-height:1.45;min-height:3.9em;margin-bottom:4px}.gsvg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;background:#fff;font-family:Verdana,system-ui,sans-serif}
+.gctl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.gdots{display:inline-flex;gap:5px;margin-left:auto}.gdots button{width:10px;height:10px;padding:0;border-radius:50%;background:#dde3ec;border:0}.gdots button.on{background:var(--acc);transform:scale(1.25)}.gdots button.done{background:#9fb3cc}
+.gdev{margin:8px 0;padding:10px 12px;border:1px dashed #c5ccd6;border-radius:8px;background:#f7f9fc;font-size:12.5px;line-height:1.5}.gdev code{font-size:11.5px}
+.gnote{font-size:11px;color:var(--mut);margin-top:6px}
+@media(max-width:800px){#lpanel{flex:1;width:100%;max-width:none;min-width:0;border-right:0;border-bottom:1px solid var(--line)}#ldivider{display:none}}
+</style></head><body class="nol"><div id="app">
 <div id="bar">
-  <h1>EWR analysis tool</h1><button id="barTog" class="ghost" aria-expanded="false" aria-controls="bar">Controls ▾</button>
+  <h1>EWR analysis tool</h1><button id="barHide" class="ghost" title="Hide this bar to see more of the map (a tab at the top brings it back)" aria-label="Hide the title and options bar">▴</button><button id="barTog" class="ghost" aria-expanded="false" aria-controls="bar">Controls ▾</button>
   <span class="tabs" id="srcTabs"><button id="srcD" class="on" title="The review's built-in results: all policies and climates, all SDL units">Demo data</button><button id="srcU" title="Only the model output you add yourself, with the extra flow charts">Your data</button></span>
   <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and % of record beyond MRIP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
@@ -90,6 +114,7 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label id="ethrL" style="display:none" title="An EWR counts as achieved (1) when its % of record beyond MRIP is at or below this value, otherwise 0">MRIP achieved when % of record beyond MRIP ≤ <input id="ethr" type="number" min="0" max="100" step="1" value="0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <label id="thrL" style="display:none" title="An EWR counts as achieved (1) when its frequency ratio is at least this value, otherwise 0">Frequency threshold (target = 1.0) ≥ <input id="thr" type="number" min="0" max="2" step="0.05" value="1.0" style="width:56px;font:inherit;padding:2px 4px"></label>
   <button id="addScn" class="ghost" title="Add your own scenario from a Standard time-series file">＋ Add scenario</button>
+ <button id="guideBtn" class="ghost" title="Open the EWR guide on the left: search EWRs and see how each one works" aria-pressed="false">📘 EWR guide</button>
  <button id="glossBtn" class="ghost" title="What the abbreviations mean">ⓘ Glossary</button>
   <button id="share" class="ghost" title="Copy a link to this exact view">🔗 <span id="shareT"></span></button>
 </div>
@@ -107,11 +132,15 @@ td.cur{outline:2px solid var(--acc);outline-offset:-2px}
   <label class="fld"><span>Time-series file (.csv)</span><input id="scnFile" type="file" accept=".csv,.txt,text/csv"></label>
   <div class="acts"><button id="scnRun">Run EWR tool</button><button id="scnTpl" class="ghost" title="Download an example CSV header (one column per gauge, named <gauge>_flow)">Download template header</button></div>
   <div id="scnStatus"></div><div id="scnList"></div></dialog>
-<div id="main"><div id="map"></div><div id="divider" title="Drag to resize the panel (double-click to reset)"></div><div id="panel"></div></div></div>
+<button id="tabT" class="ghost" title="Show the title and options bar">▾ Controls</button>
+<div id="main"><button id="tabL" class="ghost edge" title="Show the EWR guide">▸ EWR guide</button><button id="tabR" class="ghost edge" title="Show the results panel">◂ Results</button>
+<div id="lpanel" aria-label="EWR guide"></div><div id="ldivider" title="Drag to resize the guide (double-click to reset)"><button class="grip" id="gripL" title="Hide the EWR guide" aria-label="Hide the EWR guide">◂</button></div>
+<div id="map"></div><div id="divider" title="Drag to resize the panel (double-click to reset)"><button class="grip" id="gripR" title="Hide the results panel" aria-label="Hide the results panel">▸</button></div><div id="panel"></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
 <script>
 const DATA=__DATA__, GAUGES=__GAUGES__, ROWS=__ROWS__, META=__META__, RIVERS=__RIVERS__, CONSTRAINTS=__CONSTRAINTS__;
+const EWRIDX=__EWRIDX__;   // the EWR parameter sheet (data/reference/parameter_sheet.csv), column-wise: the EWR guide panel
 const PRELOADED=__SCENARIOS__;   // scenarios calculated outside the page (e.g. by a Databricks notebook) and embedded in the HTML: [{name, fmt, vals:[[pu,gauge,ewr,fr,et,ey,ny],...]}] (VALK)
 // ROW = [planningUnit, sdl, gauge, ewr, [objectives], [regimes], fr[28], etp[28], {T, ny, dur, mrip}, achievedYears[28]]
 //   r[8]: target % of years, record years (an upload's own in nyAt[scenario index]), required days, MRIP years; r[9]: EventYears per scenario;
@@ -1315,6 +1344,33 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
   dv.ondblclick=()=>{ apply(600); try{ localStorage.removeItem("ewrPanelW"); }catch(e){} };
 })();
 
+// ---- hideable panels: the EWR guide (left), the results panel (right) and the title bar; the map takes the freed space -----------------------
+(function(){ const B=document.body, main=$("main"), lp=$("lpanel"), ld=$("ldivider");
+  const small=()=>matchMedia("(max-width:800px)").matches;
+  const keep=(k,v)=>{ try{ localStorage.setItem(k,v?"1":"0"); }catch(e){} }, got=k=>{ try{ return localStorage.getItem(k); }catch(e){ return null; } };
+  const settle=()=>{ map.invalidateSize(); if(window.ewrGuide&&B.classList.contains("nol")) ewrGuide.stopAll(); };
+  const set=(cls,on,key)=>{ B.classList.toggle(cls,on); if(key) keep(key,on); $("guideBtn").setAttribute("aria-pressed",String(!B.classList.contains("nol"))); settle(); };
+  const guide=on=>{ if(on&&small()) B.classList.add("norp"); set("nol",!on,"ewrGuideOff"); };
+  $("guideBtn").onclick=()=>guide(B.classList.contains("nol"));
+  $("tabL").onclick=()=>guide(true); $("gripL").onclick=()=>guide(false);
+  $("tabR").onclick=()=>{ if(small()) B.classList.add("nol"); set("norp",false,"ewrRightOff"); }; $("gripR").onclick=()=>set("norp",true,"ewrRightOff");
+  $("barHide").onclick=()=>set("nobar",true,"ewrBarOff"); $("tabT").onclick=()=>set("nobar",false,"ewrBarOff");
+  for(const g of [$("gripL"),$("gripR")]) g.addEventListener("pointerdown",e=>e.stopPropagation());   // a click on the grip is not the start of a divider drag
+  if(got("ewrRightOff")==="1") B.classList.add("norp");
+  if(got("ewrBarOff")==="1") B.classList.add("nobar");
+  if(got("ewrGuideOff")==="0"&&!small()) B.classList.remove("nol");   // the guide is optional: closed until the user opens it, then remembered
+  $("guideBtn").setAttribute("aria-pressed",String(!B.classList.contains("nol")));
+  // left divider: drag to resize (the map and the right panel keep at least 160px between them)
+  const setW=w=>lp.style.setProperty("--lpanel-w",w+"px");
+  try{ const w=+localStorage.getItem("ewrLeftW"); if(w>=260) setW(w); }catch(e){}
+  ld.onpointerdown=e=>{ ld.setPointerCapture(e.pointerId); ld.classList.add("drag");
+    const mv=ev=>{ const r=main.getBoundingClientRect(), rp=B.classList.contains("norp")?0:$("panel").offsetWidth; setW(Math.round(Math.max(260,Math.min(ev.clientX-r.left,r.width-rp-160)))); map.invalidateSize(); };
+    const up=()=>{ ld.classList.remove("drag"); ld.removeEventListener("pointermove",mv); ld.removeEventListener("pointerup",up); try{ localStorage.setItem("ewrLeftW",parseInt(lp.style.getPropertyValue("--lpanel-w"))); }catch(e){} };
+    ld.addEventListener("pointermove",mv); ld.addEventListener("pointerup",up); };
+  ld.ondblclick=()=>{ lp.style.removeProperty("--lpanel-w"); map.invalidateSize(); try{ localStorage.removeItem("ewrLeftW"); }catch(e){} };
+  setTimeout(()=>map.invalidateSize(),0);
+})();
+
 // ---- events ------------------------------------------------------------------------------------------------------
 const policyChoices=()=>S.src==="user"?CUSTOM.filter(c=>!c.removed).map(c=>c.P):[0,1,2,3];   // demo: the four built-in policies; your data: your scenarios
 function fillPolicyOptions(){
@@ -1414,6 +1470,7 @@ $("share").onclick=()=>{ pushHash(); const done=()=>{ $("shareT").textContent="c
   if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(location.href).then(done,()=>prompt("Copy this link",location.href)); else prompt("Copy this link",location.href); };
 window.addEventListener("hashchange",()=>{ if(location.hash.slice(1)!==encodeState()){ applyHash(); refresh(); } });
 __PERFORMANCE_JS__
+__EWR_GUIDE_JS__
 restoreCustom();
 for(const c of PRELOADED) if(!CUSTOM.some(x=>!x.removed&&x.name===c.name)) addCustom(c.name,c.vals,null,[],c.fmt||"Standard time-series");
 fillPolicyOptions();

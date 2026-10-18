@@ -45,7 +45,20 @@ repos:
         files: ^(src/|tests/|data/|requirements|pyproject\.toml|ewr_analysis_dashboard\.html)
       - id: node-tests
         name: node --test (dashboard JavaScript)
-        entry: node --test tests/test_performance.js tests/test_dashboard_core.js
+        entry: node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js
         language: system # node comes from nodejs-wheel in requirements-dev.txt (or any Node >= 22 on PATH)
         pass_filenames: false
-        files: ^(src/(dashboard_template\.html|performance\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
+        files: ^(src/(dashboard_template\.html|performance\.js|ewr_guide\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
+      - id: parameter-sheet-sync-edit
+        name: parameter sheet matches MDBA EWR_tool (when edited)
+        entry: python3 src/sync_parameter_sheet.py
+        language: system # needs internet; passes with a warning when offline
+        pass_filenames: false
+        files: ^data/reference/parameter_sheet\.csv$
+      - id: parameter-sheet-sync-push
+        name: parameter sheet matches MDBA EWR_tool (on push)
+        entry: python3 src/sync_parameter_sheet.py
+        language: system # install with `pre-commit install --hook-type pre-push`
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

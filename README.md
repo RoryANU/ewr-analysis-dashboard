@@ -9,6 +9,14 @@ It can show a single scenario or the difference between a base and a comparison 
 
 The **More** menu adds the share of EWRs meeting the frequency threshold, failing badly or achieving their MRIP, the **duration ratio** (event length ÷ required duration, capped at 2; for the review results an approximation from the mean event length) and, for your own scenarios, the **worst gap** between successful events ÷ MRIP (the worst EWR sets each cell). Your own scenarios can also be viewed over the **drought windows** (Federation 1895–96 to 1902–03, WWII 1937–38 to 1945–46, Millennium 1996–97 to 2009–10, Tinderbox 2017–18 to 2019–20; defined in `src/drought_windows.py`).
 
+## EWR guide and hideable panels
+
+The **📘 EWR guide** button in the bar opens a panel on the left that mirrors the results panel (same cards, resizable by its own divider). Search the EWR parameter sheet by free text (code, gauge ID or name, planning unit, catchment, objective), state, planning unit, flow / level / volume, gauge and code, then **Add** up to 5 EWRs. Each becomes a dropdown such as "EWR · BF1_a · 425008 · Darling River at Wilcannia" holding an animated tutorial, in the style of the explainer video in `watering_viz_code`: what the EWR is, the threshold, the EWR window, the duration, a year that misses, the frequency target and frequency ratio, the maximum gap between events, and a summary. Play, pause, step and replay with the controls; the dots jump to a step. The tutorial's flow record is **illustrative**, generated from the EWR's own parameters (threshold or range, duration, window, events per year, accumulation volume, target frequency, maximum inter-event period), not gauge data. Your selection and panel states are remembered in the browser.
+
+The left panel, the results panel and the title/options bar can each be hidden completely with the small handles (◂ ▸ on the dividers, ▴ in the bar) so the map fills the window; a tab at the edge brings each back.
+
+The guide reads `data/reference/parameter_sheet.csv`, a copy of [`parameter_sheet.csv` in MDBAuth/EWR_tool](https://github.com/MDBAuth/EWR_tool/blob/main/py_ewr/parameter_metadata/parameter_sheet.csv). `python3 src/sync_parameter_sheet.py` checks the copy against GitHub (exit 1 when it differs; a warning only when offline) and `python3 src/sync_parameter_sheet.py --update` refreshes it; follow with `python3 src/build_dashboard.py`. The same check runs as a pre-commit hook when the file is edited, as a **pre-push hook** (`pre-commit install --hook-type pre-push`) and as the `network` test `tests/test_parameter_sheet_sync.py`.
+
 ## Quick start (no technical knowledge needed)
 
 The tool runs on your own computer: you start it, and it opens in your web browser. You can load your own model output (a CSV or other supported file), run the EWR calculations on it, and see the charts update straight away.
@@ -37,6 +45,8 @@ src/
   embed_scenarios.py             runs py_ewr on your files and embeds the results in a copy of the page (used by the notebook)
   server.py                      local server: serves the page and runs py_ewr on your own model output (python3 src/server.py also works)
   build_dashboard.py             build script: reads data/, fills the template, writes the HTML
+  ewr_guide.js                   the EWR guide panel: search, selection and the tutorial animations (inlined into the page)
+  sync_parameter_sheet.py        checks / updates data/reference/parameter_sheet.csv against the MDBA EWR tool on GitHub
   dashboard_template.html        the page itself (markup, styles, JavaScript) with data placeholders
   flow_regime_mappings.py        maps an EWR code to its flow regime when the results do not give one
 notebooks/
@@ -52,6 +62,7 @@ data/
     constraint_sites.csv         constraint sites drawn on the map (MDBA constraint focus areas; hand-maintained, approximate locations)
   reference/
     objective_reference.csv      ecological objective codes, descriptions and themes
+    parameter_sheet.csv          the EWR tool's parameter sheet (copy of MDBAuth/EWR_tool; the EWR guide's source, kept in step by sync_parameter_sheet.py)
   example_scenarios/             small made-up daily flow files for trying "Your data" (Broken and Goulburn gauges)
 requirements.txt                 Python packages for the build and the server (run.py installs them for you)
 ```
@@ -181,6 +192,8 @@ pytest tests/test_server_numerics.py -k heatmap   # one file / one topic
 | `test_source_data.py` | arithmetic promised by `data/results/*.csv` (FR = Frequency ÷ Target, ETP = L ÷ record days, ...) |
 | `test_server_numerics.py` | exact values for the heat map, duration curves, hydrograph, spells, gaps and runs in `src/server.py`, plus strict-JSON output |
 | `test_pyewr_wrappers.py` | `ewr_list`, `load_frames`, `run_scenario` and `ewr_eval` against py_ewr's parameter table and an independent recomputation; a baseline of the example scenario's results |
+| `test_ewr_index.py`, `test_ewr_guide.js` | the EWR index embedded in the page (against the CSV, including month.day windows) and the EWR guide: search, the 5-EWR cap, and for every row of the sheet that the illustrative met years meet the rule, the missed years do not, and every tutorial step renders |
+| `test_parameter_sheet_sync.py` | the local parameter sheet equals the one on GitHub (`network` test, skipped offline) |
 | `test_flow_regime_rules.py`, `test_northern_connectivity.py`, `test_embed_scenarios.py` | the flow-regime rule, the workbook reader and the notebook helper |
 
 Baselines live in `tests/fixtures/snapshots/`. After an *intended* change, regenerate them with `UPDATE_SNAPSHOTS=1 pytest -m "slow or not slow"` and review the diff before committing. If the HTML test says the page is stale, run `python3 src/build_dashboard.py` and commit the result.

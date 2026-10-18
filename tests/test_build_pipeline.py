@@ -439,8 +439,9 @@ class TestMetaAndRender:
 class TestBuildPayload:
     def test_payload_end_to_end(self, capsys):
         p = bd.build_payload(MINI)
-        assert list(p) == ["__DATA__", "__GAUGES__", "__ROWS__", "__RIVERS__", "__CONSTRAINTS__", "__META__", "__SCENARIOS__"]
+        assert list(p) == ["__DATA__", "__GAUGES__", "__ROWS__", "__RIVERS__", "__CONSTRAINTS__", "__META__", "__EWRIDX__", "__SCENARIOS__"]
         assert p["__SCENARIOS__"] == []
+        assert p["__EWRIDX__"]["n"] > 3000
         assert len(p["__ROWS__"]) == 6
         assert [g["id"] for g in p["__GAUGES__"]] == ["409025", "A4260524", "A4261002"]
         assert p["__RIVERS__"]["features"][0]["geometry"]["coordinates"] == [[146.0, -36.0], [146.5, -36.5]]
