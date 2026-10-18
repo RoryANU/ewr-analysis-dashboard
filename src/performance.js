@@ -112,7 +112,7 @@ function detailText(view, index) {
  * Include baseline columns when view.base is set; finite ETP values above 1 are displayed as 100%.
  */
 function detailTable(view, index) {
-  const fmtFR = v => Number.isFinite(v) ? v.toFixed(3) : 'missing', fmtET = v => Number.isFinite(v) ? (100*v).toFixed(1)+'%' : 'missing', hasBase = view.base != null;
+  const fmtFR = v => Number.isFinite(v) ? String(+v.toPrecision(6)) : 'missing', fmtET = v => Number.isFinite(v) ? +(100*v).toFixed(3)+'%' : 'missing', hasBase = view.base != null;
   return `<div style="overflow:auto;max-height:320px"><table><thead><tr><th>EWR</th><th>Gauge</th><th>Planning unit</th><th>FR</th><th>Time beyond maximum gap</th>${hasBase ? '<th>Base FR</th><th>Base time beyond maximum gap</th>' : ''}</tr></thead><tbody>${view.rows.map(row =>
     `<tr><td>${esc(ruleCode(row))}</td><td>${esc(ruleGauge(row))}</td><td>${esc(rulePU(row))}</td><td>${fmtFR(ruleFR(row, index))}</td><td>${fmtET(ruleETP(row, index))}</td>${hasBase ? `<td>${fmtFR(ruleFR(row, view.base))}</td><td>${fmtET(ruleETP(row, view.base))}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
 }
@@ -163,7 +163,7 @@ function placeJoint(view) {
 function robustnessTable(view) {
   const cell = index => {
     const q = summaryFor(view, index), base = view.base == null ? null : summaryFor(view, view.base);
-    if (q.n === 0) return `<td class="nodata" data-scenario="${index}" style="background:#f3f4f6;color:#9ca3af"><span>No data</span></td>`;
+    if (q.n === 0) return `<td class="nodata" style="background:#f3f4f6;color:#9ca3af"><span>No data</span></td>`;
     return `<td tabindex="0" role="button" data-scenario="${index}" aria-label="Inspect exact rule values, target FR 1.0" style="background:${q.score == null ? '#eee' : `hsl(${q.score*130},40%,85%)`}"><b>${q.score == null ? 'No data' : (100*q.score).toFixed(1)+'%'}</b><br>${q.severe} severe<br>${q.n}/${view.rows.length} coverage${base ? '<br>Base: '+(base.n === 0 || base.score == null ? '—' : (100*base.score).toFixed(1)+'%') : ''}</td>`;
   };
   if (S.src === 'user') return `<p class="note">Uploaded records have no policy × climate metadata. Climate robustness is not inferred from names.</p><table><tr><th>Uploaded record (climate unspecified)</th><th>Joint score · target FR 1.0</th></tr>${CUSTOM.filter(c => !c.removed).map(c => `<tr><th>${esc(c.name)}</th>${cell(scnIdx(c.P,0))}</tr>`).join('')}</table>`;
