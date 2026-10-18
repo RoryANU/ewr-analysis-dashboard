@@ -45,7 +45,7 @@ import uuid
 import warnings
 import webbrowser
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -200,12 +200,22 @@ def _pool_init(df_F: Any, df_L: Any, table: Any, calc_config: Any) -> None:
     _POOL.update(df_F=df_F, df_L=df_L, table=table, calc_config=calc_config)
 
 
-def _eval_gauge(gauge: Any) -> tuple[Any, Any, str | None]:
-    """py_ewr's calc_sorter for one gauge: (gauge, (results, events) or None, error message or None)."""
+def _eval_gauge(gauge: Any, df_F: Any = None, df_L: Any = None, table: Any = None, calc_config: Any = None) -> tuple[Any, Any, str | None]:
+    """Evaluate one gauge using explicit inputs, or the worker's _POOL defaults, returning (gauge, result, error)."""
     from py_ewr import evaluate_EWRs
 
     try:
-        return gauge, evaluate_EWRs.calc_sorter(_POOL["df_F"], _POOL["df_L"], gauge, _POOL["table"], _POOL["calc_config"]), None
+        return (
+            gauge,
+            evaluate_EWRs.calc_sorter(
+                df_F if df_F is not None else _POOL["df_F"],
+                df_L if df_L is not None else _POOL["df_L"],
+                gauge,
+                table if table is not None else _POOL["table"],
+                calc_config if calc_config is not None else _POOL["calc_config"],
+            ),
+            None,
+        )
     except Exception as e:
         return gauge, None, f"{type(e).__name__}: {e}"
 
@@ -222,16 +232,17 @@ def evaluate_gauges(
     if len(gauges) > 1 and (os.cpu_count() or 1) > 1:
         try:
             with ProcessPoolExecutor(min(len(gauges), os.cpu_count() or 1), initializer=_pool_init, initargs=(df_F, df_L, table, calc_config)) as pool:
-                for g, res, err in pool.map(_eval_gauge, gauges):
+                futures = [pool.submit(_eval_gauge, g) for g in gauges]
+                for future in as_completed(futures):
+                    g, res, err = future.result()
                     out[g] = (res, err)
                     progress("Evaluating gauges", len(out), len(gauges))
             todo = []
         except (BrokenProcessPool, OSError):
             todo = [g for g in gauges if g not in out]
     if todo:
-        _pool_init(df_F, df_L, table, calc_config)
         for g in todo:
-            _, res, err = _eval_gauge(g)
+            _, res, err = _eval_gauge(g, df_F, df_L, table, calc_config)
             out[g] = (res, err)
             progress("Evaluating gauges", len(out), len(gauges))
     results = {g: out[g][0][0] for g in gauges if out[g][0] is not None}
