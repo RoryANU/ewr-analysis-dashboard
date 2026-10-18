@@ -45,10 +45,10 @@ repos:
         files: ^(src/|tests/|data/|requirements|pyproject\.toml|ewr_analysis_dashboard\.html)
       - id: node-tests
         name: node --test (dashboard JavaScript)
-        entry: node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js
+        entry: node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js
         language: system # node comes from nodejs-wheel in requirements-dev.txt (or any Node >= 22 on PATH)
         pass_filenames: false
-        files: ^(src/(dashboard_template\.html|performance\.js|ewr_guide\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
+        files: ^(src/(dashboard_template\.html|performance\.js|ewr_guide\.js|custom_ewr\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
       - id: parameter-sheet-sync-edit
         name: parameter sheet matches MDBA EWR_tool (when edited)
         entry: python3 src/sync_parameter_sheet.py

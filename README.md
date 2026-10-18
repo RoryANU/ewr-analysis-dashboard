@@ -46,6 +46,9 @@ src/
   server.py                      local server: serves the page and runs py_ewr on your own model output (python3 src/server.py also works)
   build_dashboard.py             build script: reads data/, fills the template, writes the HTML
   ewr_guide.js                   the EWR guide panel: search, selection and the tutorial animations (inlined into the page)
+  custom_ewr.js                  user EWR registry, four-section form, JSON sharing, animated guidance and unsaved tests
+  custom_ewr.py                  validated user definitions, parameter injection, py_ewr evaluation and server registry
+  performance.js                 joint performance, policy/climate tables and annual diagnostics (inlined into the page)
   sync_parameter_sheet.py        checks / updates data/reference/parameter_sheet.csv against the MDBA EWR tool on GitHub
   dashboard_template.html        the page itself (markup, styles, JavaScript) with data placeholders
   flow_regime_mappings.py        maps an EWR code to its flow regime when the results do not give one
@@ -63,7 +66,7 @@ data/
   reference/
     objective_reference.csv      ecological objective codes, descriptions and themes
     parameter_sheet.csv          the EWR tool's parameter sheet (copy of MDBAuth/EWR_tool; the EWR guide's source, kept in step by sync_parameter_sheet.py)
-  example_scenarios/             small made-up daily flow files for trying "Your data" (Broken and Goulburn gauges)
+  example_scenarios/             made-up flow files, plus a documented synthetic level/salinity fixture, for trying "Your data"
 requirements.txt                 Python packages for the build and the server (run.py installs them for you)
 ```
 
@@ -86,9 +89,55 @@ The page cannot run the EWR tool by itself, so "Your data" uses a small server o
 
 - Formats: Standard time-series, Bigmod, FIRM, res.csv (MDBA), Source NSW res.csv, IQQM netCDF and ten-thousand-year runs. A Standard time-series file has a `Date` column and one column per gauge named `<gauge>_flow` or `<gauge>_level`, e.g. `404216_flow`.
 - Try it with the files in `data/example_scenarios/` (`dummy_broken_scenario_A.csv` and `..._B_wetter.csv` for Differential mode).
-- The server listens on localhost only. Uploaded flows are kept in `.user_scenarios/` (not committed) so the flow charts can be drawn.
+- The server listens on localhost only. Uploaded daily flows, levels and salinity are kept in `.user_scenarios/` (not committed) for charts and user EWR evaluation.
 - Flow charts: open a gauge, then **Flow analysis** and pick a chart from the **Chart** dropdown. *Flow*: threshold × duration heat map, hydrograph with annual volumes, and (Differential) the differential and monthly differential flow duration curves. *EWR performance* (py_ewr's own results for one EWR): achievement by year, events, event timing, gaps between events against the maximum inter-event period. *Flow regime*: flow regime components (each regime's threshold is the lowest EWR threshold for it at the gauge, from the EWR tool's parameter sheet) and low-flow spells. In Differential mode, comparisons use only the dates or years both scenarios cover.
 - The EWR calculations are done by [py_ewr](https://pypi.org/project/py-ewr/) (version 2.4.11 or later).
+
+## Custom EWR Builder (User EWRs)
+
+User EWRs let you define flow spells, total-day rules, cease-to-flow rules, accumulated volumes, levels and salinity limits, with supported advanced multigauge and rate rules. They run through py_ewr and appear in the dashboard as `U_` codes. Open the **EWR guide** in **Your data**, then choose **Add EWR**. The four sections cover the gauge and planning units, rule type, parameters, and review/run options. The form validates as you type; the server validates again before saving or testing. `MinSpell` is always a positive integer no greater than Duration: its visible default is Duration for spell rules and 1 for total-day rules.
+
+This feature requires the local analysis server and uploaded scenarios with stored daily series. It is hidden in Demo data. Review summaries and notebook-embedded scenarios have no server-side daily records, so they cannot be evaluated with this builder. Existing **Custom constraints** remain available as unevaluated flow overlays; they have not been retired.
+
+### Series and units
+
+For **Standard time-series**, use a UTF-8 CSV with `Date` and columns such as `404216_flow` (ML/day), `404216_level` (metres, using your model's AHD or gauge-height datum) and `404216_salinity` or `404216_ec` (EC, µS/cm). `_tds` inputs are converted by the documented server multiplier, 0.6 by default. The rule form lets you choose EC or mg/L TDS and specify the positive **TDS → EC multiplier**; thresholds are converted to canonical EC before saving. Match the convention used to prepare your series. Level and salinity series are stored alongside flows, including when adding another file into a scenario. Missing series are reported as skipped rather than evaluated as zero.
+
+`data/example_scenarios/dummy_broken_scenario_A_level_salinity.csv` is a test fixture with made-up levels and salinity, not observations or an approved ecological rule. See its adjacent README for how it was constructed.
+
+### Test, save and evaluate
+
+- **Test on one scenario** evaluates the unsaved form against one compatible uploaded record. It shows FR, achieved/complete record years and the percentage of record beyond MRIP for each planning unit, without saving the definition or changing dashboard results. Cancel test stops waiting in the browser; an evaluation already started on the server may finish. Changing the definition clears the previous test result.
+- **Play / Pause, Previous, Next and Replay** explain simple flow and salinity spell/total-day rules with illustrative records. These are generated examples, not gauge results; use the scenario test for the full py_ewr calculation. Advanced rules show textual guidance. Reduced-motion settings disable animated playback.
+- **Save** stores a new definition without evaluating it. **Save & run** evaluates the checked uploaded scenarios. Run all is also available from each Your EWRs card. Uploading another scenario offers a run on the new record.
+- **Edit** marks old results stale. Saving an evaluated definition reruns the previously evaluated uploaded scenarios; Save & run uses the checked scenarios. Stale values are excluded from aggregates and performance charts until evaluation completes. Changing code, gauge or planning units clears the previous identity's results. **Duplicate** opens a new draft with a distinct code.
+
+Results propagate to map fills, SDL/planning-unit/gauge tables, objective and regime matrices, drought windows, joint FR–MRIP charts, annual diagnostics and EWR event charts. Flow overlays accept appropriate flow/volume rules; level and salinity event charts use metres and EC and omit flow-only volume metrics. Flow-regime component thresholds continue to describe the built-in parameter sheet. A zero MRIP leaves ETP empty and excludes that rule from joint FR–MRIP denominators.
+
+### Export and import definitions
+
+Choose **Export JSON** in a Your EWRs card to download `<U_CODE>.json`. Choose **Import JSON** above the cards to open an exported definition as a new draft. Review, test, then Save or Save & run. Import never overwrites an existing rule; if the code already exists, choose another `U_` code before saving. Cancelling an import draft leaves the registry unchanged.
+
+Files contain a versioned envelope, `{"format":"ewr-user-definition","version":1,"spec":{...}}`. They contain the rule definition only: no server identity, timestamps, scenario files or evaluation results. Imported fields must match the supported schema, review gauges/planning units/objectives and handler parameters. Numeric parameters must be finite JSON numbers; Duration, MinSpell, StartMonth, EndMonth and TargetFrequency must be present. Unknown fields, invalid UTF-8, duplicate or unsafe object keys, excessive nesting, unsupported versions and files over 64 KiB are rejected with a message. Salinity imports explicitly include their unit and positive numeric conversion factor. Use an exported file as the starting example.
+
+A copied dashboard URL contains view selections, not custom definitions or daily data. On another installation, upload the scenarios and import the JSON separately. An unknown `U_` selection falls back to an available rule or no selection.
+
+### Persistence and deletion
+
+The server registry is `.user_scenarios/uewr.json`. The browser mirrors definitions in `localStorage["ewrUserEwrs"]` and keeps evaluated values with its saved scenario records. Offline definitions/results can be read and definitions can be exported; saving, importing and evaluation require reconnection. Clearing browser storage removes its scenario summaries; exporting definitions does not back up those summaries or daily files.
+
+**Delete** asks for confirmation, then removes the rule from selections, rows, indices, results, caches, guide cards and all dashboard views. It also deletes its server definition, cached diagnostics and unused merged parameter sheets. If the server is unavailable, a browser tombstone queues deletion for the next reconnect. Version and generation checks prevent delayed jobs or chart/save responses from restoring obsolete results.
+
+### Browser acceptance check
+
+1. Start the dashboard with a launcher, `python run.py`, or `python src/server.py`. Use the printed HTTP URL rather than opening the HTML as a file.
+2. Choose **Your data → Add scenario → Standard time-series** and upload `data/example_scenarios/dummy_broken_scenario_A_level_salinity.csv`.
+3. Open **EWR guide → Add EWR**. Choose gauge **404216**, its offered planning unit, Flow / Continuous spell, code `U_TRIAL`, a name, lower limit **200**, Duration **5**, MinSpell **5**, TargetFrequency **50**, MRIP **2** and a July–June window. Leave other parameters at their displayed defaults.
+4. Try the tutorial controls and **Test on one scenario**. Verify the test table appears while the rule is still absent from Your EWRs. Then choose **Save & run**.
+5. Select gauge 404216. Find `U_TRIAL` in the matrix, open its cell table, and inspect Flow analysis → EWR performance. In Advanced data, load annual diagnostics. Reload the page and confirm the definition and evaluated results remain.
+6. Export the JSON, import it, and confirm the existing code is flagged. Rename it `U_TRIAL_COPY`, save/run, and verify there are two separate rules. Try importing an edited file with MinSpell 0 or missing MinSpell: it should be rejected before saving.
+7. Edit a rule's Duration/MinSpell together and save. Observe stale state while reevaluation runs. Delete the copy and verify that every selection, chart and table removes it. Switch to Demo data and confirm the builder controls and user rules disappear.
+8. Optionally repeat with Level / Level spell (use limits 1–2 m) and Salinity / Continuous spell (use an upper limit of 800 EC and lower limit 0); the fixture contains all three series. These values are for exercising the tool, not management advice.
 
 ## Running on Azure ML compute (flow charts enabled)
 
@@ -179,10 +228,11 @@ pre-commit install                    # run the checks on every `git commit`
 ### Run the tests
 
 ```bash
-pytest                    # everything (about 30 s)
-pytest -m "not slow"      # what the pre-commit hook runs (about 12 s)
+pytest                    # entire Python suite, including real py_ewr runs and HTML rebuild
+pytest -m "not slow"      # fast Python suite used by pre-commit
 pytest -m slow            # only the slow tests: py_ewr over many years of data, and a full rebuild of the HTML
 pytest tests/test_server_numerics.py -k heatmap   # one file / one topic
+node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_performance.js tests/test_ewr_guide.js
 ```
 
 | File | What it checks |
@@ -193,6 +243,7 @@ pytest tests/test_server_numerics.py -k heatmap   # one file / one topic
 | `test_server_numerics.py` | exact values for the heat map, duration curves, hydrograph, spells, gaps and runs in `src/server.py`, plus strict-JSON output |
 | `test_pyewr_wrappers.py` | `ewr_list`, `load_frames`, `run_scenario` and `ewr_eval` against py_ewr's parameter table and an independent recomputation; a baseline of the example scenario's results |
 | `test_ewr_index.py`, `test_ewr_guide.js` | the EWR index embedded in the page (against the CSV, including month.day windows) and the EWR guide: search, the 5-EWR cap, and for every row of the sheet that the illustrative met years meet the rule, the missed years do not, and every tutorial step renders |
+| `test_custom_ewr.py`, `test_series_storage.py`, `test_custom_ewr.js` | stored flow/level/salinity series, handler equivalence, validation parity, strict JSON sharing, versioned registry, HTTP jobs, dynamic indices and deletion/race protections |
 | `test_parameter_sheet_sync.py` | the local parameter sheet equals the one on GitHub (`network` test, skipped offline) |
 | `test_flow_regime_rules.py`, `test_northern_connectivity.py`, `test_embed_scenarios.py` | the flow-regime rule, the workbook reader and the notebook helper |
 
@@ -294,3 +345,17 @@ Chromium/Chrome binary if Playwright browsers are not installed. The existing CD
 chart libraries must be reachable. It checks lazy matrix contents, retained DOM,
 request counts/concurrency, annual and observation charts, and browser errors.
 Set `EWR_REVIEW_SCREENSHOT` to select the screenshot path (default `/tmp/ewr-review.png`).
+
+
+The Custom EWR Builder adds no runtime or required test dependencies. The Node suites use the built-in test runner (Node 22+ from `requirements-dev.txt`). For the optional browser regressions, install Playwright in a location Node can resolve (`npm install --no-save --package-lock=false playwright`) and either install its Chromium (`npx playwright install chromium`) or set `EWR_BROWSER_EXECUTABLE` to your installed Chrome/Chromium binary. The browser tests use isolated profiles and temporary local servers with controlled API responses; they do not access your saved scenarios. The CDN chart libraries must be reachable.
+
+```bash
+node tests/test_custom_ewr_browser.cjs          # form, preview, edit/rerun, reload, Demo and deletion
+node tests/test_custom_ewr_displays.cjs         # all kinds across dashboard displays; delayed deletion responses
+node tests/test_custom_ewr_sharing_browser.cjs  # JSON round-trip/rejection, tutorial, unsaved tests, cancellation and mobile
+node tests/test_performance_browser.cjs        # existing performance regression
+mypy
+pre-commit run --all-files
+```
+
+Rebuild with `python src/build_dashboard.py` before testing source changes. Finish that command before starting pytest: its byte-for-byte HTML check expects a fixed generated dashboard throughout the run.

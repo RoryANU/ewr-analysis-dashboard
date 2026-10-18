@@ -36,7 +36,9 @@ const http=require('node:http'),fs=require('node:fs'),assert=require('node:asser
     await page.locator('#otherDetails > summary').click();
     assert.equal(await page.locator('#robustnessTable td').count(),0);
     await page.locator('#robustnessDetails summary').click();
-    assert.ok(await page.locator('#robustnessTable td[data-scenario]').count()>=28);
+    await page.waitForFunction(()=>document.querySelectorAll('#robustnessTable td[data-scenario]').length>0);
+    const assessed=await page.evaluate(()=>META.policies.reduce((n,_,p)=>n+META.climates.filter((_,c)=>summaryFor(performanceView,scnIdx(p,c)).n>0).length,0));
+    assert.equal(await page.locator('#robustnessTable td[data-scenario]').count(),assessed);
     await page.locator('#robustnessTable td[data-scenario]').first().click();
     assert.match(await page.locator('#robustnessValues').textContent(),/FR/);
     await page.evaluate(()=>{window.originalPerformanceNode=performanceView.node;S.sort='high';render();});

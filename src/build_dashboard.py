@@ -416,6 +416,7 @@ def render_html(template_text: str, payload: dict[str, Any]) -> str:
     """Fill the template's `__NAME__` slots with compact JSON, in the order given."""
     html = template_text.replace("__PERFORMANCE_JS__", (HERE / "performance.js").read_text(encoding="utf-8"))
     html = html.replace("__EWR_GUIDE_JS__", (HERE / "ewr_guide.js").read_text(encoding="utf-8"))
+    html = html.replace("__CUSTOM_EWR_JS__", (HERE / "custom_ewr.js").read_text(encoding="utf-8"))
     for tag, val in payload.items():
         html = html.replace(tag, json.dumps(val, separators=(",", ":")).replace("<", "\\u003c"))
     return html

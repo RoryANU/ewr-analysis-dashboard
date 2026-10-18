@@ -252,7 +252,7 @@ class EndpointTest(StaticAccessMixin, unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             server.STORE = Path(tmp)
             self.addCleanup(setattr, server, "STORE", old_store)
-            self.addCleanup(server.FLOWS.pop, "launchertest", None)
+            self.addCleanup(server.forget_cached, "launchertest")
             status, body = self.request("POST", "/api/run", csv, h)
             self.assertEqual(status, 200)
             job = json.loads(body)["job"]

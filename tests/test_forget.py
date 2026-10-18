@@ -56,7 +56,7 @@ class ForgetEndpointTest(unittest.TestCase):
     def make_scenario(self, scenario_id):
         path = server.STORE / f"{scenario_id}.csv"
         path.write_text("Date,123_flow\n2000-01-01,1\n")
-        server.FLOWS[scenario_id] = "cached"
+        server.FLOWS[(scenario_id, "flow")] = "cached"
         return path
 
     def test_get_forget_is_405_and_does_not_delete(self):
@@ -67,7 +67,7 @@ class ForgetEndpointTest(unittest.TestCase):
         self.assertEqual(status, 405)
         self.assertEqual(headers["Allow"], "POST")
         self.assertTrue(path.exists())
-        self.assertIn("get-case", server.FLOWS)
+        self.assertIn(("get-case", "flow"), server.FLOWS)
 
     def test_foreign_origin_post_is_forbidden_and_does_not_delete(self):
         path = self.make_scenario("foreign-case")
@@ -80,7 +80,7 @@ class ForgetEndpointTest(unittest.TestCase):
 
         self.assertEqual(status, 403)
         self.assertTrue(path.exists())
-        self.assertIn("foreign-case", server.FLOWS)
+        self.assertIn(("foreign-case", "flow"), server.FLOWS)
 
     def test_matching_loopback_origin_post_deletes(self):
         path = self.make_scenario("matching-case")
@@ -94,7 +94,7 @@ class ForgetEndpointTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body, b'{"ok": true}')
         self.assertFalse(path.exists())
-        self.assertNotIn("matching-case", server.FLOWS)
+        self.assertNotIn(("matching-case", "flow"), server.FLOWS)
 
     def test_missing_origin_post_deletes(self):
         path = self.make_scenario("no-origin-case")

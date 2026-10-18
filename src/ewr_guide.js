@@ -54,7 +54,7 @@ function searchEwrs(rows, q) {
     if (gauge && !(`${r.g} ${r.gn || ""}`.toLowerCase().includes(gauge))) return false;
     if (code && !r.c.toLowerCase().includes(code)) return false;
     if (words.length) {
-      const hay = `${r.c} ${r.g} ${r.gn || ""} ${r.pu} ${r.ca || ""} ${r.sdl || ""} ${r.eo || ""} ${regimeName(r.c)}`.toLowerCase();
+      const hay = `${r.c} ${r.g} ${r.gn || ""} ${r.pu} ${r.ca || ""} ${r.sdl || ""} ${r.eo || ""} ${r.name || ""} ${regimeName(r.c)}`.toLowerCase();
       if (!words.every(w => hay.includes(w))) return false;
     }
     return true;
@@ -82,7 +82,7 @@ function ewrSpec(r) {
   const epy = Math.max(1, Math.min(epyReq, Math.floor((maxLen + 6) / (dur + 6))));   // how many events fit in the window
   const spec = {
     mode: "other", lo: 0, hi: null, unit: "ML/d", dur, ms, epy, epyReq, segs, maxLen, sm, sd, em, ed, tf: pos(r.tf), tfl: pos(r.tfl), tfh: pos(r.tfh),
-    mi: pos(r.mi), gap: pos(r.gap) || 0, vol: null, acc: null, whole: segs.length === 1 && segs[0][0] === 0 && segs[0][1] === WY_DAYS - 1,
+    mi: pos(r.mi) > 0 ? pos(r.mi) : null, gap: pos(r.gap) || 0, vol: null, acc: null, whole: segs.length === 1 && segs[0][0] === 0 && segs[0][1] === WY_DAYS - 1,
   };
   if (r.k === "V") {
     if (pos(r.vol) > 0) {
@@ -97,6 +97,7 @@ function ewrSpec(r) {
     if (lo > 0) { spec.mode = "flow"; spec.lo = lo; spec.hi = hi != null && hi > lo ? hi : null; }
     else if (hi != null && hi > 0) { spec.mode = "dry"; spec.lo = 0; spec.hi = hi; }
   }
+  if(r.k==="S") spec.unit="EC";
   return spec;
 }
 
@@ -207,7 +208,8 @@ function genYear(spec, type, seed) {
 /** Keep a generated value just inside the thresholds; leave volume values unchanged. */
 function clampZone(spec, v) {
   if (spec.mode === "volume") return v;
-  const eps = spec.mode === "level" ? 0.02 : Math.max(spec.lo, spec.hi || spec.lo) * 0.01;
+  const proposed = spec.mode === "level" ? 0.02 : Math.max(spec.lo, spec.hi || spec.lo) * 0.01;
+  const eps = spec.hi != null ? Math.min(proposed, (spec.hi - spec.lo) / 4) : proposed;
   return Math.max(spec.lo + eps, spec.hi != null ? Math.min(spec.hi - eps, v) : v);
 }
 
@@ -280,11 +282,12 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   function windowText(sp) { return sp.whole ? "all year" : `${dm(sp.sm, sp.sd)} – ${dm(sp.em, sp.ed)}`; }
   /** Describe the threshold condition and units for the tutorial rule. */
   function ruleText(sp) {
-    if (sp.mode === "other") return "the flow conditions set out in the parameter sheet";
+    const unit=sp.unit||"ML/d",subject=unit==="EC"?"salinity":"flow";
+    if (sp.mode === "other") return "the conditions set out in the parameter sheet";
     if (sp.mode === "volume") return `${fmt(sp.vol)} ML of flow accumulated within ${sp.acc} days`;
     if (sp.mode === "level") return sp.hi != null ? `water level between ${fmt(sp.lo)} and ${fmt(sp.hi)} m` : `water level of ${fmt(sp.lo)} m or higher`;
-    if (sp.mode === "dry") return `flow of no more than ${fmt(sp.hi)} ML/d`;
-    return sp.hi != null ? `flow between ${fmt(sp.lo)} and ${fmt(sp.hi)} ML/d` : `flow of at least ${fmt(sp.lo)} ML/d`;
+    if (sp.mode === "dry") return `${subject} of no more than ${fmt(sp.hi)} ${unit}`;
+    return sp.hi != null ? `${subject} between ${fmt(sp.lo)} and ${fmt(sp.hi)} ${unit}` : `${subject} of at least ${fmt(sp.lo)} ${unit}`;
   }
   /** Describe duration, event count, minimum spell, and allowed gaps for non-volume rules. */
   function durText(sp) {
@@ -314,7 +317,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     s += `<line x1="${X0}" x2="${X1}" y1="${Y1}" y2="${Y1}" stroke="${C.mut}"/><line x1="${X0}" x2="${X0}" y1="${Y0 - 8}" y2="${Y1}" stroke="${C.mut}"/>`;
     let d0 = 0;
     for (const mo of WY_MONTHS) { s += T(X(d0 + MONTH_LEN[mo] / 2), Y1 + 14, MON3[mo - 1], { size: 9.5, a: "middle", fill: C.mut }); d0 += MONTH_LEN[mo]; }
-    s += T(11, (Y0 + Y1) / 2, sp.mode === "level" ? "Water level (m)" : "Flow (ML/d)", { size: 10, a: "middle", fill: C.mut }).replace("<text ", `<text transform="rotate(-90 11 ${(Y0 + Y1) / 2})" `);
+    s += T(11, (Y0 + Y1) / 2, sp.unit === "EC" ? "Salinity (EC)" : sp.mode === "level" ? "Water level (m)" : "Flow (ML/d)", { size: 10, a: "middle", fill: C.mut }).replace("<text ", `<text transform="rotate(-90 11 ${(Y0 + Y1) / 2})" `);
     if (wa) s += T((X(sp.segs[0][0]) + X(sp.segs[0][1] + 1)) / 2, Y0 - 12, `EWR window: ${windowText(sp)}`, { size: 10.5, a: "middle", w: 600, fill: C.acc, op: wa });
     const ta = o.thr ?? 0;
     if (ta && sp.mode !== "volume") {
@@ -377,7 +380,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     const common = [];
     const intro = {
       title: "What this EWR is", ms: 3200,
-      cap: `An <b>environmental water requirement</b> (EWR) says how much water a river site needs, when, and how often. <b>${esc(m.row.c)}</b>${regimeName(m.row.c) ? ` is a <b>${regimeName(m.row.c).toLowerCase()}</b> requirement` : ""} at gauge ${esc(m.row.g)}${m.row.gn ? ` (${esc(m.row.gn)})` : ""}, planning unit ${esc(m.row.pu)}.`,
+      cap: `${sp.unit === "EC" ? "A <b>salinity requirement</b> sets water-quality limits, when they apply, and how often they must be met." : "An <b>environmental water requirement</b> (EWR) says how much water a river site needs, when, and how often."} <b>${esc(m.row.c)}</b>${regimeName(m.row.c) ? ` is a <b>${regimeName(m.row.c).toLowerCase()}</b> requirement` : ""} at gauge ${esc(m.row.g)}${m.row.gn ? ` (${esc(m.row.gn)})` : ""}, planning unit ${esc(m.row.pu)}.`,
       draw: p => {
         let s = T(W / 2, 54, m.row.c, { size: 34, w: 700, a: "middle", fill: C.acc, op: ease(sub(0, 0.3, p)) });
         const lines = [[`Gauge ${m.row.g}${m.row.gn ? " · " + m.row.gn : ""}`, 0.2], [`${m.row.pu} · ${m.row.st}`, 0.3], [`Needs ${ruleText(sp)}`, 0.45], [sp.mode === "volume" ? `Window: ${windowText(sp)}` : `${durText(sp)} · window: ${windowText(sp)}`, 0.6], [`Target: ${targetText(sp)}${sp.mi != null ? ` · at most ${yrs(sp.mi)} between events` : ""}`, 0.75]];
@@ -397,13 +400,13 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
       const ex = m.metEx, bad = m.missEx;
       common.push(intro,
         {
-          title: sp.mode === "volume" ? "Flow through the year" : sp.mode === "level" ? "The level threshold" : "The flow threshold", ms: 3600,
-          cap: sp.mode === "volume" ? `Here is one year of daily flow at the gauge. This EWR is about the <b>total volume</b> of water, not a single flow rate.` : `Here is one year of daily ${sp.mode === "level" ? "water level" : "flow"} at the gauge (an illustrative record, not real data). The EWR needs <b>${esc(ruleText(sp))}</b>${sp.mode === "dry" ? " (the river nearly stops flowing)" : ""}.`,
+          title: sp.mode === "volume" ? "Flow through the year" : sp.unit === "EC" ? "The salinity threshold" : sp.mode === "level" ? "The level threshold" : "The flow threshold", ms: 3600,
+          cap: sp.mode === "volume" ? `Here is one year of daily flow at the gauge. This EWR is about the <b>total volume</b> of water, not a single flow rate.` : `Here is one year of daily ${sp.unit === "EC" ? "salinity" : sp.mode === "level" ? "water level" : "flow"} at the gauge (an illustrative record, not real data). The EWR needs <b>${esc(ruleText(sp))}</b>${sp.mode === "dry" && sp.unit !== "EC" && sp.hi <= 1 ? " (the river nearly stops flowing)" : ""}.`,
           draw: p => yearSvg(m, ex, { line: ease(sub(0, 0.6, p)), thr: ease(sub(0.55, 0.95, p)) }),
         },
         {
           title: "The EWR window", ms: 2800,
-          cap: sp.whole ? "The requirement can be met at any time of the <b>July–June year</b>, so every day counts." : `Only <b>${esc(windowText(sp))}</b> counts. Water outside this window does not help meet the EWR.`,
+          cap: sp.whole ? "The requirement can be met at any time of the <b>July–June year</b>, so every day counts." : `Only <b>${esc(windowText(sp))}</b> counts. Values outside this window do not count towards the EWR.`,
           draw: p => yearSvg(m, ex, { thr: 1, win: ease(sub(0, 0.5, p)) }),
         },
         {
@@ -473,9 +476,9 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
       },
       {
         title: "Putting it together", ms: 3800,
-        cap: `<b>${esc(m.row.c)}</b> asks for ${esc(ruleText(sp))}${sp.mode === "other" || sp.mode === "volume" ? "" : " " + esc(durText(sp))}, ${sp.whole ? "at any time of year" : "between " + esc(windowText(sp))}, ${esc(targetText(sp))}${sp.mi != null ? `, with no more than ${yrs(sp.mi)} between events` : ""}. The dashboard scores how close the modelled flows come to that.`,
+        cap: `<b>${esc(m.row.c)}</b> asks for ${esc(ruleText(sp))}${sp.mode === "other" || sp.mode === "volume" ? "" : " " + esc(durText(sp))}, ${sp.whole ? "at any time of year" : "between " + esc(windowText(sp))}, ${esc(targetText(sp))}${sp.mi != null ? `, with no more than ${yrs(sp.mi)} between events` : ""}. The dashboard scores how close the modelled ${sp.unit === "EC" ? "salinity series" : "flows"} come to that.`,
         draw: p => {
-          const items = [["1", "Flow", ruleText(sp)], ["2", "Window", windowText(sp)], ["3", sp.mode === "volume" ? "Volume" : "Duration", sp.mode === "volume" ? `within ${sp.acc} days` : durText(sp).replace(/^for /, "")], ["4", "Frequency", sp.tf != null ? `${fmt(sp.tf)}% of years` : "–"], ["5", "Gap", sp.mi != null ? `≤ ${yrs(sp.mi)}` : "–"]];
+          const items = [["1", sp.unit === "EC" ? "Salinity" : "Flow", ruleText(sp)], ["2", "Window", windowText(sp)], ["3", sp.mode === "volume" ? "Volume" : "Duration", sp.mode === "volume" ? `within ${sp.acc} days` : durText(sp).replace(/^for /, "")], ["4", "Frequency", sp.tf != null ? `${fmt(sp.tf)}% of years` : "–"], ["5", "Gap", sp.mi != null ? `≤ ${yrs(sp.mi)}` : "–"]];
           return items.map(([n, h, v], i) => {
             const a = ease(sub(i * 0.15, i * 0.15 + 0.3, p)), y = 56 + i * 44;
             return `<g opacity="${a}">` + T(60, y + 4, n, { size: 22, w: 700, fill: C.acc }) + T(94, y - 2, h, { size: 11, fill: C.mut }) + T(94, y + 16, v.length > 70 ? v.slice(0, 68) + "…" : v, { size: 14, w: 700 }) + "</g>";
@@ -489,17 +492,17 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   function missText(m, bad) {
     const sp = m.spec, r = bad.res;
     const text = {
-      short: () => `The flow reaches the threshold, but for only <b>${r.all ?? 0} day${r.all === 1 ? "" : "s"}</b> – it was needed for <b>${sp.dur}</b>. Not enough.`,
-      outside: () => `Flow is right and lasts long enough, but <b>outside the EWR window</b> (${esc(windowText(sp))}), so it does not count.`,
-      over: () => `Flow rises <b>above the upper limit</b> of ${fmt(sp.hi)} ${sp.unit}, outside the range the EWR wants, so those days do not count.`,
+      short: () => `The ${sp.unit === "EC" ? "salinity" : "flow"} reaches the threshold, but for only <b>${r.all ?? 0} day${r.all === 1 ? "" : "s"}</b> – it was needed for <b>${sp.dur}</b>. Not enough.`,
+      outside: () => `${sp.unit === "EC" ? "Salinity" : "Flow"} is right and lasts long enough, but <b>outside the EWR window</b> (${esc(windowText(sp))}), so it does not count.`,
+      over: () => `${sp.unit === "EC" ? "Salinity" : "Flow"} rises <b>above the upper limit</b> of ${fmt(sp.hi)} ${sp.unit}, outside the range the EWR wants, so those days do not count.`,
       low: () => sp.mode === "volume" ? `Only about <b>${fmt(r.volume)} ML</b> builds up – short of the <b>${fmt(sp.vol)} ML</b> needed.`
-        : sp.mode === "dry" ? `The river never drops low enough: flow stays above <b>${fmt(sp.hi)} ML/d</b>, so the EWR is not met.`
-        : `Flow peaks <b>below the threshold</b> of ${fmt(sp.lo)} ${sp.unit}, so no day counts.`,
+        : sp.mode === "dry" ? `${sp.unit === "EC" ? "Salinity remains too high" : "The river never drops low enough: flow stays above"} <b>${fmt(sp.hi)} ${sp.unit}</b>, so the EWR is not met.`
+        : `${sp.unit === "EC" ? "Salinity" : "Flow"} peaks <b>below the threshold</b> of ${fmt(sp.lo)} ${sp.unit}, so no day counts.`,
     };
     return "Now a year with a different outcome. " + (text[bad.type] || text.low)();
   }
 
-  if (typeof window !== "undefined") window.ewrGuideApi = { stages, rows: ROWS_ALL };   // for tests/test_ewr_guide.js
+  if (typeof window !== "undefined") window.ewrGuideApi = { stages, rows: ROWS_ALL, ruleText, durText, buildTutorial, ewrSpec };   // for tests/test_ewr_guide.js
 
   // ---- the panel ----
   const lp = document.getElementById("lpanel");
@@ -509,40 +512,41 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   let sel = load("ewrGuideSel", []).filter(k => BY_KEY.has(k)).slice(0, GUIDE_MAX);
   const opts = (vals, all) => `<option value="">${all}</option>` + vals.map(v => `<option>${esc(v)}</option>`).join("");
   const uniq = f => [...new Set(ROWS_ALL.map(f).filter(Boolean))].sort();
-  lp.innerHTML = `<h2>EWR guide</h2><div class="crumbs">Search the EWR parameter sheet (${ROWS_ALL.length.toLocaleString()} rows) and pick up to ${GUIDE_MAX} to see how each one works.</div>
+  lp.innerHTML = `<div class="uewr-heading"><h2>EWR guide</h2><button id="uewrAdd" class="ghost" hidden>＋ Add EWR</button></div><div class="crumbs">Search the EWR parameter sheet (${ROWS_ALL.length.toLocaleString()} rows) and pick up to ${GUIDE_MAX} to see how each one works.</div>
     <div class="gq"><input id="gqText" type="search" placeholder="Search code, gauge, name, planning unit, objective…" aria-label="Search EWRs">
     <div class="gqrow"><select id="gqState" aria-label="State">${opts(uniq(r => r.st), "Any state")}</select>
     <select id="gqPu" aria-label="Planning unit">${opts(uniq(r => r.pu), "Any planning unit")}</select>
-    <select id="gqKind" aria-label="Type"><option value="">Flow, level or volume</option><option value="F">Flow</option><option value="L">Level</option><option value="V">Volume</option></select></div>
+    <select id="gqKind" aria-label="Type"><option value="">Flow, level, salinity or volume</option><option value="F">Flow</option><option value="L">Level</option><option value="V">Volume</option><option value="S">Salinity</option></select></div>
     <div class="gqrow"><input id="gqGauge" type="search" placeholder="Gauge (ID or name)" aria-label="Gauge"><input id="gqCode" type="search" placeholder="EWR code" aria-label="EWR code"></div></div>
     <div id="gqMsg" class="gmsg" role="status"></div><div id="gqList" class="glist"></div>
-    <div class="gsel"><div class="gselh"><b id="gselN"></b><button id="gselClear" class="ghost">Clear all</button></div><div id="gCards"></div></div>`;
+    <section id="uewrList" hidden aria-label="Your EWRs"></section><div class="gsel"><div class="gselh"><b id="gselN"></b><button id="gselClear" class="ghost">Clear all</button></div><div id="gCards"></div></div>`;
   const $g = id => document.getElementById(id);
   const query = () => ({ text: $g("gqText").value, state: $g("gqState").value, pu: $g("gqPu").value, kind: $g("gqKind").value, gauge: $g("gqGauge").value, code: $g("gqCode").value });
   let notice = "";
 
   /** Render the first 60 search matches and update the selection controls and status. */
   function renderList() {
-    const res = searchEwrs(ROWS_ALL, query()), shown = res.slice(0, 60);
+    const res = searchEwrs(ROWS_ALL.filter(r=>!r.u||(typeof S!=="undefined"&&S.src==="user")), query()), shown = res.slice(0, 60);
     $g("gqMsg").textContent = notice || `${res.length.toLocaleString()} EWR${res.length === 1 ? "" : "s"} match${res.length > 60 ? " – showing the first 60, refine the search" : ""}`;
     $g("gqList").innerHTML = shown.map(r => {
       const on = sel.includes(r.key);
-      return `<div class="gitem${on ? " on" : ""}"><div class="gtxt"><b>${esc(r.c)}</b> · ${esc(r.g)}${r.gn ? " · " + esc(r.gn) : ""}<br><span>${esc(r.pu)} · ${esc(r.st)}${regimeName(r.c) ? " · " + regimeName(r.c) : ""}${ewrSupported(r) ? "" : " · demo in development"}</span></div><button class="gadd" data-key="${esc(r.key)}" aria-pressed="${on}"${!on && sel.length >= GUIDE_MAX ? " disabled" : ""}>${on ? "✓ Added" : "＋ Add"}</button></div>`;
+      return `<div class="gitem${on ? " on" : ""}"><div class="gtxt"><b>${r.u?"★ ":""}${esc(r.c)}</b> · ${esc(r.g)}${r.gn ? " · " + esc(r.gn) : ""}<br><span>${esc(r.pu)} · ${esc(r.st)}${regimeName(r.c) ? " · " + regimeName(r.c) : ""}${ewrSupported(r) ? "" : " · demo in development"}</span></div><button class="gadd" data-key="${esc(r.key)}" aria-pressed="${on}"${!on && sel.length >= GUIDE_MAX ? " disabled" : ""}>${on ? "✓ Added" : "＋ Add"}</button></div>`;
     }).join("");
   }
   const tutorials = new Map();   // key -> {card, ctl}
   /** Reconcile tutorial cards with the selection, stopping and removing deselected cards. */
   function renderSel() {
-    $g("gselN").textContent = `Selected EWRs (${sel.length} of ${GUIDE_MAX})`;
+    const visible=sel.filter(k=>BY_KEY.has(k)&&(!BY_KEY.get(k).u||(typeof S!=="undefined"&&S.src==="user")));
+    $g("gselN").textContent = `Selected EWRs (${visible.length} of ${GUIDE_MAX})`;
     $g("gselClear").style.display = sel.length ? "" : "none";
-    for (const [k, t] of tutorials) if (!sel.includes(k)) { t.ctl.stop(); t.card.remove(); tutorials.delete(k); }
-    sel.forEach((k, i) => {
-      if (!tutorials.has(k)) tutorials.set(k, makeCard(BY_KEY.get(k), i === sel.length - 1));
+    for (const [k, t] of tutorials) if (!visible.includes(k)) { t.ctl.stop(); t.card.remove(); tutorials.delete(k); }
+    visible.forEach((k, i) => {
+      if (!tutorials.has(k)) tutorials.set(k, makeCard(BY_KEY.get(k), i === visible.length - 1));
       const t = tutorials.get(k);
       if ($g("gCards").children[i] !== t.card) $g("gCards").insertBefore(t.card, $g("gCards").children[i] || null);
     });
-    if (!sel.length && !$g("gCards").firstChild) $g("gCards").innerHTML = `<div class="gempty">Nothing selected yet.</div>`;
-    else if (sel.length) $g("gCards").querySelector(".gempty")?.remove();
+    if (!visible.length && !$g("gCards").firstChild) $g("gCards").innerHTML = `<div class="gempty">Nothing selected yet.</div>`;
+    else if (visible.length) $g("gCards").querySelector(".gempty")?.remove();
   }
   /** Persist the new selection and refresh the selected cards, results, and notice. */
   function setSel(next, note) { sel = next; notice = note || ""; store("ewrGuideSel", sel); renderSel(); renderList(); }
@@ -619,5 +623,17 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   });
   $g("gselClear").addEventListener("click", () => setSel([]));
   renderList(); renderSel();
-  window.ewrGuide = { stopAll: () => [...ACTIVE].forEach(c => c.stop()) };
+  window.ewrGuide = {
+    stopAll: () => [...ACTIVE].forEach(c => c.stop()), getSel:()=>sel.slice(), setSel:(next)=>setSel(next.filter(k=>BY_KEY.has(k)).slice(0,GUIDE_MAX)),
+    refresh:()=>{ renderList();renderSel(); },
+    addRows(rows){
+      for(const r of rows){const old=ROWS_ALL.findIndex(x=>x.key===r.key);if(old>=0)ROWS_ALL[old]=r;else ROWS_ALL.push(r);BY_KEY.set(r.key,r);}
+      sel=load("ewrGuideSel",sel).filter(k=>BY_KEY.has(k)).slice(0,GUIDE_MAX);renderList();renderSel();
+    },
+    removeRows(keys,{preserveSelection=false}={}){
+      for(const key of keys){const t=tutorials.get(key);if(t){t.ctl.stop();t.card.remove();tutorials.delete(key);}BY_KEY.delete(key);}
+      for(let i=ROWS_ALL.length-1;i>=0;i--)if(keys.includes(ROWS_ALL[i].key))ROWS_ALL.splice(i,1);
+      if(!preserveSelection){sel=sel.filter(k=>!keys.includes(k));store("ewrGuideSel",sel);}renderList();renderSel();
+    },
+  };
 })();

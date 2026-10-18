@@ -84,10 +84,10 @@ class TestEwrList:
 # ---------------------------------------------------------------------------------------------------------------------
 class TestLoadFrames:
     def test_standard_time_series_gives_one_flow_column_per_gauge_and_no_levels(self):
-        df_f, df_l = server.load_frames("Standard time-series", str(GOULBURN_A))
+        df_f, df_l, df_s = server.load_frames("Standard time-series", str(GOULBURN_A))
         assert sorted(map(str, df_f.columns)) == GOULBURN_GAUGES
         assert len(df_f) == 9132 and df_f.index[0] == pd.Timestamp("1995-07-01") and df_f.index[-1] == pd.Timestamp("2020-06-30")
-        assert df_l.shape[1] == 0
+        assert df_l.shape[1] == df_s.shape[1] == 0
         raw = pd.read_csv(GOULBURN_A, index_col="Date", parse_dates=True)
         for g in GOULBURN_GAUGES:  # flows pass through unchanged
             assert df_f[g].tolist() == raw[f"{g}_flow"].tolist()
@@ -150,7 +150,7 @@ def test_date_free_run_severity(monkeypatch, days, maxint, successful, severity,
     )
     inter = pd.DataFrame({"Gauge": ["405201"], "PlanningUnit": ["PU"], "Code": ["F1"], "interEventLength": [500]})
     monkeypatch.setattr(server, "parameter_sheet", lambda: table)
-    monkeypatch.setattr(server, "load_frames", lambda *args: (flow, pd.DataFrame()))
+    monkeypatch.setattr(server, "load_frames", lambda *args: (flow, pd.DataFrame(), pd.DataFrame()))
     monkeypatch.setattr(evaluate_EWRs, "calc_sorter", lambda *args: ({}, {"PU": {"F1": {2000: [[1]]}}}))
     monkeypatch.setattr(ScenarioHandler, "get_ewr_results", lambda self: result)
     monkeypatch.setattr(ScenarioHandler, "get_all_successful_interEvents", lambda self: inter)
@@ -193,6 +193,8 @@ class TestRunScenario:
             "missing_gauges": [],
             "skipped": {},
             "flow_gauges": [],
+            "level_gauges": [],
+            "salinity_gauges": [],
             "format": "Standard time-series",
         }
         assert {r["gauge"] for r in rows} == set(GOULBURN_GAUGES)  # every requested gauge produced results
@@ -205,7 +207,7 @@ class TestRunScenario:
         """Re-derive FR = Frequency / TargetFrequency and ETP = sum(max(0, gap - MRIP days)) / TotalDays with plain Python from py_ewr's own tables
         (MRIP days = MaxInterEventYears x 365 rounded to a day; an EWR with no successful event is one gap over the whole record)."""
         rows, _ = goulburn_run
-        df_f, df_l = server.load_frames("Standard time-series", str(GOULBURN_A))
+        df_f, df_l, df_s = server.load_frames("Standard time-series", str(GOULBURN_A))
         table = data_inputs.get_EWR_table(None)
         cfg = data_inputs.get_ewr_calc_config(None)
         results, events = {}, {}
@@ -469,3 +471,67 @@ class TestEwrEvalAgainstPyEwr:
         self.put(f, idx)
         ev = server.ewr_years({"base": "a", "gauge": self.G, "ewr": "BK1"})["scenarios"]["base"]["events"]
         assert len(ev) == 1 and ev[0]["vol"] == 44000.0 and ev[0]["peak"] == 10000.0 and ev[0]["days"] == 5
+
+
+@pytest.mark.parametrize("event_values", [np.array([1, 2]), pd.Series([1, 2]), [1, 2]])
+def test_summarise_rows_parameter_path_handlers_and_series_overrides(monkeypatch, event_values):
+    """The extracted boundary accepts pandas/NumPy event containers and preserves alternate series/dispatch semantics."""
+    gauge, code, pu = "404216", "F1", "PU"
+    index = pd.date_range("2000-07-01", "2001-06-30", name="Date")
+    flow = pd.DataFrame({gauge: np.full(len(index), np.nan)}, index=index)
+    override = pd.Series(np.ones(len(index)), index=index)
+    annual = pd.DataFrame({f"{code}_eventYears": [1], f"{code}_totalEventDays": [20], f"{code}_maxEventDays": [5]}, index=[2000])
+    table = pd.DataFrame(
+        {
+            "Gauge": [gauge],
+            "Code": [code],
+            "PlanningUnitName": [pu],
+            "StartMonth": [7],
+            "EndMonth": [6],
+            "FlowLevelVolume": ["F"],
+            "Duration": [10],
+            "EventsPerYear": [1],
+            "Multigauge": [""],
+        }
+    )
+    result = pd.DataFrame(
+        {
+            "Gauge": [gauge],
+            "PlanningUnit": [pu],
+            "Code": [code],
+            "Frequency": [100],
+            "TargetFrequency": [50],
+            "MaxInterEventYears": [1],
+            "TotalDays": [len(index)],
+            "EventYears": [1],
+        }
+    )
+    paths = []
+
+    def get_result(self):
+        paths.append(self.parameter_sheet)
+        return result
+
+    def get_empty(self):
+        paths.append(self.parameter_sheet)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(ScenarioHandler, "get_ewr_results", get_result)
+    monkeypatch.setattr(ScenarioHandler, "get_all_successful_events", get_empty)
+    monkeypatch.setattr(ScenarioHandler, "get_all_successful_interEvents", get_empty)
+    progress = []
+    rows = server.summarise_rows(
+        {gauge: {pu: annual}},
+        {gauge: {pu: {code: {2000: event_values}}}},
+        flow,
+        pd.DataFrame(index=index),
+        table,
+        sheet_path="merged-content-hash.csv",
+        series_override={gauge: override},
+        handler_map={f"{code}-single-F": "lowflow_handle"},
+        report=lambda *args: progress.append(args),
+    )
+    assert paths == ["merged-content-hash.csv"] * 3
+    assert rows[0]["fr"] == 2.0 and rows[0]["et"] == 0.0 and rows[0]["dr"] == 2.0
+    assert rows[0]["win"]["mil"]["n"] == 1 and progress == [("Summarising results", 0, 1)]
+    assert "FR" not in result  # summarising never mutates the source table

@@ -223,3 +223,30 @@ test('existing metric tiles cap ETP from legacy saved uploads consistently',()=>
   h.run("S.ethr=0; S.mode='diff'; S.bpol=0; S.bcli=1");   // threshold back to 0: at 1 both scenarios would meet the MRIP target and leave the means
   assert.equal(h.run("val(legacy,'et')"),-.5);   // capped ETP rises from .5 (base) to 1: a decline, as lower is better
 });
+
+test('performance hides user rows in Demo and omits stale version values in Your data',()=>{
+ const h=harness(),builtin=row('F1'),user=row('U_ONE');user.user='u_one';user.userVer=2;user[8]={uewrVerAt:{0:1}};
+ h.ctx.userRows=[builtin,user];assert.equal(h.run('preparePerformance(userRows).rows.length'),1);
+ h.run("S.src='user'");assert.equal(h.run('preparePerformance(userRows).rows.length'),2);
+ assert.equal(h.run('ruleFR(userRows[1],0)'),null);assert.equal(h.run('jointSummary(userRows,0).n'),1);
+ h.run('userRows[1][8].uewrVerAt[0]=2');assert.equal(h.run('jointSummary(userRows,0).n'),2);
+});
+
+test('inventory invalidation fetches newly registered U_ codes instead of reusing old responses',async()=>{
+ const h=harness();let count=0;h.ctx.fetch=async()=>{count++;return response({ewrs:[{code:count===1?'F1':'U_ONE'}],inventory:[]});};
+ assert.equal((await h.run("inventoryFor('404216')")).ewrs[0].code,'F1');
+ h.run("invalidateInventory('404216')");assert.equal((await h.run("inventoryFor('404216')")).ewrs[0].code,'U_ONE');assert.equal(count,2);
+});
+
+test('an invalidated inventory rejection cannot evict a newer in-flight request',async()=>{
+ const h=harness(),old=deferred(),newer=deferred();let calls=0;h.ctx.fetch=()=>++calls===1?old.promise:newer.promise;
+ const a=h.run("inventoryFor('123')");h.run("invalidateInventory('123')");const b=h.run("inventoryFor('123')");
+ old.reject(Error('old failure'));await assert.rejects(a,/old failure/);assert.equal(h.run("inventoryFor('123')"),b);assert.equal(calls,2);
+ newer.resolve(response({ewrs:[],inventory:[]}));await b;
+});
+test('annual inventory reconciles every kind from the live registry and hides deleted or Demo definitions',()=>{
+ const h=harness();h.ctx.UEWR={atGauge:()=>[{code:'U_LEVEL',pu:'PU',pus:['PU'],kind:'L',custom:true}]};
+ h.ctx.cached={ewrs:[{code:'F1'},{code:'U_DELETED',custom:true}],inventory:[{code:'F1'},{code:'U_DELETED',custom:true}]};
+ const current=plain(h.run("currentInventory('123',cached)"));assert.deepEqual(current.ewrs.map(e=>e.code),['F1','U_LEVEL']);assert.equal(current.inventory[1].detailed,true);
+ h.ctx.UEWR.atGauge=()=>[];assert.deepEqual(plain(h.run("currentInventory('123',cached).ewrs")),[{code:'F1'}]);
+});
