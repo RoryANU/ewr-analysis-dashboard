@@ -23,19 +23,23 @@ def normalise(raw: bytes) -> bytes:
 
 
 def fetch_upstream(timeout: float = 30) -> bytes:
+    """Fetch the upstream parameter sheet and return bytes with normalised newlines."""
     with urllib.request.urlopen(UPSTREAM_URL, timeout=timeout) as resp:  # noqa: S310 - fixed https URL
         return normalise(resp.read())
 
 
 def local_copy() -> bytes:
+    """Read the local parameter sheet with normalised newlines."""
     return normalise(LOCAL.read_bytes())
 
 
 def digest(raw: bytes) -> str:
+    """Return the first 12 hexadecimal SHA-256 characters for a sheet copy."""
     return hashlib.sha256(raw).hexdigest()[:12]
 
 
 def main(argv: list[str]) -> int:
+    """Check or update the sheet; return 1 for a mismatch or invalid header, otherwise 0."""
     try:
         upstream = fetch_upstream()
     except (urllib.error.URLError, TimeoutError, OSError) as e:

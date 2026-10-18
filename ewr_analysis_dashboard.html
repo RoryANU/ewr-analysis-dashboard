@@ -2013,6 +2013,7 @@ function ewrRows(idx) {
 }
 
 const REGIMES = [[/^CF/, "Cease to flow"], [/^BF/, "Base flow"], [/^LF|^W-LF/, "Low flow"], [/^SF/, "Small fresh"], [/^OB/, "Overbank"], [/^BK/, "Bankfull"]];
+/** Return the flow regime label for a recognised EWR code prefix, or an empty string. */
 const regimeName = code => (REGIMES.find(([re]) => re.test(code)) || [0, ""])[1];
 
 /** The tutorial covers the EWRs py_ewr evaluates with flow_handle or lowflow_handle (its calc config); the rest are still in development. */
@@ -2078,7 +2079,9 @@ function ewrSpec(r) {
   return spec;
 }
 
+/** Test whether a water-year day falls in any inclusive EWR window segment. */
 const inWindow = (spec, d) => spec.segs.some(([a, b]) => d >= a && d <= b);
+/** Test whether a value lies within the inclusive threshold range. */
 const inZone = (spec, v) => v >= spec.lo && (spec.hi == null || v <= spec.hi);
 
 /** Plateau value of a qualifying event, and the baseline the flow sits at between events. */
@@ -2101,6 +2104,7 @@ function levels(spec) {
   return { base: lo * 0.5, plateau, ymin: 0, ymax: Math.max(plateau * 1.4, top, lo * 1.5) };
 }
 
+/** Create a seeded Mulberry32 generator returning repeatable values in [0, 1). */
 function rng(seed) {   // mulberry32: the same record every time
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -2116,6 +2120,7 @@ function freeRuns(spec) {
   }
   return runs;
 }
+/** Return the accumulation period for volume rules or the duration for other rules. */
 const eventLen = spec => (spec.mode === "volume" ? spec.acc : spec.dur);
 
 /** Why a year misses; each needs the rule to allow it (else the next feasible one is used). */
@@ -2178,6 +2183,7 @@ function genYear(spec, type, seed) {
   return flow;
 }
 
+/** Keep a generated value just inside the thresholds; leave volume values unchanged. */
 function clampZone(spec, v) {
   if (spec.mode === "volume") return v;
   const eps = spec.mode === "level" ? 0.02 : Math.max(spec.lo, spec.hi || spec.lo) * 0.01;
@@ -2249,7 +2255,9 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   const W = 520, H = 300, X0 = 66, X1 = 508, Y0 = 40, Y1 = 206;
   const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${+((o.size || 12) * 1.12).toFixed(1)}" font-weight="${o.w || 400}" fill="${o.fill || C.text}" text-anchor="${o.a || "start"}" opacity="${o.op ?? 1}">${esc(s)}</text>`;
 
+  /** Describe the EWR window as all year or a start and end calendar date. */
   function windowText(sp) { return sp.whole ? "all year" : `${dm(sp.sm, sp.sd)} – ${dm(sp.em, sp.ed)}`; }
+  /** Describe the threshold condition and units for the tutorial rule. */
   function ruleText(sp) {
     if (sp.mode === "other") return "the flow conditions set out in the parameter sheet";
     if (sp.mode === "volume") return `${fmt(sp.vol)} ML of flow accumulated within ${sp.acc} days`;
@@ -2257,6 +2265,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     if (sp.mode === "dry") return `flow of no more than ${fmt(sp.hi)} ML/d`;
     return sp.hi != null ? `flow between ${fmt(sp.lo)} and ${fmt(sp.hi)} ML/d` : `flow of at least ${fmt(sp.lo)} ML/d`;
   }
+  /** Describe duration, event count, minimum spell, and allowed gaps for non-volume rules. */
   function durText(sp) {
     if (sp.mode === "volume") return "";
     const per = sp.epyReq > 1 ? ` each time, ${sp.epyReq} times a year${sp.epy < sp.epyReq ? " (the chart has room for " + sp.epy + ")" : ""}` : "";
@@ -2266,6 +2275,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   const yrs = v => (v < 1 ? `${Math.max(1, Math.round(v * 12))} month${Math.round(v * 12) === 1 ? "" : "s"}` : `${fmt(v)} year${v === 1 ? "" : "s"}`);   // MaxInter-event is in years, sometimes under one
   const targetText = sp => (sp.tf != null ? `in ${fmt(sp.tf)}% of years` : "in some of the years");
 
+  /** Choose readable, evenly spaced axis ticks between the supplied limits. */
   function ticks(lo, hi, n = 4) {
     const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(x => x * mag).find(s => s >= raw) || mag;
     const out = [];
@@ -2326,6 +2336,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     return s;
   }
 
+  /** Return the animated ten-year outcome strip and its tile layout coordinates. */
   function tilesSvg(m, p, mark) {   // the 10-year strip
     let s = "";
     const tw = 42, gx = 5, x0 = (W - (10 * tw + 9 * gx)) / 2;
@@ -2339,6 +2350,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     return { svg: s, x0, tw, gx };
   }
 
+  /** Build tutorial steps with captions, durations, and SVG drawing callbacks. */
   function stages(m) {
     const sp = m.spec;
     const common = [];
@@ -2452,6 +2464,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     return common;
   }
 
+  /** Explain why the example year misses the rule, using its evaluated result. */
   function missText(m, bad) {
     const sp = m.spec, r = bad.res;
     const text = {
@@ -2487,6 +2500,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
   const query = () => ({ text: $g("gqText").value, state: $g("gqState").value, pu: $g("gqPu").value, kind: $g("gqKind").value, gauge: $g("gqGauge").value, code: $g("gqCode").value });
   let notice = "";
 
+  /** Render the first 60 search matches and update the selection controls and status. */
   function renderList() {
     const res = searchEwrs(ROWS_ALL, query()), shown = res.slice(0, 60);
     $g("gqMsg").textContent = notice || `${res.length.toLocaleString()} EWR${res.length === 1 ? "" : "s"} match${res.length > 60 ? " – showing the first 60, refine the search" : ""}`;
@@ -2496,6 +2510,7 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     }).join("");
   }
   const tutorials = new Map();   // key -> {card, ctl}
+  /** Reconcile tutorial cards with the selection, stopping and removing deselected cards. */
   function renderSel() {
     $g("gselN").textContent = `Selected EWRs (${sel.length} of ${GUIDE_MAX})`;
     $g("gselClear").style.display = sel.length ? "" : "none";
@@ -2508,8 +2523,10 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
     if (!sel.length && !$g("gCards").firstChild) $g("gCards").innerHTML = `<div class="gempty">Nothing selected yet.</div>`;
     else if (sel.length) $g("gCards").querySelector(".gempty")?.remove();
   }
+  /** Persist the new selection and refresh the selected cards, results, and notice. */
   function setSel(next, note) { sel = next; notice = note || ""; store("ewrGuideSel", sel); renderSel(); renderList(); }
 
+  /** Create an EWR card and its animation controller, or an unsupported-rule message. */
   function makeCard(row, open) {
     const card = document.createElement("details");
     card.className = "flowp ewrcard"; card.open = open;
@@ -2566,7 +2583,9 @@ if (typeof document !== "undefined" && typeof EWRIDX !== "undefined") (function 
 
   const ACTIVE = new Set();
   let raf = 0;
+  /** Schedule the shared animation loop when no frame is already pending. */
   function kick() { if (!raf) raf = requestAnimationFrame(loop); }
+  /** Advance active tutorial controllers and schedule another frame while any remain active. */
   function loop(now) { raf = 0; for (const c of ACTIVE) c.tick(now); if (ACTIVE.size) kick(); }
   document.addEventListener("visibilitychange", () => { if (document.hidden) for (const c of [...ACTIVE]) c.stop(); });
 

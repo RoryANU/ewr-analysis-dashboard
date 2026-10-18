@@ -9,17 +9,20 @@ import sync_parameter_sheet as sync
 
 
 def test_local_copy_exists_and_has_the_columns_the_page_uses():
+    """Verify the local sheet contains the columns required by the guide."""
     header = sync.LOCAL.read_text().splitlines()[0].split(",")
     for col in ("PlanningUnitName", "Gauge", "Code", "StartMonth", "EndMonth", "TargetFrequency", "Duration", "FlowThresholdMin", "State"):
         assert col in header
 
 
 def test_normalise_ignores_line_endings_and_trailing_newlines():
+    """Verify equivalent CSV bytes compare equally despite newline differences."""
     assert sync.normalise(b"a,b\r\n1,2\r\n\r\n") == sync.normalise(b"a,b\n1,2")
 
 
 @pytest.mark.parametrize("upstream", [b"", b"<html>error</html>\nPlanningUnitName,Code\n", b"PlanningUnitName,Gauge\n", b"Gauge,Code\n"])
 def test_update_rejects_invalid_header_without_changing_local_copy(tmp_path, monkeypatch, capsys, upstream):
+    """Verify invalid upstream headers leave the local sheet and directory unchanged."""
     local = tmp_path / "parameter_sheet.csv"
     original = b"original local content\n"
     local.write_bytes(original)
@@ -33,6 +36,7 @@ def test_update_rejects_invalid_header_without_changing_local_copy(tmp_path, mon
 
 
 def test_update_replaces_local_copy_atomically(tmp_path, monkeypatch):
+    """Verify updates replace a complete temporary file beside the existing sheet."""
     local = tmp_path / "parameter_sheet.csv"
     original = b"original local content\n"
     upstream = b"PlanningUnitName,Code\nExample,BF1\n"
@@ -43,6 +47,7 @@ def test_update_replaces_local_copy_atomically(tmp_path, monkeypatch):
     replacements = []
 
     def checked_replace(source, target):
+        """Check that the complete temporary copy exists before replacing the original."""
         assert source.parent == local.parent
         assert source != local
         assert source.read_bytes() == upstream
@@ -59,6 +64,7 @@ def test_update_replaces_local_copy_atomically(tmp_path, monkeypatch):
 
 
 def test_failed_update_preserves_local_copy_and_removes_temporary_file(tmp_path, monkeypatch):
+    """Verify a failed replacement preserves the original sheet and cleans up its temporary copy."""
     local = tmp_path / "parameter_sheet.csv"
     original = b"original local content\n"
     local.write_bytes(original)
@@ -66,6 +72,7 @@ def test_failed_update_preserves_local_copy_and_removes_temporary_file(tmp_path,
     monkeypatch.setattr(sync, "fetch_upstream", lambda: b"PlanningUnitName,Code\nExample,BF1\n")
 
     def failed_replace(source, target):
+        """Simulate a filesystem failure during the atomic replacement."""
         raise OSError("replacement failed")
 
     monkeypatch.setattr(Path, "replace", failed_replace)
@@ -77,6 +84,7 @@ def test_failed_update_preserves_local_copy_and_removes_temporary_file(tmp_path,
 
 
 def test_interrupted_write_preserves_local_copy_and_removes_temporary_file(tmp_path, monkeypatch):
+    """Verify an interrupted write preserves the original sheet and removes the partial copy."""
     local = tmp_path / "parameter_sheet.csv"
     original = b"original local content\n"
     local.write_bytes(original)
@@ -86,6 +94,7 @@ def test_interrupted_write_preserves_local_copy_and_removes_temporary_file(tmp_p
     write = temp.write
 
     def interrupted_write(content):
+        """Write a partial sheet before simulating a keyboard interruption."""
         write(content[:5])
         raise KeyboardInterrupt
 
@@ -100,6 +109,7 @@ def test_interrupted_write_preserves_local_copy_and_removes_temporary_file(tmp_p
 
 @pytest.mark.network
 def test_matches_upstream():
+    """Compare the local sheet with GitHub, skipping when the upstream is unreachable."""
     try:
         upstream = sync.fetch_upstream(timeout=20)
     except (urllib.error.URLError, TimeoutError, OSError) as e:

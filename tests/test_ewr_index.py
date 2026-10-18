@@ -13,11 +13,13 @@ SHEET = ROOT / "data/reference/parameter_sheet.csv"
 
 
 def decoded(idx: dict, key: str, i: int):
+    """Return an indexed cell, resolving shared string references when needed."""
     v = idx["cols"][key][i]
     return idx["strs"][v] if v is not None and key in bd.EWR_STR else v
 
 
 def test_index_has_one_row_per_sheet_row_and_matching_values():
+    """Verify index dimensions and sampled values against the parameter sheet."""
     sheet = pd.read_csv(SHEET, dtype={"Gauge": str}, low_memory=False)
     idx = bd.ewr_index(ROOT)
     assert idx["n"] == len(sheet)
@@ -43,6 +45,7 @@ def test_start_and_end_days_follow_pyewr():
 
 
 def test_committed_html_embeds_the_current_index():
+    """Verify the committed dashboard embeds the index produced from the current sheet."""
     html = (ROOT / "ewr_analysis_dashboard.html").read_text()
     m = re.search(r"^const EWRIDX=(\{.*\});", html, re.M)
     assert m, "the page has no EWRIDX: run python3 src/build_dashboard.py"
@@ -50,6 +53,7 @@ def test_committed_html_embeds_the_current_index():
 
 
 def test_handlers_come_from_the_pyewr_calc_config():
+    """Verify every row has a handler and the expected tutorial handler types are present."""
     idx = bd.ewr_index(ROOT)
     handlers = {decoded(idx, "h", i) for i in range(idx["n"])}
     assert {"flow_handle", "lowflow_handle"} <= handlers  # the EWRs the guide has tutorials for

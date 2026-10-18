@@ -438,6 +438,7 @@ class TestMetaAndRender:
 # ---------------------------------------------------------------------------------------------------------------------
 class TestBuildPayload:
     def test_payload_end_to_end(self, capsys):
+        """Verify the mini fixture produces all dashboard slots, guide rows, and build diagnostics."""
         p = bd.build_payload(MINI)
         assert list(p) == ["__DATA__", "__GAUGES__", "__ROWS__", "__RIVERS__", "__CONSTRAINTS__", "__META__", "__EWRIDX__", "__SCENARIOS__"]
         assert p["__SCENARIOS__"] == []
