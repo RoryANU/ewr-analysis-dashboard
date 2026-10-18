@@ -146,6 +146,11 @@ function src(r,m,i){ const k=m==="et"||m==="mz"?"et":m==="sev"||m==="dr"?m:"fr";
   const a=k==="et"?r[7]:k==="fr"?r[6]:k==="sev"?r[10]:r[11]; return a?a[i]??null:null; }
 // a window too short to expect one achieved year (n < 100 / T): its FR is shown as "k of n years" and kept out of the means
 const shortWin=(r,i)=>{ const w=win(r), T=r[8]&&r[8].T; return !!w&&T>0&&w.n&&w.n[i]!=null&&w.n[i]<100/T; };
+/**
+ * Return EWR row r's raw value for metric m at scenario index i, in stored units (not FR-capped; binary metrics not yet 1/0).
+ * Worst gap and duration ratio pass through src() unchanged; FR, achieved frequency and the FR-based binary metrics return
+ * null in a window too short to expect an achieved year. Achieved frequency (fq) is FR x the EWR's target % of years, as a proportion.
+ */
 function valOne(r,m,i){ if(m==="sev"||m==="dr") return src(r,m,i);   // worst gap ÷ MRIP; duration ratio
   if((m==="fr"||m==="fq"||m==="ach"||m==="fb")&&shortWin(r,i)) return null;
   if(m==="fq"){ const raw=src(r,m,i), T=r[8]&&r[8].T; return Number.isFinite(raw)&&T>0?raw*T/100:null; }   // achieved frequency = FR x target % of years, as a proportion
@@ -236,6 +241,12 @@ const RYB=[[215,48,39],[252,141,89],[254,224,144],[145,191,219],[69,117,180]], r
 const ramp=s=>ryb(s);   // 0 worst (red) .. 1 best (blue)
 const MET_FILL="#e5e7eb", MET_IN=MET_OUT?"not in the means":"in the means as no change", metTip=(r,m)=>{ const k=diffClass(r,m); return `meets the target in both scenarios (${MET_IN})${k&&k.sur!=null?`; surplus ${m==="et"?pct(k.sur):signed(Math.abs(k.sur).toFixed(2),k.sur)}`:""}`; };   // differential: every EWR meets the target in both scenarios
 const ETP_MAX=0.5, DIV={fr:10,fq:0.25,et:0.15,ach:0.25,mz:0.25,fb:0.25,sev:1,dr:0.5};   // differential: differences of this size (or more) get the full colour (FR: achieved years per century)
+/**
+ * Return the CSS colour for metric m's value v, used by the map, matrix and legend fills; null is grey.
+ * Differential mode shades white at no change toward blue (improvement) or red (decline), scaled by DIV[m].
+ * Single-scenario FR and duration ratio shade red-white-blue around 0.9; worst gap and % beyond MRIP use fixed or inverted ramps.
+ * Other single-scenario metrics (achieved frequency, meeting threshold, MRIP achieved, failed badly) ramp between red and blue.
+ */
 function colour(v,m){ if(v==null) return "#bbb";
   if(isDiff()){ const x=Math.max(-1,Math.min(1,v/DIV[m])), w=[255,255,255];   // 0 white, blue = improvement (higher FR, lower ETP), red = decline
     return `rgb(${x>=0?mixc(w,[33,102,172],x):mixc(w,[215,48,39],-x)})`; }
@@ -274,6 +285,7 @@ const PERF={sdl:{},gauge:{}};
 function computePerf(){ const i=scnIdx(), m=S.metric; PERF.sdl={}; PERF.gauge={};
   for(const k of Object.keys(sdlRows)){ const v=agg(sdlRows[k],["pu","gauge"],m,i).mean; PERF.sdl[k]=v==null?"#bbb":colour(v,m); }
   for(const k of Object.keys(gaugeRows)){ const v=agg(gaugeRows[k],[],m,i).mean; PERF.gauge[k]=v==null?"#bbb":colour(v,m); } }
+/** Return Leaflet style for an SDL unit polygon: shaded by PERF (the current metric's performance) in the active review, otherwise grey with a dashed outline. */
 const style=f=>({color:"#333",weight:1,fillColor:inReview(f)?(PERF.sdl[f.properties.sdl]||"#bbb"):"#888",fillOpacity:inReview(f)?0.75:0.2,dashArray:inReview(f)?null:"4",interactive:clickable(f)});
 computePerf();
 const units=L.geoJSON(DATA,{style,onEachFeature:(f,l)=>{
@@ -386,7 +398,9 @@ function crumbHtml(){
 const MRIP_LONG="maximum recommended interval between events (MRIP)"; let mripSeen=false;
 /** Spell out MRIP once after render resets mripSeen, marking it seen; return the abbreviation on subsequent calls. */
 const mr=()=>{ if(mripSeen) return "MRIP"; mripSeen=true; return MRIP_LONG; };
+/** Return an inline info icon ("ⓘ") carrying t as its hover/focus tooltip text. */
 const tip=t=>`<span class="tip" tabindex="0" title="${esc(t)}">ⓘ</span>`;
+/** Return "Policy, Climate" for policy index p and climate index c, using the short display labels (POL_L / CLI_L) where available. */
 const scnLabel=(p,c)=>{ const pn=META.policies[p], cn=META.climates[c]; return `${POL_L[pn]||pn}, ${CLI_L[cn]||cn}`.replace(/, (Historical)$/,", $1"); };
 const LEVEL_NAME={none:"basin",sdl:"SDL unit",pu:"planning unit",gauge:"gauge"};
 // one sentence at the top of every level: how many EWRs meet their target, and (differential) how the scenarios compare
