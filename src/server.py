@@ -46,6 +46,7 @@ import re
 import secrets
 import socket
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -72,8 +73,37 @@ STORE = ROOT / ".user_scenarios"
 FLOWS: dict[tuple[str, str], Any] = {}  # (scenario id, kind) -> DataFrame (date index, one column per gauge)
 SERIES_SUFFIX = {"flow": "", "level": "_level", "salinity": "_salinity"}
 MAX_BYTES = 400 * 1024 * 1024
+MAX_JSON_BYTES = 64 * 1024
 DEFAULT_PORT = 8792
 PAGE = "/ewr_analysis_dashboard.html"
+# py_ewr handlers that count any days at or above the threshold rather than one consecutive run
+LOW_FLOW_HANDLERS = ("lowflow_handle", "lowflow_handle_multi")
+
+
+def _safe_id(value: str | None) -> str:
+    """Strip everything but letters, digits, underscores and hyphens, so a client-supplied id is safe in a file name."""
+    return re.sub(r"[^A-Za-z0-9_-]", "", value or "")
+
+
+def _iso_date(value: Any) -> str:
+    import pandas as pd
+
+    return pd.Timestamp(value).strftime("%Y-%m-%d")
+
+
+def _is_multigauge(value: Any) -> bool:
+    """A parameter-sheet Multigauge cell names a partner gauge (blank cells read as NaN or whitespace)."""
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _dispatch_key(code: str, multigauge: bool, kind: Any) -> str:
+    """The key py_ewr's calc config uses to pick an EWR's handler, e.g. 'BF1_a-single-F'."""
+    return f"{code}-{'multigauge' if multigauge else 'single'}-{kind}"
+
+
+def _mrip_days(max_inter_event_years: Any) -> int:
+    """Maximum inter-event period (MRIP) in days; 0 when the EWR has none (blank, NaN or not positive)."""
+    return int(round(float(max_inter_event_years) * 365)) if max_inter_event_years > 0 else 0
 
 
 def _authority(hostport: str | None, default_port: int | None = None) -> tuple[str, int | None] | None:
@@ -174,26 +204,26 @@ def load_frames(fmt: str, path: str, sub: str = "", tds_factor: float = 0.6) -> 
 
     if not math.isfinite(tds_factor) or tds_factor <= 0:
         raise ValueError("TDS-to-EC factor must be a finite positive number")
-    df_S = pd.DataFrame()
-    ps = None  # default parameter sheet
+
+    default_sheet = None  # py_ewr's own parameter sheet
     if fmt in ("Bigmod - MDBA", "FIRM - MDBA"):
         data, header = sc.unpack_model_file(path, "Dy", "Field")
         df_clean = sc.cleaner_MDBA(sc.build_MDBA_columns(data, header))
-        df_F, df_L, _ = sc.match_MDBA_nodes(df_clean, data_inputs.get_MDBA_codes(fmt), ps)
+        df_F, df_L, _ = sc.match_MDBA_nodes(df_clean, data_inputs.get_MDBA_codes(fmt), default_sheet)
     elif fmt == "res.csv - MDBA":
-        df_F, df_L, _ = sc.cleaner_res_csv_MDBA(sc.unpack_MDBA_res_csv_file(path, "Date", "Field"), ps)
+        df_F, df_L, _ = sc.cleaner_res_csv_MDBA(sc.unpack_MDBA_res_csv_file(path, "Date", "Field"), default_sheet)
     elif fmt == "Standard time-series":
-        df = pd.read_csv(path, index_col="Date")
-        df_F, df_L, _ = sc.cleaner_standard_timeseries(df, ps)
+        raw = pd.read_csv(path, index_col="Date")
+        df_F, df_L, _ = sc.cleaner_standard_timeseries(raw, default_sheet)
     elif fmt == "Source - NSW (res.csv)":
         data, header = sc.unpack_model_file(path, "Date", "Field")
         df_clean = sc.cleaner_NSW(sc.build_NSW_columns(data, header))
-        df_F, df_L = sc.match_NSW_nodes(df_clean, data_inputs.get_NSW_codes(), ps)
+        df_F, df_L = sc.match_NSW_nodes(df_clean, data_inputs.get_NSW_codes(), default_sheet)
     elif fmt == "IQQM - netcdf":
-        df_F, df_L = sc.cleaner_netcdf_werp(sc.unpack_netcdf_as_dataframe(path), data_inputs.get_iqqm_codes(), ps)
+        df_F, df_L = sc.cleaner_netcdf_werp(sc.unpack_netcdf_as_dataframe(path), data_inputs.get_iqqm_codes(), default_sheet)
     elif fmt == "ten thousand year":
-        df = pd.read_csv(path, index_col="Date")
-        df_F, df_L = sc.cleaner_ten_thousand_year(df, ps)
+        raw = pd.read_csv(path, index_col="Date")
+        df_F, df_L = sc.cleaner_ten_thousand_year(raw, default_sheet)
     elif fmt == "Northern connectivity":
         import northern_connectivity as nc
 
@@ -201,31 +231,43 @@ def load_frames(fmt: str, path: str, sub: str = "", tds_factor: float = 0.6) -> 
         key = next((k for k in scenarios if k.lower() == sub.lower()), None) if sub else next(iter(scenarios), None)
         if key is None:
             raise ValueError(f"scenario {sub!r} not found in the workbook; available: {', '.join(scenarios)}")
-        df_F, df_L = nc.cleaner_northern_connectivity(scenarios[key], ps)
+        df_F, df_L = nc.cleaner_northern_connectivity(scenarios[key], default_sheet)
     else:
         raise ValueError(f"unknown data format {fmt!r}")
-    if fmt in ("Standard time-series", "ten thousand year"):
-        salinity_cols = [c for c in df.columns if c.endswith(("_salinity", "_ec", "_tds"))]
-        gauges = [c.rsplit("_", 1)[0] for c in salinity_cols]
-        if len(set(gauges)) != len(gauges):
-            raise ValueError("Provide only one salinity column per gauge (_salinity, _ec or _tds)")
-        # Build the whole block once, rather than inserting columns repeatedly in a large frame.
-        df_S = df[salinity_cols].apply(pd.to_numeric, errors="raise")
-        if fmt == "Standard time-series":
-            try:
-                df_S.index = pd.to_datetime(df_S.index, format="%d/%m/%Y")
-            except ValueError:
-                df_S.index = pd.to_datetime(df_S.index, format="%Y-%m-%d")
-            df_S = df_S.reindex(df_F.index)
-        else:
-            df_S.index = df_F.index
-        tds_cols = [c for c in salinity_cols if c.endswith("_tds")]
-        if tds_cols:
-            df_S[tds_cols] = df_S[tds_cols] * tds_factor
-            df_S.attrs["tds_factor"] = tds_factor
-        df_S.columns = gauges
+
+    # only these two formats can carry salinity columns
+    df_S = _salinity_frame(raw, df_F.index, fmt, tds_factor) if fmt in ("Standard time-series", "ten thousand year") else pd.DataFrame()
     df_S.index.name = "Date"
     return df_F, df_L, df_S
+
+
+def _salinity_frame(raw: Any, flow_index: Any, fmt: str, tds_factor: float) -> Any:
+    """The *_salinity / *_ec / *_tds columns of a raw upload as one EC frame, one column per gauge, on the flow frame's dates."""
+    import pandas as pd
+
+    salinity_cols = [c for c in raw.columns if c.endswith(("_salinity", "_ec", "_tds"))]
+    gauges = [c.rsplit("_", 1)[0] for c in salinity_cols]
+    if len(set(gauges)) != len(gauges):
+        raise ValueError("Provide only one salinity column per gauge (_salinity, _ec or _tds)")
+
+    # Build the whole block once, rather than inserting columns repeatedly in a large frame.
+    df_S = raw[salinity_cols].apply(pd.to_numeric, errors="raise")
+    if fmt == "Standard time-series":
+        # the standard format accepts either date style, as py_ewr's cleaner does
+        try:
+            df_S.index = pd.to_datetime(df_S.index, format="%d/%m/%Y")
+        except ValueError:
+            df_S.index = pd.to_datetime(df_S.index, format="%Y-%m-%d")
+        df_S = df_S.reindex(flow_index)
+    else:
+        df_S.index = flow_index
+
+    tds_cols = [c for c in salinity_cols if c.endswith("_tds")]
+    if tds_cols:
+        df_S[tds_cols] = df_S[tds_cols] * tds_factor
+        df_S.attrs["tds_factor"] = tds_factor
+    df_S.columns = gauges
+    return df_S
 
 
 _POOL: dict[str, Any] = {}  # per worker process: the frames and parameter sheet shared by every gauge (set once by _pool_init)
@@ -262,28 +304,29 @@ def evaluate_gauges(
     """calc_sorter for every gauge in the file, one process per gauge (the gauges are independent and this is most of the run time).
     Falls back to one gauge at a time when worker processes cannot be started. Returns (results, events, skipped) by gauge."""
     gauges = sorted(set(df_F.columns) | set(df_L.columns))
-    out: dict[Any, tuple[Any, str | None]] = {}
+    outcomes: dict[Any, tuple[Any, str | None]] = {}  # gauge -> (calc_sorter's (results, events), error)
     progress("Evaluating gauges", 0, len(gauges))
-    todo = list(gauges)
-    if len(gauges) > 1 and (os.cpu_count() or 1) > 1:
+
+    workers = os.cpu_count() or 1
+    if len(gauges) > 1 and workers > 1:
         try:
-            with ProcessPoolExecutor(min(len(gauges), os.cpu_count() or 1), initializer=_pool_init, initargs=(df_F, df_L, table, calc_config)) as pool:
-                futures = [pool.submit(_eval_gauge, g) for g in gauges]
-                for future in as_completed(futures):
-                    g, res, err = future.result()
-                    out[g] = (res, err)
-                    progress("Evaluating gauges", len(out), len(gauges))
-            todo = []
+            with ProcessPoolExecutor(min(len(gauges), workers), initializer=_pool_init, initargs=(df_F, df_L, table, calc_config)) as pool:
+                for future in as_completed([pool.submit(_eval_gauge, g) for g in gauges]):
+                    gauge, result, error = future.result()
+                    outcomes[gauge] = (result, error)
+                    progress("Evaluating gauges", len(outcomes), len(gauges))
         except (BrokenProcessPool, OSError):
-            todo = [g for g in gauges if g not in out]
-    if todo:
-        for g in todo:
-            _, res, err = _eval_gauge(g, df_F, df_L, table, calc_config)
-            out[g] = (res, err)
-            progress("Evaluating gauges", len(out), len(gauges))
-    results = {g: out[g][0][0] for g in gauges if out[g][0] is not None}
-    events = {g: out[g][0][1] for g in gauges if out[g][0] is not None}
-    return results, events, {g: err for g in gauges if (err := out[g][1]) is not None}
+            pass  # finish whatever the pool did not, one gauge at a time below
+
+    for gauge in [g for g in gauges if g not in outcomes]:
+        _, result, error = _eval_gauge(gauge, df_F, df_L, table, calc_config)
+        outcomes[gauge] = (result, error)
+        progress("Evaluating gauges", len(outcomes), len(gauges))
+
+    evaluated = {g: result for g in gauges if (result := outcomes[g][0]) is not None}
+    results = {g: result[0] for g, result in evaluated.items()}
+    events = {g: result[1] for g, result in evaluated.items()}
+    return results, events, {g: error for g in gauges if (error := outcomes[g][1]) is not None}
 
 
 def summarise_rows(
@@ -307,76 +350,59 @@ def summarise_rows(
     from py_ewr.scenario_handling import ScenarioHandler
 
     report = report if report is not None else (lambda stage, done, total: None)
+    handlers = diagnostic_handlers() if handler_map is None else handler_map
+
     sh = ScenarioHandler("scenario.csv", "Standard time-series", parameter_sheet=sheet_path)
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": results}, {"scenario": events}, df_F, df_L
-    res = sh.get_ewr_results()
-    # py_ewr's inter-event summary fails (KeyError 'Gauge') when no EWR in the file has any event at all, e.g. a completely dry
-    # scenario (or none has a successful event): with no successful events there are no gaps, so use an empty table (as ewr_eval does).
-    has_events = any(len(lst) > 0 for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
-    empty = pd.DataFrame(columns=["startDate", "endDate", "interEventLength"])
+    ewr_table = sh.get_ewr_results().copy()
+    frequency = pd.to_numeric(ewr_table["Frequency"], errors="coerce")
+    target = pd.to_numeric(ewr_table["TargetFrequency"], errors="coerce")
+    ewr_table["FR"] = np.where(target > 0, frequency / target, np.nan)
 
-    def summary(get: Any) -> Any:
-        try:
-            return get() if has_events else empty
-        except KeyError as e:  # events exist but none succeeded (all shorter than MinSpell): py_ewr's summary is empty and fails the same way
-            if e.args != ("Gauge",):
-                raise
-            return empty
+    # ETP and gap severity come from the same gap list as the flow charts (ewr_gaps)
+    has_events = _has_any_event(events)
+    no_gaps = pd.DataFrame(columns=["startDate", "endDate", "interEventLength"])
+    inter_by_ewr = _group_by_ewr(_successful_summary(sh.get_all_successful_interEvents, has_events, no_gaps))
+    succ_by_ewr = _group_by_ewr(_successful_summary(sh.get_all_successful_events, has_events, no_gaps))
 
-    inter, succ = summary(sh.get_all_successful_interEvents), summary(sh.get_all_successful_events)
-    res = res.copy()
-    freq = pd.to_numeric(res["Frequency"], errors="coerce")
-    target = pd.to_numeric(res["TargetFrequency"], errors="coerce")
-    res["FR"] = np.where(target > 0, freq / target, np.nan)
-    # ETP and gap severity from the same gap list as the flow charts (ewr_gaps): an EWR with no successful event is one gap over the record
-    by_key = lambda d: {(str(k[0]), k[1], k[2]): g for k, g in d.groupby(["Gauge", "PlanningUnit", "Code"])} if len(d) and "Gauge" in d else {}  # noqa: E731
-    inter_by, succ_by = by_key(inter), by_key(succ)
+    # each gauge's daily series: flow, else level, unless the caller supplies its own (e.g. salinity)
     flow_names = {str(g) for g in df_F.columns}
     series = {str(g): df_F[g] for g in df_F.columns} | {str(g): df_L[g] for g in df_L.columns if str(g) not in flow_names}
     if series_override is not None:
         series.update({str(g): values for g, values in series_override.items()})
-    daily: dict[str, Any] = {}
+    daily_by_gauge: dict[str, Any] = {}
+
+    yearly_by_gauge = {str(g): v for g, v in results.items()}
+    events_by_gauge = {str(g): v for g, v in events.items()}
+    params_by_ewr = {(str(p.Gauge), p.PlanningUnitName, p.Code): p for p in table.drop_duplicates(["Gauge", "Code", "PlanningUnitName"]).itertuples()}
+
     gap_stats: dict[tuple[str, str, str], dict[str, Any]] = {}
-    res_by, ev_by = {str(g): v for g, v in results.items()}, {str(g): v for g, v in events.items()}  # py_ewr's yearly results and events by gauge
-    prm_by = {(str(p.Gauge), p.PlanningUnitName, p.Code): p for p in table.drop_duplicates(["Gauge", "Code", "PlanningUnitName"]).itertuples()}
-    handlers = diagnostic_handlers() if handler_map is None else handler_map
-    for i, r in enumerate(res.itertuples()):
+    for i, r in enumerate(ewr_table.itertuples()):
         if i % 5 == 0:
-            report("Summarising results", i, len(res))
-        k = (str(r.Gauge), r.PlanningUnit, r.Code)
-        mi = pd.to_numeric(r.MaxInterEventYears, errors="coerce")
-        if k[0] not in daily:
-            daily[k[0]] = record_days(series.get(k[0]))
-        flow, mrip, days = daily[k[0]], int(round(float(mi) * 365)) if mi > 0 else 0, pd.to_numeric(r.TotalDays, errors="coerce")
-        if flow is None or flow.empty:  # no dates (ten-thousand-year runs): py_ewr's gap lengths, the record as one gap when nothing succeeded
-            lens = [days] if k not in succ_by else pd.to_numeric(inter_by[k].interEventLength, errors="coerce").dropna().tolist() if k in inter_by else []
-            gap_stats[k] = {"et": round(min(1.0, sum(max(0.0, x - mrip) for x in lens) / days), 4) if mrip and days > 0 else None}
-            gaps = [{"days": days, "boundary": True, "censored": False, "excess": max(0, days - mrip)}] if k not in succ_by and mrip and days > 0 else []
-            gap_stats[k].update(gap_severity(gaps, mrip))
+            report("Summarising results", i, len(ewr_table))
+        key = (str(r.Gauge), r.PlanningUnit, r.Code)
+        gauge, pu, code = key
+        mrip = _mrip_days(pd.to_numeric(r.MaxInterEventYears, errors="coerce"))
+        if gauge not in daily_by_gauge:
+            daily_by_gauge[gauge] = record_days(series.get(gauge))
+        daily = daily_by_gauge[gauge]
+
+        if daily is None or daily.empty:
+            gap_stats[key] = _dateless_gap_stats(key, pd.to_numeric(r.TotalDays, errors="coerce"), mrip, inter_by_ewr, succ_by_ewr)
             continue
-        ev = {"flow": flow, "mrip_days": mrip, "inter": inter_by.get(k, empty), "succ": succ_by.get(k, empty)}
-        gaps, etp = ewr_gaps(ev)
-        gap_stats[k] = {"et": etp, **gap_severity(gaps, ev["mrip_days"])}
-        prm, yr = prm_by.get(k), res_by.get(k[0], {}).get(k[1])
-        if prm is None or yr is None or f"{k[2]}_eventYears" not in yr:
+
+        gaps, etp = ewr_gaps({"flow": daily, "mrip_days": mrip, "inter": inter_by_ewr.get(key, no_gaps), "succ": succ_by_ewr.get(key, no_gaps)})
+        gap_stats[key] = {"et": etp, **gap_severity(gaps, mrip)}
+
+        params, yearly = params_by_ewr.get(key), yearly_by_gauge.get(gauge, {}).get(pu)
+        if params is None or yearly is None or f"{code}_eventYears" not in yearly:
             continue
-        # by assessment year: achieved, complete, duration (or volume) ratio; then their summaries and the drought windows
-        sm, em = int(prm.StartMonth), int(prm.EndMonth)
-        sd, ed = (int(getattr(prm, field)) if sheet_path is not None and not pd.isna(getattr(prm, field, None)) else None for field in ("StartDay", "EndDay"))
-        ys, wy, kind = assessment_start(sm, em), [int(w) for w in yr.index], str(prm.FlowLevelVolume)
-        multi = isinstance(prm.Multigauge, str) and bool(prm.Multigauge.strip())
-        low = handlers.get(f"{k[2]}-{'multigauge' if multi else 'single'}-{kind}") in ("lowflow_handle", "lowflow_handle_multi")
-        if kind == "F":
-            dr = dr_years(yr, k[2], prm.Duration, low, prm.EventsPerYear, ev_by.get(k[0], {}).get(k[1], {}).get(k[2]))
-        else:
-            dr = vr_years(flow, wy, ys, sm, em, prm.AccumulationPeriod, prm.VolumeThreshold, sd, ed) if kind == "V" else [None] * len(wy)
-        years = {"wy": wy, "achieved": pd.to_numeric(yr[f"{k[2]}_eventYears"], errors="coerce").fillna(0).astype(int).tolist(), "ystart": ys, "dr": dr}
-        years["complete"] = complete_years(flow, wy, ys, sm, em, sd, ed)
-        span = (flow.index[0], flow.index[-1])
-        gap_stats[k] |= year_summary(dr, years["complete"])
-        gap_stats[k]["win"] = {w: window_metrics(years, gaps, mrip, r.TargetFrequency, *window_dates(w, ys), record=span) for w in DROUGHTS}
-    res["ETP"] = [gap_stats.get((str(g), pu, c), {}).get("et") for g, pu, c in zip(res.Gauge, res.PlanningUnit, res.Code, strict=True)]
-    rows = [
+        ewr_events = events_by_gauge.get(gauge, {}).get(pu, {}).get(code)
+        use_days = sheet_path is not None  # only a user sheet sets StartDay / EndDay
+        gap_stats[key] |= _assessment_year_stats(code, params, yearly, ewr_events, daily, gaps, mrip, r.TargetFrequency, handlers, use_days)
+
+    ewr_table["ETP"] = [gap_stats.get((str(g), pu, c), {}).get("et") for g, pu, c in zip(ewr_table.Gauge, ewr_table.PlanningUnit, ewr_table.Code, strict=True)]
+    return [
         {
             "pu": r.PlanningUnit,
             "gauge": str(r.Gauge),
@@ -388,9 +414,98 @@ def summarise_rows(
             # gap severity (gap_severity), median duration ratio and near misses (year_summary), drought windows (window_metrics)
             **{s: gap_stats.get((str(r.Gauge), r.PlanningUnit, r.Code), {}).get(s) for s in ("sev", "sev_b", "eps", "dr", "nm", "win")},
         }
-        for r in res.itertuples()
+        for r in ewr_table.itertuples()
     ]
-    return rows
+
+
+def _has_any_event(events: dict) -> bool:
+    """True when any EWR at any gauge has at least one threshold event (events: gauge -> pu -> code -> year -> event list)."""
+    return any(len(lst) > 0 for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
+
+
+def _successful_summary(fetch: Callable[[], Any], has_events: bool, empty: Any) -> Any:
+    """One of py_ewr's successful-event summaries, or `empty` where py_ewr cannot build one.
+
+    py_ewr's summaries fail with KeyError('Gauge') when no EWR in the file has any event at all (e.g. a completely dry scenario),
+    and the same way when events exist but none succeeded (all shorter than MinSpell). Either way there are no successful
+    events and so no gaps, which `empty` represents (as ewr_eval does).
+    """
+    if not has_events:
+        return empty
+    try:
+        return fetch()
+    except KeyError as exc:
+        if exc.args != ("Gauge",):
+            raise
+        return empty
+
+
+def _group_by_ewr(table: Any) -> dict[tuple[str, str, str], Any]:
+    """Split a py_ewr event summary into one frame per (gauge, planning unit, EWR code)."""
+    if not len(table) or "Gauge" not in table:
+        return {}
+    return {(str(gauge), pu, code): group for (gauge, pu, code), group in table.groupby(["Gauge", "PlanningUnit", "Code"])}
+
+
+def _dateless_gap_stats(key: tuple[str, str, str], record_days_total: Any, mrip: int, inter_by_ewr: dict, succ_by_ewr: dict) -> dict[str, Any]:
+    """ETP and gap severity for a run with no dates (ten-thousand-year runs): py_ewr's gap lengths, or the whole record as one
+    gap when nothing succeeded."""
+    import pandas as pd
+
+    succeeded = key in succ_by_ewr
+    if not succeeded:
+        gap_lengths = [record_days_total]
+    elif key in inter_by_ewr:
+        gap_lengths = pd.to_numeric(inter_by_ewr[key].interEventLength, errors="coerce").dropna().tolist()
+    else:
+        gap_lengths = []
+
+    countable = mrip and record_days_total > 0
+    etp = round(min(1.0, sum(max(0.0, x - mrip) for x in gap_lengths) / record_days_total), 4) if countable else None
+    gaps = [{"days": record_days_total, "boundary": True, "censored": False, "excess": max(0, record_days_total - mrip)}] if not succeeded and countable else []
+    return {"et": etp, **gap_severity(gaps, mrip)}
+
+
+def _assessment_year_stats(
+    code: str,
+    params: Any,
+    yearly: Any,
+    ewr_events: Any,
+    daily: Any,
+    gaps: list[dict[str, Any]],
+    mrip: int,
+    target: Any,
+    handlers: dict[str, str],
+    use_days: bool,
+) -> dict[str, Any]:
+    """An EWR's results by assessment year (achieved, complete, duration or volume ratio), summarised as the median duration
+    ratio and near misses (year_summary) and as metrics inside each drought window (`win`, window_metrics)."""
+    import pandas as pd
+
+    start_month, end_month = int(params.StartMonth), int(params.EndMonth)
+    start_day, end_day = (int(getattr(params, f)) if use_days and not pd.isna(getattr(params, f, None)) else None for f in ("StartDay", "EndDay"))
+    year_start = assessment_start(start_month, end_month)
+    water_years = [int(w) for w in yearly.index]
+    kind = str(params.FlowLevelVolume)
+
+    if kind == "F":
+        low = handlers.get(_dispatch_key(code, _is_multigauge(params.Multigauge), kind)) in LOW_FLOW_HANDLERS
+        ratios = dr_years(yearly, code, params.Duration, low, params.EventsPerYear, ewr_events)
+    elif kind == "V":
+        ratios = vr_years(daily, water_years, year_start, start_month, end_month, params.AccumulationPeriod, params.VolumeThreshold, start_day, end_day)
+    else:
+        ratios = [None] * len(water_years)
+
+    years = {
+        "wy": water_years,
+        "achieved": pd.to_numeric(yearly[f"{code}_eventYears"], errors="coerce").fillna(0).astype(int).tolist(),
+        "ystart": year_start,
+        "dr": ratios,
+        "complete": complete_years(daily, water_years, year_start, start_month, end_month, start_day, end_day),
+    }
+    record = (daily.index[0], daily.index[-1])
+    windows = {w: window_metrics(years, gaps, mrip, target, *window_dates(w, year_start), record=record) for w in DROUGHTS}
+    return {**year_summary(ratios, years["complete"]), "win": windows}
 
 
 def run_scenario(
@@ -408,39 +523,28 @@ def run_scenario(
     is called as the run advances."""
     report = progress or (lambda stage, done, total: None)
     report("Reading the file", 0, 1)
-    import tempfile
-
     from py_ewr import data_inputs
 
     if fmt not in FORMATS:
         raise ValueError(f"unknown data format {fmt!r}")
     table = parameter_sheet()
-    sel = table[table.Gauge.isin(sdl_gauges)]
-    partners = set()
-    for col in ("Multigauge", "WeirpoolGauge"):
-        partners |= {g for g in sel[col].dropna().astype(str) if g.strip()}
-    wanted = set(sdl_gauges) | partners
-    suffix = Path(filename).suffix.lower() or (".nc" if fmt == "IQQM - netcdf" else ".csv")
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / f"scenario{suffix}"
-        path.write_bytes(csv_bytes)
-        try:
-            df_F, df_L, df_S = load_frames(fmt, str(path), sub, tds_factor)
-        except Exception as e:  # py_ewr's own readers fail in obscure ways on the wrong format
-            detail = str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__
-            raise ValueError(f"Could not read this file as '{fmt}'. Check that you chose the right data format. ({type(e).__name__}: {detail})") from e
+    # partner gauges (multigauge and weir pool EWRs) are read too, though only the review gauges are reported
+    wanted = set(sdl_gauges) | _partner_gauges(table[table.Gauge.isin(sdl_gauges)])
+
+    df_F, df_L, df_S = _read_upload(csv_bytes, fmt, filename, sub, tds_factor)
     df_F = df_F[[g for g in df_F.columns if str(g) in wanted]]
     df_L = df_L[[g for g in df_L.columns if str(g) in wanted]]
     df_S = df_S[[g for g in df_S.columns if str(g) in sdl_gauges]]
     if df_F.shape[1] + df_L.shape[1] + df_S.shape[1] == 0:
         raise ValueError(f"No columns in this '{fmt}' file match gauges used in this review.")
     found = sorted({str(g) for df in (df_F, df_L, df_S) for g in df.columns} & set(sdl_gauges))
+
     # A gauge that cannot be evaluated (e.g. level EWRs with no level data in the file) is skipped and reported
     # instead of stopping the whole run.
     skipped: dict[Any, str]
     series_only = merge and df_F.shape[1] == 0
     if series_only:
-        if not scn_id or not any((STORE / f"{scn_id}{suffix}.csv").exists() for suffix in SERIES_SUFFIX.values()):
+        if not scn_id or not any((STORE / f"{scn_id}{series_suffix}.csv").exists() for series_suffix in SERIES_SUFFIX.values()):
             raise ValueError("A level/salinity-only merge needs an existing stored scenario")
         # Supplemental series have no built-in flow results to replace; user EWR evaluation comes later.
         rows, skipped = [], {}
@@ -465,6 +569,27 @@ def run_scenario(
     if "tds_factor" in df_S.attrs:
         stats["tds_factor"] = df_S.attrs["tds_factor"]
     return rows, stats
+
+
+def _partner_gauges(rows: Any) -> set[str]:
+    """Gauges that parameter-sheet rows name as a multigauge or weir pool partner."""
+    partners: set[str] = set()
+    for column in ("Multigauge", "WeirpoolGauge"):
+        partners |= {g for g in rows[column].dropna().astype(str) if g.strip()}
+    return partners
+
+
+def _read_upload(body: bytes, fmt: str, filename: str, sub: str, tds_factor: float) -> tuple[Any, Any, Any]:
+    """load_frames on an uploaded file (written to a temporary file, as py_ewr's readers need a path), with a friendly error."""
+    suffix = Path(filename).suffix.lower() or (".nc" if fmt == "IQQM - netcdf" else ".csv")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"scenario{suffix}"
+        path.write_bytes(body)
+        try:
+            return load_frames(fmt, str(path), sub, tds_factor)
+        except Exception as e:  # py_ewr's own readers fail in obscure ways on the wrong format
+            detail = str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__
+            raise ValueError(f"Could not read this file as '{fmt}'. Check that you chose the right data format. ({type(e).__name__}: {detail})") from e
 
 
 def _store_series(scn_id: str | None, frames: dict[str, Any], gauges: list[str], merge: bool) -> dict[str, list[str]]:
@@ -509,16 +634,10 @@ def worker(
     """Run a scenario job, recording progress, results or errors, and elapsed time in JOBS."""
     job = JOBS[job_id]
     try:
-
-        def progress(stage: str, done: int, total: int) -> None:
-            """Update the job's current stage and completed and total work counts."""
-            job["progress"] = {"stage": stage, "done": done, "total": total}
-
-        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge, progress, tds_factor)
+        job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge, _progress_reporter(job), tds_factor)
         job["status"] = "done"
     except Exception as e:  # reported to the page
-        job["status"], job["message"] = "error", f"{type(e).__name__}: {e}"
-        traceback.print_exc()
+        _record_job_error(job, e)
     job["elapsed"] = round(time.time() - job["t0"], 1)
 
 
@@ -528,15 +647,24 @@ def uewr_worker(job_id: str, ids: list[str], scns: list[str]) -> None:
 
     job = JOBS[job_id]
     try:
-
-        def progress(stage: str, done: int, total: int) -> None:
-            job["progress"] = {"stage": stage, "done": done, "total": total}
-
-        custom_ewr.publish_job(job, custom_ewr.run_job(ids, scns, progress))
+        custom_ewr.publish_job(job, custom_ewr.run_job(ids, scns, _progress_reporter(job)))
     except Exception as exc:
-        job["status"], job["message"] = "error", f"{type(exc).__name__}: {exc}"
-        traceback.print_exc()
+        _record_job_error(job, exc)
     job["elapsed"] = round(time.time() - job["t0"], 1)
+
+
+def _progress_reporter(job: dict[str, Any]) -> Callable[[str, int, int], None]:
+    """A progress(stage, done, total) callback that records the job's current stage and work counts for /api/job."""
+
+    def progress(stage: str, done: int, total: int) -> None:
+        job["progress"] = {"stage": stage, "done": done, "total": total}
+
+    return progress
+
+
+def _record_job_error(job: dict[str, Any], exc: Exception) -> None:
+    job["status"], job["message"] = "error", f"{type(exc).__name__}: {exc}"
+    traceback.print_exc()
 
 
 # ---- flow analysis on stored scenario flows -------------------------------------------------------------------------------
@@ -546,7 +674,7 @@ def load_series(scn_id: str | None, kind: str = "flow") -> Any:
 
     if kind not in SERIES_SUFFIX:
         raise ValueError(f"unknown series kind {kind!r}")
-    scn_id = re.sub(r"[^A-Za-z0-9_-]", "", scn_id or "")
+    scn_id = _safe_id(scn_id)
     key = (scn_id, kind)
     if key not in FLOWS:
         path = STORE / f"{scn_id}{SERIES_SUFFIX[kind]}.csv"
@@ -589,6 +717,7 @@ def daily_series(scn_id: str, gauge: str) -> Any:
 
 
 def gauge_series(scn_id: str, gauge: str, kind: str = "flow") -> Any:
+    """One gauge's stored series of the given kind, as stored (only observed days)."""
     df = load_series(scn_id, kind)
     if gauge not in df.columns:
         raise ValueError(f"gauge {gauge} has no {kind} series in this scenario")
@@ -596,6 +725,7 @@ def gauge_series(scn_id: str, gauge: str, kind: str = "flow") -> Any:
 
 
 def nice_ceiling(x: float) -> int:
+    """Round x up to two significant figures, and at least to a whole number (1234 -> 1300, 57.2 -> 58), for a tidy axis limit; 100 when x is not positive."""
     if not x or x <= 0:
         return 100
     k = 10 ** max(int(math.floor(math.log10(x))) - 1, 0)
@@ -629,13 +759,13 @@ def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: 
     returns (scenarios, thresholds, durations)."""
     import numpy as np
 
-    months, cal = index.month.to_numpy(), index.year.to_numpy()
-    wy = np.where(months >= 7, cal + 1, cal)
+    months, calendar_years = index.month.to_numpy(), index.year.to_numpy()
+    wy = np.where(months >= 7, calendar_years + 1, calendar_years)  # labelled by the year the water year ends in
     year_lookup = np.unique(wy, return_inverse=True)[1]
     n_years = year_lookup.max() + 1
     mask = (months >= sm) & (months <= em) if sm <= em else (months >= sm) | (months <= em)
-    fl = np.where(mask[:, None] & ~np.isnan(flows), flows, -np.inf)
-    bounds = np.searchsorted(year_lookup, np.arange(n_years + 1))
+    window_flows = np.where(mask[:, None] & ~np.isnan(flows), flows, -np.inf)
+    bounds = np.searchsorted(year_lookup, np.arange(n_years + 1))  # each year's first row (the index is in date order)
     # Denominator: only water years whose timing window is fully observed count. A water year is complete for a scenario when
     # every calendar day of the window (Jul-Jun water year, as above) is in the index with a non-NaN flow. Partial first/last
     # years and years with no (or incomplete) data are excluded rather than scored as failures; a complete year that simply
@@ -652,21 +782,23 @@ def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: 
     n_counted = int(counted.sum())
     out = np.zeros((flows.shape[1], len(thresholds), len(durations)), dtype=np.float32)
     for s in range(flows.shape[1]):
+        # annual[k, y]: the highest threshold that year y's flows exceed for durations[k] days
         annual = np.full((len(durations), n_years), -np.inf)
         for y in np.flatnonzero(counted):
-            x = fl[bounds[y] : bounds[y + 1], s]
+            year_flows = window_flows[bounds[y] : bounds[y + 1], s]
             if consecutive:
-                m, cur = x.copy(), 1  # m[i] = min(x[i : i + cur])
+                # sliding-window minimum grown one day at a time: run_min[i] = min(year_flows[i : i + width])
+                run_min, width = year_flows.copy(), 1
                 for k, d in enumerate(durations):
-                    while cur < d and len(m) > 1:
-                        m, cur = np.minimum(m[:-1], x[cur:]), cur + 1
-                    if d <= len(x) and cur == d and len(m):
-                        annual[k, y] = m.max()
+                    while width < d and len(run_min) > 1:
+                        run_min, width = np.minimum(run_min[:-1], year_flows[width:]), width + 1
+                    if d <= len(year_flows) and width == d and len(run_min):
+                        annual[k, y] = run_min.max()
             else:
-                vals = np.sort(x)[::-1]
+                descending = np.sort(year_flows)[::-1]
                 for k, d in enumerate(durations):
-                    if d <= len(vals):
-                        annual[k, y] = vals[d - 1]
+                    if d <= len(descending):
+                        annual[k, y] = descending[d - 1]
         for k in range(len(durations)):
             if not n_counted:
                 out[s, :, k] = np.nan
@@ -716,40 +848,45 @@ def _builtin_ewr_list(gauge: str) -> list[dict[str, Any]]:
     if missing := required - set(t.columns):
         raise ValueError(f"EWR parameter table missing required columns: {', '.join(sorted(missing))}")
     t = t[t.Gauge.astype(str) == gauge]
-    out = []
-    mi = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"), strict=True)}
+    # where a (code, planning unit) pair has several rows, the last row's maximum inter-event period applies to all of them
+    max_inter = {(c, pu): v for c, pu, v in zip(t.Code, t.PlanningUnitName, pd.to_numeric(t["MaxInter-event"], errors="coerce"), strict=True)}
+
+    def number(value: Any) -> Any:
+        return pd.to_numeric(value, errors="coerce")
+
+    entries = []
     for r in t.itertuples():
-        multi = isinstance(r.Multigauge, str) and r.Multigauge.strip()
-        maxint = mi.get((r.Code, r.PlanningUnitName))
-        h = handlers.get(f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}")
-        num = lambda v: pd.to_numeric(v, errors="coerce")  # noqa: E731
-        thr, dur, sm, em, tgt = num(r.FlowThresholdMin), num(r.Duration), num(r.StartMonth), num(r.EndMonth), num(r.TargetFrequency)
-        if h not in ("flow_handle", "lowflow_handle") or multi or pd.isna(thr) or pd.isna(dur) or pd.isna(sm) or pd.isna(em):
+        multi = _is_multigauge(r.Multigauge)
+        handler = handlers.get(_dispatch_key(r.Code, multi, r.FlowLevelVolume))
+        thr, dur, sm, em, target = number(r.FlowThresholdMin), number(r.Duration), number(r.StartMonth), number(r.EndMonth), number(r.TargetFrequency)
+        if handler not in ("flow_handle", "lowflow_handle") or multi or pd.isna(thr) or pd.isna(dur) or pd.isna(sm) or pd.isna(em):
             continue
-        out.append(
+        maxint = max_inter.get((r.Code, r.PlanningUnitName))
+        entries.append(
             {
                 "code": r.Code,
                 "pu": r.PlanningUnitName,
                 "state": r.State,
-                "handler": h,
-                "consecutive": h == "flow_handle",
+                "handler": handler,
+                "consecutive": handler == "flow_handle",
                 "thr": float(thr),
                 "dur": int(dur),
                 "sm": int(sm),
                 "em": int(em),
-                "target": None if pd.isna(tgt) else float(tgt),
+                "target": None if pd.isna(target) else float(target),
                 "maxint": 0.0 if maxint is None or pd.isna(maxint) else float(maxint),
             }
         )
+
     # the same EWR is often defined in several planning units with identical settings: list it once
-    uniq: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for e in sorted(out, key=lambda e: (e["code"], e["pu"])):
-        k = (e["code"], e["thr"], e["dur"], e["sm"], e["em"], e["target"], e["maxint"], e["handler"])
-        if k in uniq:
-            uniq[k]["pus"].append(e["pu"])
+    unique: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for e in sorted(entries, key=lambda e: (e["code"], e["pu"])):
+        settings = (e["code"], e["thr"], e["dur"], e["sm"], e["em"], e["target"], e["maxint"], e["handler"])
+        if settings in unique:
+            unique[settings]["pus"].append(e["pu"])
         else:
-            uniq[k] = {**e, "pus": [e["pu"]]}
-    return sorted(uniq.values(), key=lambda e: (e["thr"], e["code"], e["pu"]))  # increasing flow threshold, i.e. increasing flow regime
+            unique[settings] = {**e, "pus": [e["pu"]]}
+    return sorted(unique.values(), key=lambda e: (e["thr"], e["code"], e["pu"]))  # increasing flow threshold, i.e. increasing flow regime
 
 
 def ewr_list(gauge: str) -> list[dict[str, Any]]:
@@ -787,8 +924,7 @@ def _builtin_diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
     supported = {(e["code"], pu) for e in _builtin_ewr_list(gauge) for pu in e["pus"]}
     result = []
     for r in table[table.Gauge.astype(str) == gauge].itertuples():
-        multi = isinstance(r.Multigauge, str) and bool(r.Multigauge.strip())
-        key = f"{r.Code}-{'multigauge' if multi else 'single'}-{r.FlowLevelVolume}"
+        key = _dispatch_key(r.Code, _is_multigauge(r.Multigauge), r.FlowLevelVolume)
         result.append(
             {
                 "code": r.Code,
@@ -802,6 +938,7 @@ def _builtin_diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
 
 
 def diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
+    """Every EWR rule at a gauge, stock and user-defined, with its handler and whether detailed diagnostics are offered."""
     import custom_ewr
 
     return _builtin_diagnostic_inventory(gauge) + custom_ewr.inventory(gauge)
@@ -842,9 +979,8 @@ def record_coverage(flow: Any, complete: list[int]) -> dict[str, Any]:
     }
 
 
-_EVAL_CACHE: dict[
-    tuple[Any, ...], dict[str, Any]
-] = {}  # (scenario id, gauge, code, planning unit[, user version]) -> one EWR evaluated by py_ewr (see ewr_eval)
+# (scenario id, gauge, code, planning unit[, user version]) -> one EWR evaluated by py_ewr (see ewr_eval)
+_EVAL_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 
 
 def _water_year(d: Any) -> int:
@@ -857,94 +993,133 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
     the gaps between successful events, exactly as py_ewr computes them (calc_sorter + ScenarioHandler). Missing days stay
     missing (py_ewr counts them per year in missingDays); nothing is filled in."""
     import pandas as pd
-    from py_ewr import data_inputs, evaluate_EWRs
     from py_ewr.scenario_handling import ScenarioHandler
 
     import custom_ewr
 
-    spec = custom_ewr.find(code, gauge) if code.startswith("U_") else None
-    if code.startswith("U_") and spec is None:
+    is_user_ewr = code.startswith("U_")
+    spec = custom_ewr.find(code, gauge) if is_user_ewr else None
+    if is_user_ewr and spec is None:
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
+    # a user EWR's cache entry is keyed by its version, so editing the definition never serves stale results
     key = (scn_id, gauge, code, pu, spec["ver"]) if spec is not None else (scn_id, gauge, code, pu)
     if key in _EVAL_CACHE:
         return _EVAL_CACHE[key]
+
     sheet_path = str(custom_ewr.merged_sheet_path([spec])) if spec is not None else None
     table = custom_ewr.read_sheet(sheet_path) if sheet_path is not None else parameter_sheet()
-    sel = table[(table.Gauge.astype(str) == gauge) & (table.Code == code) & ((table.PlanningUnitName == pu) if pu else True)]
-    if sel.empty:
+    matches = table[(table.Gauge.astype(str) == gauge) & (table.Code == code) & ((table.PlanningUnitName == pu) if pu else True)]
+    if matches.empty:
         raise ValueError(f"EWR {code} is not defined at gauge {gauge}")
-    sel = sel.iloc[:1].copy()  # py_ewr gets its own copy to change
-    pu = sel.PlanningUnitName.iloc[0]
-    num = lambda c: pd.to_numeric(sel[c], errors="coerce").iloc[0]  # noqa: E731
+    ewr_row = matches.iloc[:1].copy()  # py_ewr gets its own copy to change
+    pu = ewr_row.PlanningUnitName.iloc[0]
+
     if spec is not None:
-        df_F, df_L = custom_ewr.frames(scn_id, spec)
-        cfg = custom_ewr.calc_config([spec])
-        results, events = custom_ewr.calculate(spec, df_F, df_L, sel, cfg)
-        series = df_L[gauge] if spec["kind"] == "L" else df_F[gauge]
-        if spec.get("second_gauge"):
-            series = df_F.sum(axis=1, min_count=len(df_F.columns))
-        handlers = {key: handler for handler, keys in cfg.items() for key in keys}
+        df_F, df_L, results, events, series, handlers = _calculate_user_ewr(scn_id, gauge, spec, ewr_row)
     else:
-        df_F = daily_series(scn_id, gauge).to_frame(gauge)
-        df_F.index.name = "Date"
-        df_L = pd.DataFrame(index=df_F.index)
-        results, events = evaluate_EWRs.calc_sorter(df_F, df_L, gauge, sel, data_inputs.get_ewr_calc_config(None))
-        series, handlers = df_F[gauge], diagnostic_handlers()
+        df_F, df_L, results, events, series, handlers = _calculate_stock_ewr(scn_id, gauge, ewr_row)
+
     sh = ScenarioHandler("scenario.csv", "Standard time-series", parameter_sheet=sheet_path)
     sh.pu_ewr_statistics, sh.yearly_events, sh.flow_data, sh.level_data = {"scenario": {gauge: results}}, {"scenario": {gauge: events}}, df_F, df_L
-    cols = ["startDate", "endDate", "interEventLength", "eventDuration"]
-    pick = lambda d: d[(d.Gauge == gauge) & (d.Code == code) & (d.PlanningUnit == pu)].copy() if len(d) and "Gauge" in d else pd.DataFrame(columns=cols)  # noqa: E731
-    if any(len(lst) > 0 for lst in events[pu][code].values()):
-        try:
-            inter = pick(sh.get_all_successful_interEvents())
-            succ = pick(sh.get_all_successful_events())
-        except KeyError as exc:
-            if exc.args != ("Gauge",):
-                raise
-            inter = succ = pd.DataFrame(columns=cols)
-    else:  # py_ewr's summaries fail on an empty event ledger: no events, so none succeeded
-        inter = succ = pd.DataFrame(columns=cols)
-    yr = results[pu]
-    yr = yr[[c for c in yr.columns if c.startswith(code + "_")]].rename(columns=lambda c: c[len(code) + 1 :])
-    mi = num("MaxInter-event")
+    inter, succ = _successful_tables(sh, events[pu][code], gauge, code, pu)
+
+    yearly = results[pu]
+    yearly = yearly[[c for c in yearly.columns if c.startswith(code + "_")]].rename(columns=lambda c: c[len(code) + 1 :])
+
+    def param(column: str) -> Any:
+        return pd.to_numeric(ewr_row[column], errors="coerce").iloc[0]
+
+    def optional_param(column: str, cast: Callable[[Any], Any]) -> Any:
+        return None if pd.isna(param(column)) else cast(param(column))
+
+    is_level = spec is not None and spec["kind"] == "L"
     out = {
         "pu": pu,
-        "years": yr,
+        "years": yearly,
         "events": events[pu][code],
         "flow": series,
         "succ": succ,
         "inter": inter,
-        "mrip_days": int(round(float(mi) * 365)) if mi and not pd.isna(mi) and mi > 0 else 0,
-        "thr": float(num("LevelThresholdMin" if spec is not None and spec["kind"] == "L" else "FlowThresholdMin")),
-        "dur": int(num("Duration")),
-        "sm": int(num("StartMonth")),
-        "em": int(num("EndMonth")),
-        "target": None if pd.isna(num("TargetFrequency")) else float(num("TargetFrequency")),
+        "mrip_days": _mrip_days(param("MaxInter-event")),
+        "thr": float(param("LevelThresholdMin" if is_level else "FlowThresholdMin")),
+        "dur": int(param("Duration")),
+        "sm": int(param("StartMonth")),
+        "em": int(param("EndMonth")),
+        "target": optional_param("TargetFrequency", float),
+        "min_spell": optional_param("MinSpell", int),
+        "per_year": optional_param("EventsPerYear", int),
+        "gap_tol": optional_param("WithinEventGapTolerance", int),
+        "thr_max": optional_param("LevelThresholdMax" if is_level else "FlowThresholdMax", float),
+        "acc": optional_param("AccumulationPeriod", int),
+        "vol": optional_param("VolumeThreshold", float),
     }
-    opt = lambda c, f: None if pd.isna(num(c)) else f(num(c))  # noqa: E731
-    out.update(
-        {
-            "min_spell": opt("MinSpell", int),
-            "per_year": opt("EventsPerYear", int),
-            "gap_tol": opt("WithinEventGapTolerance", int),
-            "thr_max": opt("LevelThresholdMax" if spec is not None and spec["kind"] == "L" else "FlowThresholdMax", float),
-            "acc": opt("AccumulationPeriod", int),
-            "vol": opt("VolumeThreshold", float),
-        }
-    )
-    # py_ewr's assessment year (assessment_start)
-    out["ystart"] = assessment_start(out["sm"], out["em"])
-    multi = isinstance(sel.Multigauge.iloc[0], str) and bool(sel.Multigauge.iloc[0].strip()) if "Multigauge" in sel else False
-    dispatch_kind = str(sel.FlowLevelVolume.iloc[0]) if "FlowLevelVolume" in sel else "F"
+    out["ystart"] = assessment_start(out["sm"], out["em"])  # py_ewr's assessment year
+
+    multi = _is_multigauge(ewr_row.Multigauge.iloc[0]) if "Multigauge" in ewr_row else False
+    dispatch_kind = str(ewr_row.FlowLevelVolume.iloc[0]) if "FlowLevelVolume" in ewr_row else "F"
     out["kind"] = spec["kind"] if spec is not None else dispatch_kind
-    out["low"] = handlers.get(f"{code}-{'multigauge' if multi else 'single'}-{dispatch_kind}") in ("lowflow_handle", "lowflow_handle_multi")
-    if spec is not None:
-        out.update(sd=opt("StartDay", int), ed=opt("EndDay", int))
+    out["low"] = handlers.get(_dispatch_key(code, multi, dispatch_kind)) in LOW_FLOW_HANDLERS
+
     if spec is None:
         _EVAL_CACHE[key] = out
-    elif not custom_ewr.cache_evaluation(spec, key, out):
+        return out
+    out.update(sd=optional_param("StartDay", int), ed=optional_param("EndDay", int))
+    if not custom_ewr.cache_evaluation(spec, key, out):
         raise ValueError("User EWR definition changed during evaluation; re-run")
     return out
+
+
+def _calculate_stock_ewr(scn_id: str, gauge: str, ewr_row: Any) -> tuple[Any, Any, Any, Any, Any, dict[str, str]]:
+    """calc_sorter on one stock EWR over a gauge's stored daily flows: (df_F, df_L, results, events, series, handlers)."""
+    import pandas as pd
+    from py_ewr import data_inputs, evaluate_EWRs
+
+    df_F = daily_series(scn_id, gauge).to_frame(gauge)
+    df_F.index.name = "Date"
+    df_L = pd.DataFrame(index=df_F.index)
+    results, events = evaluate_EWRs.calc_sorter(df_F, df_L, gauge, ewr_row, data_inputs.get_ewr_calc_config(None))
+    return df_F, df_L, results, events, df_F[gauge], diagnostic_handlers()
+
+
+def _calculate_user_ewr(scn_id: str, gauge: str, spec: dict[str, Any], ewr_row: Any) -> tuple[Any, Any, Any, Any, Any, dict[str, str]]:
+    """custom_ewr's evaluation of one user EWR: (df_F, df_L, results, events, series, handlers). The series is the level for a
+    level EWR, and the two gauges' summed flow for a two-gauge EWR."""
+    import custom_ewr
+
+    df_F, df_L = custom_ewr.frames(scn_id, spec)
+    config = custom_ewr.calc_config([spec])
+    results, events = custom_ewr.calculate(spec, df_F, df_L, ewr_row, config)
+    series = df_L[gauge] if spec["kind"] == "L" else df_F[gauge]
+    if spec.get("second_gauge"):
+        series = df_F.sum(axis=1, min_count=len(df_F.columns))
+    handlers = {key: handler for handler, keys in config.items() for key in keys}
+    return df_F, df_L, results, events, series, handlers
+
+
+def _successful_tables(sh: Any, events_by_year: dict[Any, list[Any]], gauge: str, code: str, pu: str) -> tuple[Any, Any]:
+    """One EWR's rows of py_ewr's successful inter-events and successful events, (inter, succ).
+
+    py_ewr's summaries fail (KeyError 'Gauge') on an empty event ledger, or when no event succeeded: both mean there are no
+    successful events, so both tables are empty.
+    """
+    import pandas as pd
+
+    columns = ["startDate", "endDate", "interEventLength", "eventDuration"]
+    empty = pd.DataFrame(columns=columns)
+    if not any(len(lst) > 0 for lst in events_by_year.values()):
+        return empty, empty
+
+    def pick(summary: Any) -> Any:
+        if not len(summary) or "Gauge" not in summary:
+            return pd.DataFrame(columns=columns)
+        return summary[(summary.Gauge == gauge) & (summary.Code == code) & (summary.PlanningUnit == pu)].copy()
+
+    try:
+        return pick(sh.get_all_successful_interEvents()), pick(sh.get_all_successful_events())
+    except KeyError as exc:
+        if exc.args != ("Gauge",):
+            raise
+        return empty, empty
 
 
 def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
@@ -958,31 +1133,32 @@ def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
     spans in both), or None when the EWR has no maximum or nothing is left to count."""
     import pandas as pd
 
-    flow, mrip = ev["flow"], ev["mrip_days"]
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")  # noqa: E731
+    flow, mrip, inter = ev["flow"], ev["mrip_days"], ev["inter"]
     first, last = flow.index[0], flow.index[-1]
-    inter = ev["inter"]
-    rows = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in zip(inter.startDate, inter.endDate, strict=True)] if len(inter) else []
-    nosucc = not len(ev["succ"])
-    if nosucc:
-        rows = [(first, last)]
+    no_success = not len(ev["succ"])
+    if no_success:
+        spans = [(first, last)]
+    else:
+        spans = [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in zip(inter.startDate, inter.endDate, strict=True)] if len(inter) else []
+
     gaps = []
-    for a, b in rows:
-        n = (b - a).days + 1
-        cen = bool(flow.loc[a:b].isna().any())
+    for start, end in spans:
+        days = (end - start).days + 1
+        censored = bool(flow.loc[start:end].isna().any())
         gaps.append(
             {
-                "start": fdate(a),
-                "end": fdate(b),
-                "days": n,
-                "censored": cen,
-                "boundary": bool(a <= first or b >= last),
-                "excess": None if cen else (max(0, n - mrip) if mrip else 0),
-                "no_success": nosucc,
+                "start": _iso_date(start),
+                "end": _iso_date(end),
+                "days": days,
+                "censored": censored,
+                "boundary": bool(start <= first or end >= last),
+                "excess": None if censored else (max(0, days - mrip) if mrip else 0),
+                "no_success": no_success,
             }
         )
-    days = len(flow) - sum(g["days"] for g in gaps if g["censored"])
-    etp = round(min(1.0, sum(g["excess"] for g in gaps if not g["censored"]) / days), 4) if mrip and days > 0 else None
+
+    counted_days = len(flow) - sum(g["days"] for g in gaps if g["censored"])
+    etp = round(min(1.0, sum(g["excess"] for g in gaps if not g["censored"]) / counted_days), 4) if mrip and counted_days > 0 else None
     return gaps, etp
 
 
@@ -1139,6 +1315,11 @@ def interevents(q: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def _scenario_ids(q: dict[str, str]) -> list[tuple[str, str]]:
+    """[("base", id)] plus ("comp", id) when the query names a comparison scenario."""
+    return [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
+
+
 def ewr_years(q: dict[str, str]) -> dict[str, Any]:
     """One EWR, year by year and event by event, for one scenario or a base / comparison pair (py_ewr's own results throughout).
     years:  py_ewr's yearly statistics; a water year is complete when py_ewr reports no missing days and a full year of days.
@@ -1147,92 +1328,116 @@ def ewr_years(q: dict[str, str]) -> dict[str, Any]:
             dips within its gap tolerance), total volume (sum of the daily flows over every day from start to end, ML) and peak.
     gaps:   see ewr_gaps.
     paired: two scenarios: achievement compared over the water years complete in BOTH, year by year."""
-    import pandas as pd
-
     gauge, code, pu = q["gauge"], q["ewr"], q.get("pu", "")
-    ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")  # noqa: E731
     out: dict[str, Any] = {"code": code, "gauge": gauge, "scenarios": {}}
-    for k, sid in ids:
-        ev = ewr_eval(sid, gauge, code, pu)
-        y, flow = ev["years"], ev["flow"]
-        col = lambda c: pd.to_numeric(y[c], errors="coerce").fillna(0).astype(int).tolist() if c in y else [0] * len(y)  # noqa: B023, E731
-        wy = [int(v) for v in y.index]
-        # a year counts when every day of the EWR's timing window in that assessment year has a flow (a missing day elsewhere in the
-        # year does not matter); the window's days are taken from the calendar, so a window cut off by the record's ends is incomplete
-        complete = complete_years(flow, wy, ev["ystart"], ev["sm"], ev["em"], ev.get("sd"), ev.get("ed"))
-        if ev.get("kind", "F") in ("F", "S"):
-            dr = dr_years(y, "", ev["dur"], ev.get("low", False), ev["per_year"], ev["events"])
-        else:
-            dr = (
-                vr_years(flow, wy, ev["ystart"], ev["sm"], ev["em"], ev["acc"], ev["vol"], ev.get("sd"), ev.get("ed"))
-                if ev["kind"] == "V"
-                else [None] * len(wy)
-            )
-        years = {
-            "wy": wy,
-            "achieved": col("eventYears"),
-            "n_events": col("numEvents"),
-            "n_all": col("numEventsAll"),
-            "event_days": col("totalEventDays"),
-            "max_event": col("maxEventDays"),
-            "missing": col("missingDays"),
-            "complete": complete,
-            "dr": dr,
-        }
-        ok = set(pd.to_datetime(ev["succ"].startDate).dt.strftime("%Y-%m-%d")) if len(ev["succ"]) else set()
-        events = []
-        for w, lst in ev["events"].items():
-            for e in lst:
-                if not e:
-                    continue
-                a, b = pd.Timestamp(e[0][0]), pd.Timestamp(e[-1][0])
-                span = flow.loc[a:b]  # every calendar day from start to end (an event may skip days within its gap tolerance)
-                events.append(
-                    {
-                        "wy": int(w),
-                        "start": fdate(a),
-                        "end": fdate(b),
-                        "days": (b - a).days + 1,
-                        "qual": len(e),
-                        "vol": None if ev.get("kind", "F") not in ("F", "V") or span.isna().any() else round(float(span.sum()), 1),
-                        "peak": round(float(span.max()), 2),
-                        "ok": fdate(a) in ok,
-                    }
-                )
-        events.sort(key=lambda e: e["start"])
+    for role, scn_id in _scenario_ids(q):
+        ev = ewr_eval(scn_id, gauge, code, pu)
+        years = _ewr_year_table(ev)
         gaps, etp = ewr_gaps(ev)
-        out["scenarios"][k] = {
+        out["scenarios"][role] = {
             "years": years,
-            "events": events,
+            "events": _ewr_events(ev),
             "gaps": gaps,
             "etp": etp,
             **gap_severity(gaps, ev["mrip_days"]),
-            "coverage": record_coverage(flow, complete),
+            "coverage": record_coverage(ev["flow"], years["complete"]),
         }
         if code.startswith("U_"):
             out["kind"], out["unit"] = ev["kind"], {"F": "ML/d", "V": "ML/d", "L": "m", "S": "EC"}[ev["kind"]]
-        out.update({kk: ev[kk] for kk in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})
+        # the EWR's settings (the same for both scenarios)
+        out.update({k: ev[k] for k in ("pu", "thr", "thr_max", "dur", "min_spell", "per_year", "gap_tol", "sm", "em", "ystart", "target", "mrip_days")})
+
     if "comp" in out["scenarios"]:
-        b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
-        bi = {w: i for i, w in enumerate(b["wy"]) if b["complete"][i]}
-        ci = {w: i for i, w in enumerate(c["wy"]) if c["complete"][i]}
-        common = sorted(set(bi) & set(ci))
-        pb = [b["achieved"][bi[w]] for w in common]
-        pc = [c["achieved"][ci[w]] for w in common]
-        n = len(common)
-        out["paired"] = {
-            "wy": common,
-            "n": n,
-            "base": int(sum(pb)),
-            "comp": int(sum(pc)),
-            "gained": sum(1 for x, z in zip(pb, pc, strict=True) if not x and z),
-            "lost": sum(1 for x, z in zip(pb, pc, strict=True) if x and not z),
-            "pct_base": round(100 * sum(pb) / n, 3) if n else None,
-            "pct_comp": round(100 * sum(pc) / n, 3) if n else None,
-        }
-        out["paired"]["p_mcnemar"] = mcnemar_p(out["paired"]["gained"], out["paired"]["lost"])
+        out["paired"] = _paired_achievement(out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"])
     return out
+
+
+def _ewr_year_table(ev: dict[str, Any]) -> dict[str, Any]:
+    """An evaluated EWR's (ewr_eval) statistics by assessment year, as parallel lists."""
+    import pandas as pd
+
+    yearly, flow = ev["years"], ev["flow"]
+    water_years = [int(w) for w in yearly.index]
+
+    def column(name: str) -> list[int]:
+        return pd.to_numeric(yearly[name], errors="coerce").fillna(0).astype(int).tolist() if name in yearly else [0] * len(yearly)
+
+    # a year counts when every day of the EWR's timing window in that assessment year has a flow (a missing day elsewhere in the
+    # year does not matter); the window's days are taken from the calendar, so a window cut off by the record's ends is incomplete
+    complete = complete_years(flow, water_years, ev["ystart"], ev["sm"], ev["em"], ev.get("sd"), ev.get("ed"))
+
+    kind = ev.get("kind", "F")
+    if kind in ("F", "S"):
+        ratios = dr_years(yearly, "", ev["dur"], ev.get("low", False), ev["per_year"], ev["events"])
+    elif kind == "V":
+        ratios = vr_years(flow, water_years, ev["ystart"], ev["sm"], ev["em"], ev["acc"], ev["vol"], ev.get("sd"), ev.get("ed"))
+    else:
+        ratios = [None] * len(water_years)
+
+    return {
+        "wy": water_years,
+        "achieved": column("eventYears"),
+        "n_events": column("numEvents"),
+        "n_all": column("numEventsAll"),
+        "event_days": column("totalEventDays"),
+        "max_event": column("maxEventDays"),
+        "missing": column("missingDays"),
+        "complete": complete,
+        "dr": ratios,
+    }
+
+
+def _ewr_events(ev: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every threshold event of an evaluated EWR (ewr_eval) in date order, with its length, volume, peak and success."""
+    import pandas as pd
+
+    flow = ev["flow"]
+    successful_starts = set(pd.to_datetime(ev["succ"].startDate).dt.strftime("%Y-%m-%d")) if len(ev["succ"]) else set()
+    has_volume = ev.get("kind", "F") in ("F", "V")  # levels and salinity have no volume
+    events = []
+    for water_year, year_events in ev["events"].items():
+        for event in year_events:
+            if not event:
+                continue
+            start, end = pd.Timestamp(event[0][0]), pd.Timestamp(event[-1][0])
+            span = flow.loc[start:end]  # every calendar day from start to end (an event may skip days within its gap tolerance)
+            events.append(
+                {
+                    "wy": int(water_year),
+                    "start": _iso_date(start),
+                    "end": _iso_date(end),
+                    "days": (end - start).days + 1,
+                    "qual": len(event),
+                    "vol": None if not has_volume or span.isna().any() else round(float(span.sum()), 1),
+                    "peak": round(float(span.max()), 2),
+                    "ok": _iso_date(start) in successful_starts,
+                }
+            )
+    events.sort(key=lambda e: e["start"])
+    return events
+
+
+def _paired_achievement(base: dict[str, Any], comp: dict[str, Any]) -> dict[str, Any]:
+    """Achievement in two scenarios over the water years complete in both, with the years gained and lost and McNemar's test."""
+    base_index = {w: i for i, w in enumerate(base["wy"]) if base["complete"][i]}
+    comp_index = {w: i for i, w in enumerate(comp["wy"]) if comp["complete"][i]}
+    common = sorted(set(base_index) & set(comp_index))
+    base_achieved = [base["achieved"][base_index[w]] for w in common]
+    comp_achieved = [comp["achieved"][comp_index[w]] for w in common]
+    n = len(common)
+    gained = sum(1 for b, c in zip(base_achieved, comp_achieved, strict=True) if not b and c)
+    lost = sum(1 for b, c in zip(base_achieved, comp_achieved, strict=True) if b and not c)
+    return {
+        "wy": common,
+        "n": n,
+        "base": int(sum(base_achieved)),
+        "comp": int(sum(comp_achieved)),
+        "gained": gained,
+        "lost": lost,
+        "pct_base": round(100 * sum(base_achieved) / n, 3) if n else None,
+        "pct_comp": round(100 * sum(comp_achieved) / n, 3) if n else None,
+        "p_mcnemar": mcnemar_p(gained, lost),
+    }
 
 
 def mcnemar_p(gained: int, lost: int) -> float | None:
@@ -1251,6 +1456,11 @@ def _feb29(w: int) -> bool:
     return calendar.isleap(w + 1)
 
 
+def _water_year_days(w: int) -> int:
+    """Calendar days in water year w (1 Jul w - 30 Jun w+1)."""
+    return 366 if _feb29(w) else 365
+
+
 def _runs_by_year(s: Any, hit: Any) -> tuple[dict[str, list[Any]], list[dict[str, Any]]]:
     """Runs of consecutive days where `hit` is true in the daily series `s` (missing days are never hits and break a run; a run
     beside a missing day or the record's ends is `censored`: its true length is unknown). Per water year (1 Jul - 30 Jun,
@@ -1258,57 +1468,53 @@ def _runs_by_year(s: Any, hit: Any) -> tuple[dict[str, list[Any]], list[dict[str
     30 June is split at the year boundary for this) and the number of runs starting in it; numbers only for complete water years
     (every day observed). Returns (years, runs)."""
     import numpy as np
-    import pandas as pd
 
-    fdate = lambda d: pd.Timestamp(d).strftime("%Y-%m-%d")  # noqa: E731
-    v = s.to_numpy(dtype=float)
-    miss = np.isnan(v)
-    hit = hit & ~miss
+    values = s.to_numpy(dtype=float)
+    missing = np.isnan(values)
+    hit = hit & ~missing
     wy = np.array([_water_year(d) for d in s.index])
-    runs, i, n = [], 0, len(v)
+    n = len(values)
+
+    runs: list[dict[str, Any]] = []
+    i = 0
     while i < n:
         if not hit[i]:
             i += 1
             continue
-        j = i
+        j = i  # extend to the run's last day
         while j + 1 < n and hit[j + 1]:
             j += 1
-        runs.append(
-            {
-                "start": fdate(s.index[i]),
-                "end": fdate(s.index[j]),
-                "days": j - i + 1,
-                "censored": bool((i > 0 and miss[i - 1]) or (j + 1 < n and miss[j + 1]) or i == 0 or j == n - 1),
-                "wy": int(wy[i]),
-            }
-        )
+        touches_gap_or_edge = i == 0 or j == n - 1 or missing[i - 1] or (j + 1 < n and missing[j + 1])
+        runs.append({"start": _iso_date(s.index[i]), "end": _iso_date(s.index[j]), "days": j - i + 1, "censored": bool(touches_gap_or_edge), "wy": int(wy[i])})
         i = j + 1
+
     starts: dict[int, int] = {}
     for r in runs:
         starts[r["wy"]] = starts.get(r["wy"], 0) + 1
+
     years: dict[str, list[Any]] = {"wy": [], "days": [], "longest": [], "n": [], "complete": []}
     for w in np.unique(wy):
-        m = wy == w
-        comp = bool(m.sum() == (366 if _feb29(int(w)) else 365) and not miss[m].any())
-        h, best, cur = hit[m], 0, 0
-        for x in h:
-            cur = cur + 1 if x else 0
-            best = max(best, cur)
+        in_year = wy == w
+        complete = bool(in_year.sum() == _water_year_days(int(w)) and not missing[in_year].any())
+        year_hits, longest, current = hit[in_year], 0, 0
+        for is_hit in year_hits:
+            current = current + 1 if is_hit else 0
+            longest = max(longest, current)
         years["wy"].append(int(w))
-        years["complete"].append(int(comp))
-        years["days"].append(int(h.sum()) if comp else None)
-        years["longest"].append(best if comp else None)
-        years["n"].append(starts.get(int(w), 0) if comp else None)
+        years["complete"].append(int(complete))
+        years["days"].append(int(year_hits.sum()) if complete else None)
+        years["longest"].append(longest if complete else None)
+        years["n"].append(starts.get(int(w), 0) if complete else None)
     return years, runs
 
 
 def _pair_years(out: dict[str, Any]) -> dict[str, Any]:
     """Two scenarios: the water years complete in both."""
     if "comp" in out["scenarios"]:
-        b, c = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
-        bi = {w for w, k in zip(b["wy"], b["complete"], strict=True) if k}
-        ci = {w for w, k in zip(c["wy"], c["complete"], strict=True) if k}
-        out["paired"] = {"wy": sorted(bi & ci)}
+        base, comp = out["scenarios"]["base"]["years"], out["scenarios"]["comp"]["years"]
+        base_complete = {w for w, ok in zip(base["wy"], base["complete"], strict=True) if ok}
+        comp_complete = {w for w, ok in zip(comp["wy"], comp["complete"], strict=True) if ok}
+        out["paired"] = {"wy": sorted(base_complete & comp_complete)}
     return out
 
 
@@ -1316,13 +1522,12 @@ def spells(q: dict[str, str]) -> dict[str, Any]:
     """Low-flow spells: runs of consecutive days with flow below `thr` ML/d (see _runs_by_year); with two scenarios they are compared
     over the water years complete in both."""
     gauge, thr = q["gauge"], float(q["thr"])
-    ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
     out: dict[str, Any] = {"gauge": gauge, "thr": thr, "scenarios": {}}
-    for k, sid in ids:
-        s = daily_series(sid, gauge)
+    for role, scn_id in _scenario_ids(q):
+        s = daily_series(scn_id, gauge)
         years, runs = _runs_by_year(s, s.to_numpy(dtype=float) < thr)
         years["below"] = years.pop("days")
-        out["scenarios"][k] = {
+        out["scenarios"][role] = {
             "years": years,
             "longest_runs": sorted(runs, key=lambda r: -r["days"])[:10],
             "n_runs": len(runs),
@@ -1339,33 +1544,31 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
     from flow_regime_mappings import regimes_for
 
     gauge = q["gauge"]
-    by: dict[str, list[dict[str, Any]]] = {}
+    ewrs_by_regime: dict[str, list[dict[str, Any]]] = {}
     for e in _builtin_ewr_list(gauge):
-        for rg in regimes_for(e["code"], e.get("state") or ""):
-            if rg != "excluded":
-                by.setdefault(rg, []).append(e)
-    comps = []
-    for rg, es in by.items():
-        thr = min(e["thr"] for e in es)
-        comps.append(
+        for regime in regimes_for(e["code"], e.get("state") or ""):
+            if regime != "excluded":
+                ewrs_by_regime.setdefault(regime, []).append(e)
+
+    components = []
+    for regime, ewrs in ewrs_by_regime.items():
+        thr = min(e["thr"] for e in ewrs)
+        components.append(
             {
-                "regime": rg,
+                "regime": regime,
                 "thr": thr,
-                "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in es}, key=lambda x: (x[1], x[0]))],
-                "at_thr": sorted({e["code"] for e in es if e["thr"] == thr}),
+                "codes": [c for c, _ in sorted({(e["code"], e["thr"]) for e in ewrs}, key=lambda x: (x[1], x[0]))],
+                "at_thr": sorted({e["code"] for e in ewrs if e["thr"] == thr}),
             }
         )
-    comps.sort(key=lambda c: c["thr"])
-    ids = [("base", q["base"])] + ([("comp", q["comp"])] if q.get("comp") else [])
-    out: dict[str, Any] = {"gauge": gauge, "regimes": comps, "scenarios": {}}
-    for k, sid in ids:
-        s = daily_series(sid, gauge)
-        v = s.to_numpy(dtype=float)
-        per = []
-        for c in comps:
-            years, runs = _runs_by_year(s, v >= c["thr"])
-            per.append(years)
-        out["scenarios"][k] = {"regimes": per, "years": per[0] if per else {"wy": [], "complete": []}}
+    components.sort(key=lambda c: c["thr"])
+
+    out: dict[str, Any] = {"gauge": gauge, "regimes": components, "scenarios": {}}
+    for role, scn_id in _scenario_ids(q):
+        s = daily_series(scn_id, gauge)
+        values = s.to_numpy(dtype=float)
+        per_regime = [_runs_by_year(s, values >= c["thr"])[0] for c in components]
+        out["scenarios"][role] = {"regimes": per_regime, "years": per_regime[0] if per_regime else {"wy": [], "complete": []}}
     return _pair_years(out)
 
 
@@ -1398,7 +1601,10 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
     thresholds = np.arange(xmin, xlim + 1, spacing)
     durations = np.arange(dmin, dmax + 1)
     af, n_years = achievement_frequencies(df.to_numpy(dtype=float), df.index, thresholds, durations, sm, em, consec)
-    z = lambda a: np.round(a.T, 3).tolist()  # (durations x thresholds), as plotted  # noqa: E731
+
+    def as_grid(a: Any) -> list[list[float]]:
+        return np.round(a.T, 3).tolist()  # (durations x thresholds), as plotted
+
     out = {
         "thresholds": thresholds.tolist(),
         "durations": durations.tolist(),
@@ -1407,10 +1613,10 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
         "spacing": spacing,
         "years": n_years,
         "dates": [df.index[0].strftime("%Y-%m-%d"), df.index[-1].strftime("%Y-%m-%d")],
-        "base": z(af[0]),
+        "base": as_grid(af[0]),
     }
     if len(ids) == 2:
-        out["comp"], out["diff"] = z(af[1]), z(af[1] - af[0])
+        out["comp"], out["diff"] = as_grid(af[1]), as_grid(af[1] - af[0])
     if q.get("mthr") and q.get("mdur"):  # exact % of years at one (threshold, duration), e.g. an EWR's own requirement
         one, _ = achievement_frequencies(df.to_numpy(dtype=float), df.index, np.array([float(q["mthr"])]), np.array([int(float(q["mdur"]))]), sm, em, consec)
         mark = [round(float(v), 3) for v in one[:, 0, 0]]
@@ -1444,69 +1650,101 @@ def _paired(q: dict[str, str], gauge: str) -> dict[str, Any]:
 
 def curves(q: dict[str, str]) -> dict[str, Any]:
     """kind: hydro (daily flow and water-year volumes, one or two scenarios, on shared dates) | fdc (flow duration curve, one or two scenarios) |
-    dfdc (differential flow duration curve: change in % of time flow >= x, comparison - base).
+    dfdc (differential flow duration curve: change in % of time flow >= x, comparison - base) | mdfdc (dfdc by calendar month).
     thr (comma-separated flows): % of time exceeded at each, for each scenario."""
+    gauge = q["gauge"]
+    kind = q.get("kind") or ("fdc" if q.get("comp") else "hydro")
+    paired = _paired(q, gauge)  # also checks, for every kind, that two scenarios share observed dates
+    if kind == "hydro":
+        return _hydrograph(q, gauge)
+    if kind == "mdfdc":
+        return _monthly_differential_fdc(q, paired)
+    if kind in ("fdc", "dfdc"):
+        return _duration_curves(q, kind, paired)
+    _window_sorted_flows(q, paired)  # an unknown kind still reports a bad timing window or threshold first
+    raise ValueError(f"unknown curve kind {kind!r}")
+
+
+def _hydrograph(q: dict[str, str], gauge: str) -> dict[str, Any]:
+    """Daily flows (missing days stay null so the line breaks there) and the volume of each complete water year; with two
+    scenarios both lines are on the dates they share, and a water year's volumes are compared only when both are complete."""
     import numpy as np
     import pandas as pd
 
-    gauge = q["gauge"]
-    kind = q.get("kind") or ("fdc" if q.get("comp") else "hydro")
-    paired = _paired(q, gauge)
-    if kind == "hydro":
-        # daily flows (missing days stay null so the line breaks there) and the volume of each complete water year; with two
-        # scenarios both lines are on the dates they share, and a water year's volumes are compared only when both are complete
-        df = pd.concat({k: daily_series(q[k], gauge) for k in ("base", "comp") if q.get(k)}, axis=1, join="inner" if q.get("comp") else "outer")
-        if df.empty:
-            raise ValueError("the scenarios share no dates at this gauge")
-        out: dict[str, Any] = {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in df.index]}
-        for k in df.columns:
-            out[k] = [None if np.isnan(v) else round(float(v), 2) for v in df[k].to_numpy(dtype=float)]
-        out["flow"] = out["base"]
-        wy = np.array([_water_year(d) for d in df.index])
-        full = df.notna().all(axis=1).to_numpy()
-        year_volumes: list[dict[str, Any]] = []
-        for w in np.unique(wy):
-            m = wy == w
-            if m.sum() == (366 if _feb29(int(w)) else 365) and full[m].all():
-                year_volumes.append({"wy": int(w), **{k: round(float(df[k].to_numpy()[m].sum()), 1) for k in df.columns}})
-        out["years"] = year_volumes
-        out["missing_days"] = int((~full).sum())
-        return out
-    if kind == "mdfdc":
-        # monthly differential flow duration: for each calendar month, the change (comparison - base) in the % of that month's days at or above each flow
-        if not q.get("comp"):
-            raise ValueError("the monthly differential flow duration needs two scenarios")
-        ser = paired
-        order = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]
-        by = {k: {m: np.sort(v[v.index.month == m].to_numpy(dtype=float)) for m in order} for k, v in ser.items()}
-        top = 0.0
-        for k in by:
-            for m in order:
-                a = by[k][m]
-                if len(a):
-                    top = max(top, float(np.percentile(a, 99)))  # flow still reached on 1% of that month's days
-        ymax = float(q["ymax"]) if q.get("ymax") else top
-        if ymax <= 0:
-            raise ValueError("no positive flows to plot")
-        if q.get("ymin") not in (None, ""):  # zoomed in: the same 200 steps spread over the chosen range
-            ymin = max(0.0, float(q["ymin"]))
-            if ymax <= ymin:
-                raise ValueError("the flow range is empty")
-            flows = np.linspace(ymin, ymax, 200)
-        else:
-            ymax = nice_ceiling(ymax)
-            flows = np.linspace(0, ymax, 201)[1:]
-        base = np.full((len(flows), 12), np.nan)
-        comp = np.full((len(flows), 12), np.nan)
-        for j, m in enumerate(order):
-            if len(by["base"][m]):
-                base[:, j] = exceed_pct(by["base"][m], flows)
-            if len(by["comp"][m]):
-                comp[:, j] = exceed_pct(by["comp"][m], flows)
-        diff = comp - base
-        z = lambda a: [[None if np.isnan(v) else round(float(v), 3) for v in row] for row in a]  # noqa: E731
-        return {"kind": "mdfdc", "months": order, "flows": np.round(flows, 2).tolist(), "diff": z(diff), "base": z(base), "comp": z(comp), "ymax": ymax}
-    sm, em = int(q.get("sm") or 0), int(q.get("em") or 0)  # optional timing window (months, may wrap the year end): only days in it are used
+    df = pd.concat({k: daily_series(q[k], gauge) for k in ("base", "comp") if q.get(k)}, axis=1, join="inner" if q.get("comp") else "outer")
+    if df.empty:
+        raise ValueError("the scenarios share no dates at this gauge")
+    out: dict[str, Any] = {"kind": "hydro", "dates": [d.strftime("%Y-%m-%d") for d in df.index]}
+    for k in df.columns:
+        out[k] = [None if np.isnan(v) else round(float(v), 2) for v in df[k].to_numpy(dtype=float)]
+    out["flow"] = out["base"]
+
+    wy = np.array([_water_year(d) for d in df.index])
+    all_observed = df.notna().all(axis=1).to_numpy()
+    year_volumes: list[dict[str, Any]] = []
+    for w in np.unique(wy):
+        in_year = wy == w
+        if in_year.sum() == _water_year_days(int(w)) and all_observed[in_year].all():
+            year_volumes.append({"wy": int(w), **{k: round(float(df[k].to_numpy()[in_year].sum()), 1) for k in df.columns}})
+    out["years"] = year_volumes
+    out["missing_days"] = int((~all_observed).sum())
+    return out
+
+
+def _monthly_differential_fdc(q: dict[str, str], paired: dict[str, Any]) -> dict[str, Any]:
+    """For each calendar month, the change (comparison - base) in the % of that month's days at or above each flow."""
+    import numpy as np
+
+    if not q.get("comp"):
+        raise ValueError("the monthly differential flow duration needs two scenarios")
+    order = [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]  # water-year order
+    by_month = {k: {m: np.sort(v[v.index.month == m].to_numpy(dtype=float)) for m in order} for k, v in paired.items()}
+
+    top = 0.0
+    for months in by_month.values():
+        for values in months.values():
+            if len(values):
+                top = max(top, float(np.percentile(values, 99)))  # flow still reached on 1% of that month's days
+    ymax = float(q["ymax"]) if q.get("ymax") else top
+    if ymax <= 0:
+        raise ValueError("no positive flows to plot")
+    if q.get("ymin") not in (None, ""):  # zoomed in: the same 200 steps spread over the chosen range
+        ymin = max(0.0, float(q["ymin"]))
+        if ymax <= ymin:
+            raise ValueError("the flow range is empty")
+        flows = np.linspace(ymin, ymax, 200)
+    else:
+        ymax = nice_ceiling(ymax)
+        flows = np.linspace(0, ymax, 201)[1:]
+
+    base = np.full((len(flows), 12), np.nan)
+    comp = np.full((len(flows), 12), np.nan)
+    for j, m in enumerate(order):
+        if len(by_month["base"][m]):
+            base[:, j] = exceed_pct(by_month["base"][m], flows)
+        if len(by_month["comp"][m]):
+            comp[:, j] = exceed_pct(by_month["comp"][m], flows)
+
+    def as_grid(a: Any) -> list[list[float | None]]:
+        return [[None if np.isnan(v) else round(float(v), 3) for v in row] for row in a]
+
+    return {
+        "kind": "mdfdc",
+        "months": order,
+        "flows": np.round(flows, 2).tolist(),
+        "diff": as_grid(comp - base),
+        "base": as_grid(base),
+        "comp": as_grid(comp),
+        "ymax": ymax,
+    }
+
+
+def _window_sorted_flows(q: dict[str, str], paired: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Each scenario's flows inside the optional timing window (sm..em, may wrap the year end), sorted ascending, and the
+    % of time each requested threshold (`thr`) is equalled or exceeded."""
+    import numpy as np
+
+    sm, em = int(q.get("sm") or 0), int(q.get("em") or 0)
 
     def windowed(series: Any) -> Any:
         series = series.dropna()
@@ -1515,41 +1753,67 @@ def curves(q: dict[str, str]) -> dict[str, Any]:
         m = series.index.month
         return series[(m >= sm) & (m <= em)] if sm <= em else series[(m >= sm) | (m <= em)]
 
-    vals = {k: np.sort(windowed(v).to_numpy(dtype=float)) for k, v in paired.items()}
-    if any(len(v) == 0 for v in vals.values()):
+    sorted_flows = {k: np.sort(windowed(v).to_numpy(dtype=float)) for k, v in paired.items()}
+    if any(len(v) == 0 for v in sorted_flows.values()):
         raise ValueError("no flow data inside that timing window")
-    thrs = [float(t) for t in (q.get("thr") or "").split(",") if t.strip()]
-    marks = [{"thr": t, **{k: round(float(exceed_pct(v, t)), 3) for k, v in vals.items()}} for t in thrs]
+    thresholds = [float(t) for t in (q.get("thr") or "").split(",") if t.strip()]
+    marks = [{"thr": t, **{k: round(float(exceed_pct(v, t)), 3) for k, v in sorted_flows.items()}} for t in thresholds]
+    return sorted_flows, marks
+
+
+def _duration_curves(q: dict[str, str], kind: str, paired: dict[str, Any]) -> dict[str, Any]:
+    """The flow duration curve (fdc) of one or two scenarios, or the differential curve (dfdc) of two."""
+    import numpy as np
+
+    sorted_flows, marks = _window_sorted_flows(q, paired)
     if kind == "fdc":
         p = np.linspace(0, 100, 401)
         fdc: dict[str, Any] = {"kind": "fdc", "p": np.round(p, 2).tolist(), "marks": marks}
-        for k, v in vals.items():
+        for k, v in sorted_flows.items():
             fdc[k] = np.round(np.percentile(v, 100 - p), 2).tolist()  # flow equalled or exceeded p% of the time
-        if "comp" in vals:
+        if "comp" in sorted_flows:
             fdc["diff"] = np.round(np.array(fdc["comp"]) - np.array(fdc["base"]), 2).tolist()
         return fdc
-    if kind == "dfdc":
-        if "comp" not in vals:
-            raise ValueError("the differential flow duration curve needs two scenarios")
-        allv = np.concatenate(list(vals.values()))
-        pos = allv[allv > 0]
-        if not len(pos):
-            raise ValueError("no positive flows to plot")
-        lo = max(float(pos.min()), 0.01)
-        xs = np.geomspace(lo, float(allv.max()), 500)
-        pb, pc = exceed_pct(vals["base"], xs), exceed_pct(vals["comp"], xs)
-        return {
-            "kind": "dfdc",
-            "x": np.round(xs, 3).tolist(),
-            "base": np.round(pb, 3).tolist(),
-            "comp": np.round(pc, 3).tolist(),
-            "diff": np.round(pc - pb, 3).tolist(),
-            "marks": marks,
-        }
-    raise ValueError(f"unknown curve kind {kind!r}")
+
+    if "comp" not in sorted_flows:
+        raise ValueError("the differential flow duration curve needs two scenarios")
+    all_flows = np.concatenate(list(sorted_flows.values()))
+    positive = all_flows[all_flows > 0]
+    if not len(positive):
+        raise ValueError("no positive flows to plot")
+    # log-spaced flows (from a positive minimum), so the curve stays smooth when the page draws it on a log axis
+    xs = np.geomspace(max(float(positive.min()), 0.01), float(all_flows.max()), 500)
+    pct_base, pct_comp = exceed_pct(sorted_flows["base"], xs), exceed_pct(sorted_flows["comp"], xs)
+    return {
+        "kind": "dfdc",
+        "x": np.round(xs, 3).tolist(),
+        "base": np.round(pct_base, 3).tolist(),
+        "comp": np.round(pct_comp, 3).tolist(),
+        "diff": np.round(pct_comp - pct_base, 3).tolist(),
+        "marks": marks,
+    }
+
+
+def _analysis_endpoint(path: str) -> Callable[[dict[str, str]], dict[str, Any]] | None:
+    """The function answering a read-only analysis endpoint (looked up per request, so module functions stay patchable)."""
+    endpoints: dict[str, Callable[[dict[str, str]], dict[str, Any]]] = {
+        "/api/heatmap": heatmap,
+        "/api/curves": curves,
+        "/api/ewrs": lambda q: diagnostic_payload(q.get("gauge", "")),
+        "/api/interevents": interevents,
+        "/api/ewryears": ewr_years,
+        "/api/spells": spells,
+        "/api/regimes": regimes,
+    }
+    return endpoints.get(path)
+
+
+USER_EWR_POST_PATHS = ("/api/uewr", "/api/uewr/preview", "/api/uewr/run", "/api/uewr/delete")
 
 
 class Handler(SimpleHTTPRequestHandler):
+    """Serves the dashboard page and the JSON API described in the module docstring; nothing else in the repository."""
+
     def __init__(self, *a: Any, **k: Any) -> None:
         super().__init__(*a, directory=str(ROOT), **k)
 
@@ -1561,12 +1825,16 @@ class Handler(SimpleHTTPRequestHandler):
             return True
         cookies = {k: v.value for k, v in SimpleCookie(self.headers.get("Cookie", "")).items()}
         given = [self.headers.get("X-Token"), cookies.get("ewr_token"), parse_qs(urlparse(self.path).query).get("token", [None])[0]]
-        ok = [g is not None and hmac.compare_digest(g.encode(), token.encode()) for g in given]
-        self._set_cookie = ok[2]  # opened from the printed address: remember the token for the page's API calls
-        return any(ok)
+        matches = [g is not None and hmac.compare_digest(g.encode(), token.encode()) for g in given]
+        self._set_cookie = matches[2]  # opened from the printed address: remember the token for the page's API calls
+        return any(matches)
 
     def _deny(self):
         self._json({"message": "access token required: use the address printed when the server started"}, 401)
+
+    def _origin_allowed(self) -> bool:
+        """Guard for requests that change state: the browser's Origin (if any) must be this server (see _state_change_allowed)."""
+        return _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address))
 
     def _json(self, obj: Any, code: int = 200, headers: dict[str, str] | None = None) -> None:
         data = json.dumps(_json_safe(obj), allow_nan=False).encode()
@@ -1584,7 +1852,7 @@ class Handler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
             raise ValueError("Invalid Content-Length") from exc
-        if not 0 < length <= 64 * 1024:
+        if not 0 < length <= MAX_JSON_BYTES:
             raise ValueError("JSON body must be between 1 byte and 64 KB")
         body = self.rfile.read(length)
         if len(body) != length:
@@ -1594,18 +1862,26 @@ class Handler(SimpleHTTPRequestHandler):
             raise ValueError("JSON body must be an object")
         return value
 
+    def _start_job(self, target: Callable[..., None], *args: Any) -> None:
+        """Run `target(job_id, *args)` in a background thread and answer with the job id the page polls (/api/job)."""
+        job_id = uuid.uuid4().hex[:10]
+        JOBS[job_id] = {"status": "running", "t0": time.time()}
+        threading.Thread(target=target, args=(job_id, *args), daemon=True).start()
+        self._json({"job": job_id})
+
     def _user_ewr_post(self, path: str, query: str) -> None:
         import custom_ewr
 
-        if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address)):
+        if not self._origin_allowed():
             return self._json({"message": "origin or host not allowed"}, 403)
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 <= length <= 64 * 1024:
+            if not 0 <= length <= MAX_JSON_BYTES:
                 raise ValueError("JSON body must not exceed 64 KB")
             if path == "/api/uewr/delete":
                 custom_ewr.delete_spec(parse_qs(query).get("id", [""])[0])
                 return self._json({"ok": True})
+
             data = self._read_json()
             if path == "/api/uewr":
                 return self._json({"spec": custom_ewr.save_spec(data)})
@@ -1613,11 +1889,9 @@ class Handler(SimpleHTTPRequestHandler):
                 spec = custom_ewr.validate_spec(data.get("spec"))
                 rows = custom_ewr.evaluate(spec, data.get("scn", ""))
                 return self._json({"row": rows[0] if rows else None, "rows": rows})
+            # /api/uewr/run
             custom_ewr.job_inputs(data.get("ids"), data.get("scns"))
-            jid = uuid.uuid4().hex[:10]
-            JOBS[jid] = {"status": "running", "t0": time.time()}
-            threading.Thread(target=uewr_worker, args=(jid, data["ids"], data["scns"]), daemon=True).start()
-            return self._json({"job": jid})
+            return self._start_job(uewr_worker, data["ids"], data["scns"])
         except custom_ewr.ValidationError as exc:
             return self._json({"errors": exc.errors}, 400)
         except (ValueError, UnicodeError, RecursionError) as exc:  # RecursionError: JSON nested beyond the parser's limit
@@ -1627,72 +1901,77 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"errors": {"request": f"{type(exc).__name__}: {exc}"}}, 500)
 
     def do_GET(self) -> None:
-        u = urlparse(self.path)
+        url = urlparse(self.path)
         if not self._authorized():
             return self._deny()
-        if u.path in ("/api/uewr", "/api/uewr/schema"):
+
+        if url.path in ("/api/uewr", "/api/uewr/schema"):
             import custom_ewr
 
-            return self._json({"specs": list(custom_ewr.load_registry().values())} if u.path == "/api/uewr" else custom_ewr.schema())
-        if u.path == "/api/forget":
+            return self._json({"specs": list(custom_ewr.load_registry().values())} if url.path == "/api/uewr" else custom_ewr.schema())
+        if url.path == "/api/forget":
             return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
-        if u.path == "/api/ping":
+        if url.path == "/api/ping":
             return self._json({"ok": True, "formats": FORMATS})
-        if u.path == "/api/job":
-            job = JOBS.get(parse_qs(u.query).get("id", [""])[0])
-            if not job:
-                return self._json({"status": "error", "message": "unknown job"}, 404)
-            out = {k: v for k, v in job.items() if k != "t0"}
-            if job["status"] == "running":
-                out["elapsed"] = round(time.time() - job["t0"], 1)
-            return self._json(out)
-        if u.path in ("/api/heatmap", "/api/curves", "/api/ewrs", "/api/interevents", "/api/ewryears", "/api/spells", "/api/regimes"):
-            q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if url.path == "/api/job":
+            return self._job_status(parse_qs(url.query).get("id", [""])[0])
+
+        endpoint = _analysis_endpoint(url.path)
+        if endpoint is not None:
+            query = {k: v[0] for k, v in parse_qs(url.query).items()}
             try:
-                if u.path == "/api/interevents":
-                    return self._json(interevents(q))
-                if u.path == "/api/ewrs":
-                    return self._json(diagnostic_payload(q.get("gauge", "")))
-                if u.path == "/api/ewryears":
-                    return self._json(ewr_years(q))
-                if u.path == "/api/spells":
-                    return self._json(spells(q))
-                if u.path == "/api/regimes":
-                    return self._json(regimes(q))
-                return self._json(heatmap(q) if u.path == "/api/heatmap" else curves(q))
+                return self._json(endpoint(query))
             except Exception as e:
                 traceback.print_exc()
                 return self._json({"error": f"{type(e).__name__}: {e}"}, 400)
-        if u.path in ("/", PAGE):  # the only file served: no directory listings, no repository files, no stored uploads
+
+        if url.path in ("/", PAGE):  # the only file served: no directory listings, no repository files, no stored uploads
             self.path = PAGE
             return super().do_GET()
         return self._json({"message": "not found"}, 404)
+
+    def _job_status(self, job_id: str) -> None:
+        job = JOBS.get(job_id)
+        if not job:
+            return self._json({"status": "error", "message": "unknown job"}, 404)
+        out = {k: v for k, v in job.items() if k != "t0"}
+        if job["status"] == "running":
+            out["elapsed"] = round(time.time() - job["t0"], 1)
+        return self._json(out)
 
     def do_HEAD(self):
         self.send_error(405)
 
     def do_POST(self) -> None:
-        u = urlparse(self.path)
+        url = urlparse(self.path)
         if not self._authorized():
             return self._deny()
-        if u.path in ("/api/uewr", "/api/uewr/preview", "/api/uewr/run", "/api/uewr/delete"):
-            return self._user_ewr_post(u.path, u.query)
-        if u.path == "/api/forget":
-            if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address)):
-                return self._json({"message": "origin or host not allowed"}, 403)
-            sid = re.sub(r"[^A-Za-z0-9_-]", "", parse_qs(u.query).get("id", [""])[0])
-            forget_cached(sid)
-            for suffix in SERIES_SUFFIX.values():
-                (STORE / f"{sid}{suffix}.csv").unlink(missing_ok=True)
-            return self._json({"ok": True})
-        if u.path != "/api/run":
+        if url.path in USER_EWR_POST_PATHS:
+            return self._user_ewr_post(url.path, url.query)
+        if url.path == "/api/forget":
+            return self._forget(parse_qs(url.query).get("id", [""])[0])
+        if url.path != "/api/run":
             return self._json({"message": "not found"}, 404)
-        if not _state_change_allowed(self.headers.get("Origin"), self.headers.get("Host"), cast(tuple[Any, ...], self.server.server_address)):
+        return self._run_upload()
+
+    def _forget(self, raw_id: str) -> None:
+        """Delete a stored scenario's series files and cached results."""
+        if not self._origin_allowed():
             return self._json({"message": "origin or host not allowed"}, 403)
-        n = int(self.headers.get("Content-Length") or 0)
-        if not 0 < n <= MAX_BYTES:
+        scn_id = _safe_id(raw_id)
+        forget_cached(scn_id)
+        for suffix in SERIES_SUFFIX.values():
+            (STORE / f"{scn_id}{suffix}.csv").unlink(missing_ok=True)
+        return self._json({"ok": True})
+
+    def _run_upload(self) -> None:
+        """Start a py_ewr job on an uploaded model output file (POST /api/run; options in the X- headers)."""
+        if not self._origin_allowed():
+            return self._json({"message": "origin or host not allowed"}, 403)
+        size = int(self.headers.get("Content-Length") or 0)
+        if not 0 < size <= MAX_BYTES:
             return self._json({"message": "file is empty or too large"}, 400)
-        body = self.rfile.read(n)
+        body = self.rfile.read(size)
         gauges = [g for g in re.split(r"[,\s]+", self.headers.get("X-Gauges", "")) if g]
         if not gauges:
             return self._json({"message": "no gauges given"}, 400)
@@ -1702,24 +1981,17 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError
         except ValueError:
             return self._json({"message": "TDS-to-EC factor must be a finite positive number"}, 400)
-        jid = uuid.uuid4().hex[:10]
-        JOBS[jid] = {"status": "running", "t0": time.time()}
-        threading.Thread(
-            target=worker,
-            args=(
-                jid,
-                body,
-                gauges,
-                re.sub(r"[^A-Za-z0-9_-]", "", self.headers.get("X-Scn-Id", "")) or None,
-                self.headers.get("X-Format", "Standard time-series"),
-                self.headers.get("X-Filename", ""),
-                self.headers.get("X-Subscenario", ""),
-                self.headers.get("X-Merge") == "1",
-                tds_factor,
-            ),
-            daemon=True,
-        ).start()
-        self._json({"job": jid})
+        return self._start_job(
+            worker,
+            body,
+            gauges,
+            _safe_id(self.headers.get("X-Scn-Id", "")) or None,
+            self.headers.get("X-Format", "Standard time-series"),
+            self.headers.get("X-Filename", ""),
+            self.headers.get("X-Subscenario", ""),
+            self.headers.get("X-Merge") == "1",
+            tds_factor,
+        )
 
     def end_headers(self) -> None:
         if not self.path.startswith("/api/"):
@@ -1729,6 +2001,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, fmt: str, *args: Any) -> None:
+        # the page polls /api/job repeatedly while a job runs: keep those requests out of the console
         if "/api/job" not in str(args[0] if args else ""):
             super().log_message(fmt, *args)
 
@@ -1760,22 +2033,23 @@ def make_server(preferred=DEFAULT_PORT, host="127.0.0.1"):
 
 
 def main(argv=None):
+    """Start the server: `[port] [--no-browser] [--host=ADDRESS]` (see the module docstring)."""
     args = list(sys.argv[1:] if argv is None else argv)
     open_browser = "--no-browser" not in args
-    nums = [a for a in args if a.isdigit()]
+    port_args = [a for a in args if a.isdigit()]
     host = next((a.split("=", 1)[1] for a in args if a.startswith("--host=")), "127.0.0.1")
     import custom_ewr
 
     custom_ewr.sweep_sheets()
-    srv = make_server(int(nums[0]) if nums else DEFAULT_PORT, host)
+    srv = make_server(int(port_args[0]) if port_args else DEFAULT_PORT, host)
     port = srv.server_address[1]
     url = f"http://localhost:{port}{PAGE}"
     if not _loopback_host(host):  # reachable from other computers: require a random access token
         srv.token = secrets.token_urlsafe(16)
         url += f"?token={srv.token}"
         print(f"Listening on {host}: anyone with this address can use the tool and see uploaded data. Do not share the link.")
-    if nums and int(nums[0]) != port:
-        print(f"Port {nums[0]} is busy, using {port} instead.")
+    if port_args and int(port_args[0]) != port:
+        print(f"Port {port_args[0]} is busy, using {port} instead.")
     print(f"EWR analysis tool running at {url}\nLeave this window open while you use it; close it (or press Ctrl+C) to stop.")
     if open_browser:
         threading.Timer(0.5, webbrowser.open, args=(url,)).start()

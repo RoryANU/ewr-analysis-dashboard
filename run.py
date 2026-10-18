@@ -24,11 +24,13 @@ class LaunchError(Exception):
 
 
 def venv_python(venv_dir=VENV, windows=None):
+    """The environment's own Python interpreter (its location differs on Windows)."""
     windows = sys.platform == "win32" if windows is None else windows
     return Path(venv_dir) / ("Scripts/python.exe" if windows else "bin/python")
 
 
 def requirements_digest(path=REQUIREMENTS):
+    """SHA-256 of the requirements file: a changed file triggers a reinstall."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
@@ -42,10 +44,12 @@ def needs_install(venv_dir=VENV, requirements=REQUIREMENTS):
 
 
 def mark_installed(venv_dir=VENV, requirements=REQUIREMENTS):
+    """Record which requirements file the environment's packages were installed from (see needs_install)."""
     (Path(venv_dir) / ".requirements-installed").write_text(requirements_digest(requirements))
 
 
 def check_python(version=None):
+    """Raise LaunchError, with download advice, when this Python is older than MIN_PYTHON."""
     version = tuple(sys.version_info[:2]) if version is None else tuple(version)
     if version < MIN_PYTHON:
         raise LaunchError(
@@ -55,20 +59,16 @@ def check_python(version=None):
 
 
 def interpreter_works(py):
+    """True when the interpreter at `py` starts (a .venv copied from another computer often does not)."""
     try:
-        return (
-            subprocess.call(
-                [str(py), "-c", "import sys"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            == 0
-        )
+        exit_code = subprocess.call([str(py), "-c", "import sys"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         return False
+    return exit_code == 0
 
 
 def ensure_venv(venv_dir=VENV):
+    """The environment's interpreter, creating the environment on first start; LaunchError when it is broken or cannot be made."""
     py = venv_python(venv_dir)
     if py.exists():
         if not interpreter_works(py):
@@ -88,28 +88,18 @@ def ensure_venv(venv_dir=VENV):
 
 
 def install_requirements(py, venv_dir=VENV, requirements=REQUIREMENTS):
+    """pip install the requirements into the environment, unless they are already installed from this exact file."""
     if not needs_install(venv_dir, requirements):
         return
     print("Installing the packages the tool needs (first start, or after an update; needs internet)...")
-    if (
-        subprocess.call(
-            [
-                str(py),
-                "-m",
-                "pip",
-                "install",
-                "--disable-pip-version-check",
-                "-r",
-                str(requirements),
-            ]
-        )
-        != 0
-    ):
+    exit_code = subprocess.call([str(py), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(requirements)])
+    if exit_code != 0:
         raise LaunchError("Installing the required packages failed. Check your internet connection and run this again.")
     mark_installed(venv_dir, requirements)
 
 
 def main(argv=None):
+    """Set up the environment and run the server in it; return the process exit code."""
     args = list(sys.argv[1:] if argv is None else argv)
     try:
         check_python()

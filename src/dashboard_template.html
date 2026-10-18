@@ -782,7 +782,6 @@ const DROUGHTS=META.droughts.map(d=>[d.name,`${d.w0}-07-01`,`${d.w1+1}-06-30`]);
 const CHARTS={joint:"Joint frequency & inter-event performance",heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
   "ev-year":"EWR achievement by year","ev-events":"EWR events","ev-timing":"EWR event timing","ev-gaps":"Gaps between events vs MRIP",regimes:"Flow regime components",spells:"Low-flow spells"};
 const CHART_GROUPS=D=>[["Flow",D?["heat","hydro","dfdc","mdfdc"]:["heat","hydro"]],["EWR performance",["joint","ev-year","ev-events","ev-timing","ev-gaps"]],["Flow regime",["regimes","spells"]]];
-const chartsFor=D=>CHART_GROUPS(D).flatMap(g=>g[1]);
 const famOf=k=>k==="joint"?"joint":k.startsWith("ev-")?"ev":k==="spells"?"sp":k==="mdfdc"?"m":k==="regimes"?"rg":"flow";   // which controls and drawing code a chart uses
 const thrKey=e=>e.code+"|"+e.pu;
 // EWRs are listed in increasing flow threshold (= increasing flow regime), then by code; the page data carries each EWR's lowest threshold (META.ewrThr)
@@ -1150,7 +1149,7 @@ let FLOWGEN=0;   // bumped whenever stored flows change (add / merge / remove): 
 const flowsChanged=()=>{ FLOWGEN++;FLOWTOKEN++;EVTOKEN++;SPTOKEN++;RGTOKEN++;MTOKEN++; FLOWCACHE.clear(); MCN.clear(); };
 async function flowGet(url){ if(FLOWCACHE.has(url)) return FLOWCACHE.get(url); const gen=FLOWGEN, r=await fetch(url), j=await r.json(); if(j.error) throw new Error(j.error); if(gen===FLOWGEN) FLOWCACHE.set(url,j); return j; }
 const heatCols=()=>{ const w=($("flowPlot")&&$("flowPlot").clientWidth)||600; return Math.max(60,Math.min(1200,Math.round((w-150)/3/20)*20)); };   // ~3 px per heat-map column, bucketed so small drags don't refetch
-const r0=v=>v==null||!isFinite(v)?"–":Math.round(v).toLocaleString(), r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: whole flows, one-decimal percentages
+const r1=v=>v==null||!isFinite(v)?"–":(Math.round(v*10)/10).toFixed(1);   // hover text: one-decimal percentages
 /**
  * Draw the selected flow/performance chart, dispatching specialized views and fetching uploaded flow data as needed.
  * keepZoom preserves the threshold-duration heat map's saved zoom; otherwise reset it before requesting the grid.

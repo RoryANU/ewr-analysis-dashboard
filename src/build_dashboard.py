@@ -110,35 +110,40 @@ def aggregate_ewr_rows(fr: pd.DataFrame, et: pd.DataFrame) -> dict[tuple[str, st
     """
     rows: dict[tuple[str, str, str, str], dict[str, Any]] = {}
 
-    def row(k: tuple[str, str, str, str]) -> dict[str, Any]:
+    def row(key: tuple[str, str, str, str]) -> dict[str, Any]:
         return rows.setdefault(
-            k, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "ey": [None] * NS, "ael": [None] * NS, "ny": None, "state": None}
+            key, {"ob": set(), "rg": set(), "fr": [None] * NS, "et": [None] * NS, "ey": [None] * NS, "ael": [None] * NS, "ny": None, "state": None}
         )
 
-    for k, v in fr.groupby(KEY):
-        r = row(k)
-        r["ob"] |= set(v.EcoObj.dropna())
-        r["rg"] |= set(v.FlowRegime.dropna())
-        for s, x in v.groupby("scn").FR.mean().items():
-            r["fr"][int(s)] = round(float(x), 4)
-        for s, x in v.groupby("scn").EventYears.mean().dropna().items():
-            r["ey"][int(s)] = round(float(x), 2)
-        for s, x in v.groupby("scn").AverageEventLength.mean().dropna().items():
-            r["ael"][int(s)] = round(float(x), 4)
-        days = v.TotalDays.dropna()
+    for key, group in fr.groupby(KEY):
+        r = row(key)
+        r["ob"] |= set(group.EcoObj.dropna())
+        r["rg"] |= set(group.FlowRegime.dropna())
+        by_scenario = group.groupby("scn")
+        _fill_by_scenario(r["fr"], by_scenario.FR.mean(), 4)
+        _fill_by_scenario(r["ey"], by_scenario.EventYears.mean().dropna(), 2)
+        _fill_by_scenario(r["ael"], by_scenario.AverageEventLength.mean().dropna(), 4)
+        days = group.TotalDays.dropna()
         r["ny"] = round(float(days.mean()) / 365.25, 2) if len(days) else None
-    for k, v in et.groupby(KEY):
-        r = row(k)
-        r["ob"] |= set(v.EcoObj.dropna())
-        r["state"] = v.State.dropna().iat[0] if v.State.notna().any() else None
-        for s, x in v.groupby("scn").ETP.mean().items():
-            r["et"][int(s)] = round(float(x), 4)
-    for k, r in rows.items():
+
+    for key, group in et.groupby(KEY):
+        r = row(key)
+        r["ob"] |= set(group.EcoObj.dropna())
+        r["state"] = group.State.dropna().iat[0] if group.State.notna().any() else None
+        _fill_by_scenario(r["et"], group.groupby("scn").ETP.mean(), 4)
+
+    for key, r in rows.items():
         if not r["rg"]:  # ETP-only EWR: use the MDBA pipeline's EWR-code -> flow regime rule
-            r["rg"] = set(regimes_for(k[3], r["state"]))
+            r["rg"] = set(regimes_for(key[3], r["state"]))
         if not r["rg"]:
             r["rg"] = {"Unmapped"}
     return rows
+
+
+def _fill_by_scenario(values: list[float | None], means: pd.Series, places: int) -> None:
+    """Write each scenario's mean (indexed by scenario number) into its slot of `values`, rounded to `places`."""
+    for scenario, mean in means.items():
+        values[int(scenario)] = round(float(mean), places)
 
 
 def dr_approx(ael: list[float | None], prm: dict[str, Any]) -> list[float | None]:
@@ -151,6 +156,7 @@ def dr_approx(ael: list[float | None], prm: dict[str, Any]) -> list[float | None
 
 
 def fix_theme(t: str) -> str:
+    """One spelling for the "Other Species" theme (the sources use both cases)."""
     return "Other Species" if t == "Other species" else t
 
 
@@ -188,24 +194,28 @@ def build_row_table(
     themes = ["Flows & Connectivity", "Ecosystem Functions", "Waterbirds", "Native Fish", "Native Vegetation", "Other Species", "Unclassified"]
     themes += sorted(set(obj_theme.values()) - set(themes))
     regimes = sorted({g for r in rows.values() for g in r["rg"]})
-    table = [
-        [
-            pus.index(k[0]),
-            sdls.index(k[1]),
-            gids.index(k[2]),
-            k[3],
-            sorted(objs.index(o) for o in r["ob"]),
-            sorted(regimes.index(g) for g in r["rg"]),
-            r["fr"],
-            r["et"],
-            {**{"T": None, "dur": None, "mrip": None}, **{s: v for s, v in params.get((k[2], k[3], k[0]), {}).items() if s != "kind"}, "ny": r.get("ny")},
-            r.get("ey", [None] * NS),
-            None,
-            dr_approx(r.get("ael", [None] * NS), params.get((k[2], k[3], k[0]), {})),
-            None,
-        ]
-        for k, r in sorted(rows.items())
-    ]
+
+    table = []
+    for (pu, sdl, gauge, code), r in sorted(rows.items()):
+        prm = params.get((gauge, code, pu), {})
+        info = {"T": None, "dur": None, "mrip": None, **{k: v for k, v in prm.items() if k != "kind"}, "ny": r.get("ny")}
+        table.append(
+            [
+                pus.index(pu),
+                sdls.index(sdl),
+                gids.index(gauge),
+                code,
+                sorted(objs.index(o) for o in r["ob"]),
+                sorted(regimes.index(g) for g in r["rg"]),
+                r["fr"],
+                r["et"],
+                info,
+                r.get("ey", [None] * NS),
+                None,
+                dr_approx(r.get("ael", [None] * NS), prm),
+                None,
+            ]
+        )
     lookups = {
         "pus": pus,
         "sdls": sdls,
@@ -219,6 +229,7 @@ def build_row_table(
 
 
 def load_gauge_stations(root: Path = ROOT) -> pd.DataFrame:
+    """BoM gauge stations with a known latitude, one per station number (the index)."""
     bom = pd.read_csv(root / "data/map/bom_gauge_stations.csv", dtype=str)
     for c in ("station_latitude", "station_longitude"):
         bom[c] = pd.to_numeric(bom[c], errors="coerce")
@@ -266,8 +277,8 @@ def build_polygons(gj: dict[str, Any], sdls: list[str]) -> dict[str, Any]:
     """SDL unit polygons: slimmed properties (`sdl` = index into sdls, -1 when the results have no such unit) and simplified geometry (in place)."""
     by_norm = {norm(n): i for i, n in enumerate(sdls)}
     for f in gj["features"]:
-        p = f["properties"]
-        f["properties"] = {"name": p["SWSDLName"], "id": p["SWSDLID"], "state": p["StateID"], "sdl": by_norm.get(norm(p["SWSDLName"]), -1)}
+        props = f["properties"]
+        f["properties"] = {"name": props["SWSDLName"], "id": props["SWSDLID"], "state": props["StateID"], "sdl": by_norm.get(norm(props["SWSDLName"]), -1)}
         f["geometry"] = mapping(shape(f["geometry"]).simplify(0.005, preserve_topology=True))
     return gj
 
@@ -287,9 +298,12 @@ def ewr_params(sheet: pd.DataFrame | None) -> dict[tuple[str, str, str], dict[st
     from the parameter sheet (the first row where a key repeats); empty without a sheet."""
     if sheet is None:
         return {}
-    num = lambda c: pd.to_numeric(sheet[c], errors="coerce") if c in sheet else pd.Series(float("nan"), index=sheet.index)  # noqa: E731
+
+    def number(column: str) -> pd.Series:
+        return pd.to_numeric(sheet[column], errors="coerce") if column in sheet else pd.Series(float("nan"), index=sheet.index)
+
     d = pd.DataFrame({"g": sheet.Gauge.astype(str), "c": sheet.Code.astype(str), "pu": sheet.PlanningUnitName.astype(str)})
-    d["T"], d["dur"], d["mrip"] = num("TargetFrequency"), num("Duration"), num("MaxInter-event")
+    d["T"], d["dur"], d["mrip"] = number("TargetFrequency"), number("Duration"), number("MaxInter-event")
     d["kind"] = sheet.FlowLevelVolume.astype(str) if "FlowLevelVolume" in sheet else "F"
     out: dict[tuple[str, str, str], dict[str, Any]] = {}
     for r in d.drop_duplicates(["g", "c", "pu"]).itertuples():
@@ -366,35 +380,41 @@ def ewr_index(root: Path = ROOT) -> dict[str, Any]:
     if not path.exists():  # a test fixture tree has no copy of the sheet: use the repository's
         path = ROOT / "data/reference/parameter_sheet.csv"
     sheet = pd.read_csv(path, dtype={"Gauge": str, "Multigauge": str}, low_memory=False)
-    strs: list[str] = []
-    seen: dict[str, int] = {}
     cols: dict[str, list[Any]] = {}
+
     # StartMonth / EndMonth are text such as "9.15" = 15 September; py_ewr splits them at the "." and reads the rest as the day.
     # No day means the whole month: sd defaults to 1 and ed to null (the page uses the month's last day).
     raw = pd.read_csv(path, dtype=str, usecols=["StartMonth", "EndMonth"])
-    for src, mk, dk in (("StartMonth", "sm", "sd"), ("EndMonth", "em", "ed")):
-        parts = raw[src].fillna("").str.split(".", n=1, expand=True).reindex(columns=[0, 1]).fillna("")
-        cols[mk] = [int(m) if m else None for m in parts[0]]
-        cols[dk] = [int(d) if d else (1 if dk == "sd" else None) for d in parts[1]]
+    for column, month_key, day_key in (("StartMonth", "sm", "sd"), ("EndMonth", "em", "ed")):
+        parts = raw[column].fillna("").str.split(".", n=1, expand=True).reindex(columns=[0, 1]).fillna("")
+        cols[month_key] = [int(m) if m else None for m in parts[0]]
+        cols[day_key] = [int(d) if d else (1 if day_key == "sd" else None) for d in parts[1]]
+
     sheet["_handler"] = ewr_handlers(sheet)
-    for src, key in [*EWR_COLS, ("_handler", "h")]:
-        vals = sheet[src] if src in sheet else pd.Series([None] * len(sheet))
-        out: list[Any] = []
-        for v in vals:
-            if pd.isna(v):
-                out.append(None)
-            elif key in EWR_STR:
-                out.append(seen.setdefault(str(v), len(seen)))
-                if len(strs) < len(seen):
-                    strs.append(str(v))
-            else:
-                f = float(v)
-                out.append(int(f) if f.is_integer() else round(f, 4))
-        cols[key] = out
+    strs: list[str] = []  # each distinct string once; string columns hold indices into it
+    string_index: dict[str, int] = {}
+    for column, key in [*EWR_COLS, ("_handler", "h")]:
+        values = sheet[column] if column in sheet else pd.Series([None] * len(sheet))
+        cols[key] = [_encode_value(v, key in EWR_STR, strs, string_index) for v in values]
     return {"n": len(sheet), "strs": strs, "cols": cols}
 
 
+def _encode_value(value: Any, is_string: bool, strs: list[str], string_index: dict[str, int]) -> Any:
+    """One EWR index cell: None when blank, else a string's index in `strs` (added on first sight), else a compact number."""
+    if pd.isna(value):
+        return None
+    if is_string:
+        text = str(value)
+        if text not in string_index:
+            string_index[text] = len(strs)
+            strs.append(text)
+        return string_index[text]
+    number = float(value)
+    return int(number) if number.is_integer() else round(number, 4)
+
+
 def build_meta(lookups: dict[str, Any], ref: pd.DataFrame, ewr_thr: dict[str, float] | None = None) -> dict[str, Any]:
+    """The page's META: scenario names, the lookup lists ROWS indexes into, objective descriptions and EWR thresholds."""
     objs = lookups["objs"]
     return {
         "ewrThr": ewr_thr or {},
@@ -451,6 +471,7 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
 
 
 def main() -> None:
+    """Rebuild ewr_analysis_dashboard.html from the template and data/."""
     payload = build_payload()
     html = render_html((HERE / "dashboard_template.html").read_text(), payload)
     out_name = "ewr_analysis_dashboard.html"

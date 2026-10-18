@@ -107,5 +107,5 @@ def regimes_for(code: str, state: str) -> list[str]:
     match = max(matches, key=lambda item: len(item[0]), default=None)
     if match is None:
         return []
-    val = match[1]
-    return list(val) if isinstance(val, list) else [val]
+    regimes = match[1]
+    return list(regimes) if isinstance(regimes, list) else [regimes]
