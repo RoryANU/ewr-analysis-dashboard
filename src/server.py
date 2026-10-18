@@ -196,6 +196,7 @@ _POOL: dict[str, Any] = {}  # per worker process: the frames and parameter sheet
 
 
 def _pool_init(df_F: Any, df_L: Any, table: Any, calc_config: Any) -> None:
+    """Store flow and level frames, parameters, and calculation config for gauge evaluation in this process."""
     _POOL.update(df_F=df_F, df_L=df_L, table=table, calc_config=calc_config)
 
 
@@ -398,10 +399,12 @@ def worker(
     sub: str = "",
     merge: bool = False,
 ) -> None:
+    """Run a scenario job, recording progress, results or errors, and elapsed time in JOBS."""
     job = JOBS[job_id]
     try:
 
         def progress(stage: str, done: int, total: int) -> None:
+            """Update the job's current stage and completed and total work counts."""
             job["progress"] = {"stage": stage, "done": done, "total": total}
 
         job["rows"], job["stats"] = run_scenario(body, gauges, scn_id, fmt, filename, sub, merge, progress)
