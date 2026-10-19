@@ -200,7 +200,8 @@ const UEWR=(()=>{
   const announce=()=>{if(typeof window.dispatchEvent==='function')window.dispatchEvent(new CustomEvent('uewr-change'));};
   const invalidate=gauge=>{performanceRevision++;flowsChanged();if(gauge)EWRLIST.delete(gauge);if(typeof invalidateInventory==='function')invalidateInventory(gauge);};
   const redraw=()=>{if(typeof refresh==='function')refresh();announce();};
-  const assertUser=()=>{if(S.src!=='user')throw Error('User EWRs are available only in Your data mode.');};
+  const scenarioMode=()=>S.src==='user'||S.src==='observed';
+  const assertUser=()=>{if(!scenarioMode())throw Error('User EWRs are available only with Your data or Observed scenarios.');};
   const assertOnline=()=>{assertUser();if(!online||!schema)throw Error('Connect to the local analysis server to change or evaluate user EWRs.');};
   async function request(path,options){
     const response=await fetch(path,{cache:'no-store',...options}),payload=await response.json();
@@ -331,11 +332,11 @@ const UEWR=(()=>{
     return {...plan,pending:pendingDeletes.has(id)};
   }
   function atGauge(gauge){
-    if(S.src!=='user')return [];
+    if(!scenarioMode())return [];
     return [...specs.values()].filter(s=>s.gauge===gauge&&!orphaned.has(s.id)).flatMap(s=>s.pus.map(pu=>({code:s.code,pu,pus:[pu],kind:s.kind,custom:true,user:true,name:s.name,handler:s.handler,
       consecutive:!s.handler.startsWith('lowflow_handle'),thr:s.params[s.kind==='L'?'LevelThresholdMin':'FlowThresholdMin']??0,thr_max:s.params[s.kind==='L'?'LevelThresholdMax':'FlowThresholdMax'],dur:s.params.Duration,sm:s.params.StartMonth,em:s.params.EndMonth,target:s.params.TargetFrequency,maxint:s.params['MaxInter-event'],detailed:['F','V'].includes(s.kind)})));
   }
-  function offerRun(scns){const available=scns.filter(id=>CUSTOM.some(c=>!c.removed&&c.id===id));if(!specs.size||!available.length||S.src!=='user')return null;api.pendingScenarios=available;announce();return {ids:[...specs.keys()].filter(id=>!orphaned.has(id)),scns:available};}
+  function offerRun(scns){const available=scns.filter(id=>CUSTOM.some(c=>!c.removed&&c.id===id));if(!specs.size||!available.length||!scenarioMode())return null;api.pendingScenarios=available;announce();return {ids:[...specs.keys()].filter(id=>!orphaned.has(id)),scns:available};}
   const api={specs,orphaned,unmapped,pendingDeletes,statuses,get schema(){return schema;},get online(){return online;},context,loadLocal,sync,save,run,applyResults,remove,addRows,removeRows,atGauge,offerRun,pendingScenarios:[],request,post};
   return api;
 })();
@@ -343,6 +344,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
 // ---- part 3: guide controls and configuration form ----------------------------------------------------------------
 (()=>{
   const add=document.getElementById('uewrAdd'),list=document.getElementById('uewrList');if(!add||!list)return;
+  const scenarioMode=()=>S.src==='user'||S.src==='observed';
   const KINDS={F:'Flow',V:'Accumulated volume',L:'Level',S:'Salinity'};
   const RULES={flow_handle:'Continuous spell',lowflow_handle:'Total days in the window',ctf_handle:'Cease-to-flow spell',flow_handle_anytime:'Spell across 30 June',flow_handle_check_ctf:'Spell after a dry period',cumulative_handle:'Accumulated volume',rise_and_fall_handle:'Rate of rise or fall',flow_handle_multi:'Continuous spell: two gauges',lowflow_handle_multi:'Total days: two gauges',ctf_handle_multi:'Cease to flow: two gauges',cumulative_handle_multi:'Accumulated volume: two gauges',level_handle:'Level spell with drawdown limit'};
   const STEPS_USER=[['Reading series','Read stored daily series'],['Evaluating','Evaluate your EWRs'],['Summarising','Summarise results']];
@@ -355,7 +357,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
   const el=id=>document.getElementById(id),live=()=>CUSTOM.filter(c=>!c.removed&&c.id);
   const errorText=e=>(Object.entries(e.errors||{}).map(([k,v])=>k+': '+v).join('\n')||e.message||'Something went wrong. Please try again.').slice(0,1200);
   function formStatus(text,tone='info'){const node=el('uewrStatus');if(!node)return;node.textContent=text;node.dataset.tone=tone;node.setAttribute('role',tone==='error'?'alert':'status');}
-  const showNotice=(text,tone='success')=>{notice=text;noticeTone=tone;toast.querySelector('span').textContent=text;toast.dataset.tone=tone;toast.setAttribute('role',tone==='error'?'alert':'status');toast.hidden=S.src!=='user';render();};
+  const showNotice=(text,tone='success')=>{notice=text;noticeTone=tone;toast.querySelector('span').textContent=text;toast.dataset.tone=tone;toast.setAttribute('role',tone==='error'?'alert':'status');toast.hidden=!scenarioMode();render();};
   const safeAsync=fn=>{Promise.resolve().then(fn).catch(e=>{if(dialog.open&&el('uewrStatus'))formStatus(errorText(e),'error');else showNotice(errorText(e),'error');});};
   async function actionTask(key,work){if(pendingActions.has(key))return;pendingActions.add(key);render();try{return await work();}finally{pendingActions.delete(key);render();}}
   const currentForm=token=>dialog.open&&token===formEpoch;
@@ -394,7 +396,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     return values.length?values.every(v=>userVersion(v)===s.ver)?'evaluated':'stale':'not run';
   }
   function render(){
-    const opened=new Set([...list.querySelectorAll('details.uewr-item[open]')].map(x=>x.dataset.spec));const visible=S.src==='user';add.hidden=!visible;list.hidden=!visible;
+    const opened=new Set([...list.querySelectorAll('details.uewr-item[open]')].map(x=>x.dataset.spec));const visible=scenarioMode();add.hidden=!visible;list.hidden=!visible;
     if(!visible){toast.hidden=true;if(dialog.open)dialog.close();return;}
     add.disabled=!UEWR.online||!UEWR.schema||!live().length;
     add.title=add.disabled?'Upload a scenario and connect to the local analysis server to define user EWRs.':'Define an EWR for your uploaded scenarios';
@@ -436,14 +438,14 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     const file=importInput.files?.[0];if(!file)return;
     if(file.size>UEWR_FILE_LIMIT)throw Error('Cannot import EWR: choose a JSON file no larger than 64 KiB.');
     let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());}catch{throw Error('Cannot import EWR: the file must use UTF-8 text encoding.');}
-    if(S.src!=='user'||!UEWR.online||!UEWR.schema||!live().length)throw Error('Connect to the local server and upload a scenario in Your data before importing.');
+    if(!scenarioMode()||!UEWR.online||!UEWR.schema||!live().length)throw Error('Connect to the local server and select a scenario before importing.');
     const imported=parseDefinition(text,UEWR.schema,UEWR.context());openForm(imported);
     const collision=[...UEWR.specs.values()].some(s=>s.code===imported.code);
     formStatus(collision?'Imported as a new draft. This code already exists; choose a new U_ code before saving.':'Imported as a new draft. Review the rule, test a scenario, then Save or Save & run.','info');
   }));
   const option=(value,label,selected=false,disabled=false)=>`<option value="${esc(value)}"${selected?' selected':''}${disabled?' disabled':''}>${esc(label)}</option>`;
   function openForm(s){
-    if(S.src!=='user'||!UEWR.online||!UEWR.schema||!live().length)return;
+    if(!scenarioMode()||!UEWR.online||!UEWR.schema||!live().length)return;
     formEpoch++;previewController?.abort();previewController=null;stopTutorial();previewKey='';previewSignature='';
     original=s?.id?userClone(s):null;draft=s?userClone(s):{code:'U_',name:'',kind:'F',handler:'flow_handle',gauge:'',pus:[],objectives:[],regime:null,second_gauge:null,params:{Duration:5,TargetFrequency:50,MinSpell:5},salinity:null};
     minAuto=!s?.params?.MinSpell;busy=false;
@@ -496,7 +498,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     if(raw.params.MinSpell===''){check.errors['params.MinSpell']='Enter the minimum spell shown in the default hint.';check.ok=false;}
     for(const node of dialog.querySelectorAll('[data-error]'))node.textContent=check.errors[node.dataset.error]||'';
     for(const input of dialog.querySelectorAll('[data-param]'))input.setAttribute('aria-invalid',String(!!check.errors['params.'+input.dataset.param]));
-    for(const id of ['uewrPreview','uewrSave','uewrSaveRun'])el(id).disabled=busy||!check.ok||!UEWR.online||S.src!=='user';
+    for(const id of ['uewrPreview','uewrSave','uewrSaveRun'])el(id).disabled=busy||!check.ok||!UEWR.online||!scenarioMode();
     const selected=dialog.querySelectorAll('[data-scenario]:checked').length;el('uewrSaveRun').disabled||=!selected;
     el('uewrSentence').textContent=check.ok?ruleSentence(check.spec):'Complete the required fields to review your EWR.';
     if(check.ok){const key=JSON.stringify(check.spec);if(key!==previewKey){previewKey=key;renderTutorial(check.spec);}}

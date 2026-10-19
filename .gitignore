@@ -1,6 +1,7 @@
 __pycache__/
 .DS_Store
 .user_scenarios/
+.observed_cache/
 ewr_dashboard_with_scenarios.html
 .venv/
 .mypy_cache/

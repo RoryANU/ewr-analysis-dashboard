@@ -1,0 +1,3 @@
+# Optional observed-data integration; install into the dashboard environment with:
+#   python -m pip install -r requirements-observed.txt
+mdba-gauge-getter==0.5.1

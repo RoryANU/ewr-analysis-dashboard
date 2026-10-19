@@ -836,12 +836,76 @@ def get(port: int, path: str) -> tuple[int, bytes]:
     return resp.status, body
 
 
+def post_json(port: int, path: str, payload: dict[str, Any]) -> tuple[int, bytes]:
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    conn.request("POST", path, body=json.dumps(payload), headers={"Content-Type": "application/json"})
+    resp = conn.getresponse()
+    body = resp.read()
+    conn.close()
+    return resp.status, body
+
+
 class TestHttpPayloads:
     def test_ping_lists_the_supported_formats(self, live_server):
         status, body = get(live_server, "/api/ping")
         assert status == 200
         data = json.loads(body)
         assert data["ok"] is True and data["formats"] == server.FORMATS and "Standard time-series" in data["formats"]
+
+    def test_ping_reports_observed_availability_without_enabling_unverified_bom(self, live_server):
+        status, body = get(live_server, "/api/ping")
+        observed = json.loads(body)["observed"]
+        assert status == 200 and isinstance(observed["available"], bool) and observed["bom"] is False
+
+    def test_observed_units_are_local_data(self, live_server, monkeypatch):
+        monkeypatch.setattr(server, "observed_units", lambda: [{"sdl": "Test SDL", "gauges": [{"id": "412033", "name": "River"}]}])
+        status, body = get(live_server, "/api/observed/units")
+        assert status == 200
+        assert json.loads(body)["units"][0]["gauges"][0]["id"] == "412033"
+
+    def test_observed_run_reuses_one_active_job_for_sdl(self, live_server, monkeypatch):
+        monkeypatch.setattr(server.observed, "sdl_gauges", lambda sdl: ["412033"])
+        started, release = threading.Event(), threading.Event()
+
+        def slow_worker(job_id, sdl, gauges, start, end, refresh, merge, filter_period=True):
+            started.set()
+            assert release.wait(5)
+            server.JOBS[job_id]["status"] = "done"
+            with server.OBSERVED_ACTIVE_LOCK:
+                server.OBSERVED_ACTIVE.pop(server._observed_scenario_id(sdl), None)
+
+        monkeypatch.setattr(server, "observed_worker", slow_worker)
+        payload = {"sdl": "Test SDL", "gauges": ["412033"], "start": "2000-07-01", "end": "2001-06-30"}
+        try:
+            status, body = post_json(live_server, "/api/observed/run", payload)
+            assert status == 200
+            job_id = json.loads(body)["job"]
+            assert started.wait(2)
+            repeated_status, repeated_body = post_json(live_server, "/api/observed/run", payload)
+            assert repeated_status == 409 and json.loads(repeated_body)["job"] == job_id
+        finally:
+            release.set()
+
+    def test_observed_all_available_uses_earliest_record(self, live_server, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr(server.observed, "sdl_gauges", lambda sdl: ["412033"])
+        finished = threading.Event()
+        calls = []
+
+        def worker(job_id, sdl, gauges, start, end, refresh, merge, filter_period=True):
+            calls.append((start, end, filter_period))
+            with server.OBSERVED_ACTIVE_LOCK:
+                server.OBSERVED_ACTIVE.pop(server._observed_scenario_id(sdl), None)
+            finished.set()
+
+        monkeypatch.setattr(server, "observed_worker", worker)
+        status, body = post_json(live_server, "/api/observed/run", {"sdl": "All records SDL", "gauges": ["412033"], "filter_period": False})
+
+        assert status == 200, body
+        assert finished.wait(5)
+        assert server.EARLIEST_RECORD == date(1890, 1, 1)
+        assert calls == [(server.EARLIEST_RECORD, date.today(), False)]
 
     def test_curves_payload_is_strict_json_with_nulls_for_missing_days(self, live_server, store):
         put(store, "a", pd.date_range("2000-01-01", periods=5), [1, np.nan, 3, 4, 5])

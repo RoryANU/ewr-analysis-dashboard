@@ -51,4 +51,5 @@ filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
 markers = [
     "slow: runs py_ewr end to end or rebuilds the dashboard (excluded from the pre-commit hook; run with `pytest`, skip with `-m 'not slow'`)",
     "network: needs internet (skipped when GitHub is unreachable)",
+    "observed: requires the optional mdba-gauge-getter dependency",
 ]
