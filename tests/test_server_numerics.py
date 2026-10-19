@@ -700,7 +700,7 @@ class TestHeatmap:
         self.three_years(store, 100.0)
         out = server.heatmap({"base": "a", "gauge": G, "xlim": "200", "dmax": "5"})
         assert out["xlim"] == 200 and out["spacing"] == 1 and out["years"] == 3
-        assert out["thresholds"] == list(range(0, 201)) and out["durations"] == [1, 2, 3, 4, 5]
+        assert out["thresholds"] == list(range(201)) and out["durations"] == [1, 2, 3, 4, 5]
         assert out["dates"] == ["2000-07-01", "2003-06-30"]
         z = out["base"]
         assert len(z) == 5 and all(len(row) == 201 for row in z)  # durations x thresholds
@@ -722,6 +722,27 @@ class TestHeatmap:
         self.three_years(store, 100.0, 50.0)
         out = server.heatmap({"base": "a", "comp": "b", "gauge": G, "xlim": "200", "dmax": "5", "mthr": "75", "mdur": "3"})
         assert out["mark"] == [100.0, 0.0]
+
+    def test_multiple_marks_keep_threshold_duration_pairs_and_input_order(self, store):
+        idx = pd.date_range("2000-07-01", "2002-06-30")
+        flow = np.zeros(len(idx))
+        flow[:10] = 100
+        second_year = idx.get_loc("2001-07-01")
+        flow[second_year : second_year + 4] = 100
+        put(store, "a", idx, flow)
+        out = server.heatmap({"base": "a", "gauge": G, "xlim": "200", "dmax": "5", "mthr": "75,25,75", "mdur": "5,15,3"})
+        assert out["marks"] == [
+            {"thr": 75.0, "dur": 5, "values": [50.0]},
+            {"thr": 25.0, "dur": 15, "values": [0.0]},
+            {"thr": 75.0, "dur": 3, "values": [100.0]},
+        ]
+        assert "mark" not in out
+
+    @pytest.mark.parametrize(("thresholds", "durations"), [("75,25", "3"), ("nan", "3"), ("75", "2.5"), ("75", "0")])
+    def test_invalid_mark_pairs_are_rejected(self, store, thresholds, durations):
+        self.three_years(store, 100.0)
+        with pytest.raises(ValueError):
+            server.heatmap({"base": "a", "gauge": G, "xlim": "200", "dmax": "5", "mthr": thresholds, "mdur": durations})
 
     def test_mark_is_dropped_when_there_is_no_shared_complete_year(self, store):
         idx = pd.date_range("2000-10-01", "2001-03-31")

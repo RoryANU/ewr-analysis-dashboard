@@ -88,6 +88,7 @@ The script prints a short summary (EWR rows, SDL units, planning units and gauge
 The page cannot run the EWR tool by itself, so "Your data" uses a small server on your own computer. Start it with the [quick start](#quick-start-no-technical-knowledge-needed) above (or `python3 run.py`); it opens the page for you at an address like <http://localhost:8792/> (the page must be opened from that address, not as a file). Choose **Your data**, then **Add scenario**, pick the data format, and choose your file. You do not choose an SDL unit: the file is scanned for every gauge in the review, so one file can cover several SDL units. The scenario name defaults to the file name. The results are FR and ETP per EWR, and they appear as an extra scenario in the pickers (Historical climate only).
 
 - Formats: Standard time-series, Bigmod, FIRM, res.csv (MDBA), Source NSW res.csv, IQQM netCDF and ten-thousand-year runs. A Standard time-series file has a `Date` column and one column per gauge named `<gauge>_flow` or `<gauge>_level`, e.g. `404216_flow`.
+- Heatmap: use the **EWRs** dropdown to select several EWRs with the same timing window. Each gets a labelled point and a row of exact achievement percentages. Clear the selection to choose a different window; the chart’s **Any days / Consecutive** setting applies to all selected points.
 - Try it with the files in `data/example_scenarios/` (`dummy_broken_scenario_A.csv` and `..._B_wetter.csv` for Differential mode).
 - The server listens on localhost only. Uploaded daily flows, levels and salinity are kept in `.user_scenarios/` (not committed) for charts and user EWR evaluation.
 - Flow charts: open a gauge, then **Flow analysis** and pick a chart from the **Chart** dropdown. *Flow*: threshold × duration heat map, hydrograph with annual volumes, and (Differential) the differential and monthly differential flow duration curves. *EWR performance* (py_ewr's own results for one EWR): achievement by year, events, event timing, gaps between events against the maximum inter-event period. *Flow regime*: flow regime components (each regime's threshold is the lowest EWR threshold for it at the gauge, from the EWR tool's parameter sheet) and low-flow spells. In Differential mode, comparisons use only the dates or years both scenarios cover.
@@ -144,7 +145,7 @@ The server registry is `.user_scenarios/uewr.json`. The browser mirrors definiti
 2. Choose **Your data → Add scenario → Standard time-series** and upload `data/example_scenarios/dummy_broken_scenario_A_level_salinity.csv`.
 3. Open **EWR guide → Add EWR**. Choose gauge **404216**, its offered planning unit, Flow / Continuous spell, code `U_TRIAL`, a name, lower limit **200**, Duration **5**, MinSpell **5**, TargetFrequency **50**, MRIP **2** and a July–June window. Leave other parameters at their displayed defaults.
 4. Try the tutorial controls and **Test on one scenario**. Verify the test table appears while the rule is still absent from Your EWRs. Then choose **Save & run**.
-5. Select gauge 404216. Find `U_TRIAL` in the matrix, open its cell table, and inspect Flow analysis → EWR performance. In Advanced data, load annual diagnostics. Reload the page and confirm the definition and evaluated results remain.
+5. Select gauge 404216. Find `U_TRIAL` in the matrix, open its cell table, and inspect Flow analysis → EWR performance. In Extra data, load annual diagnostics. Reload the page and confirm the definition and evaluated results remain.
 6. Export the JSON, import it, and confirm the existing code is flagged. Rename it `U_TRIAL_COPY`, save/run, and verify there are two separate rules. Try importing an edited file with MinSpell 0 or missing MinSpell: it should be rejected before saving.
 7. Edit a rule's Duration/MinSpell together and save. Observe stale state while reevaluation runs. Delete the copy and verify that every selection, chart and table removes it. Switch to Demo data and confirm the builder controls and user rules disappear.
 8. Optionally repeat with Level / Level spell (use limits 1–2 m) and Salinity / Continuous spell (use an upper limit of 800 EC and lower limit 0); the fixture contains all three series. These values are for exercising the tool, not management advice.
@@ -161,9 +162,7 @@ If you have an Azure ML compute instance, you can run the server there to get th
    pip install -r requirements.txt
    ```
 
-2. **Copy your data files** onto the compute. The model output files live on Databricks mounts (`/dbfs/mnt/...`), which are not reachable from Azure ML. Either copy them from the underlying Azure Storage account using `azcopy` / Azure CLI, or download them from Databricks and upload to the compute.
-
-3. **Start the server** listening on all addresses so Azure ML's port proxy can reach it (by default it listens on `127.0.0.1` only, which blocks external access):
+2. **Start the server** listening on all addresses so Azure ML's port proxy can reach it (by default it listens on `127.0.0.1` only, which blocks external access):
 
    ```bash
    python3 run.py --host=0.0.0.0 --no-browser
@@ -171,7 +170,7 @@ If you have an Azure ML compute instance, you can run the server there to get th
 
    Because this makes the tool reachable by other computers, it prints an address ending in `?token=...`. A random access token is required for every page and API request, so use that exact address and do not share it. Without `--host` (the default) the server only accepts connections from your own computer and needs no token. The tool serves only the dashboard page (never repository files or the stored uploads in `.user_scenarios/`) and has no other login: for anything beyond a private compute instance, put it behind an authenticated proxy.
 
-4. **Open the dashboard** in your browser at:
+3. **Open the dashboard** in your browser at:
 
    ```
    https://<compute-name>-8792.<region>.instances.azureml.ms/ewr_analysis_dashboard.html?token=<the token printed at start-up>
@@ -242,7 +241,7 @@ pytest                    # entire Python suite, including real py_ewr runs and 
 pytest -m "not slow"      # fast Python suite used by pre-commit
 pytest -m slow            # only the slow tests: py_ewr over many years of data, and a full rebuild of the HTML
 pytest tests/test_server_numerics.py -k heatmap   # one file / one topic
-node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_performance.js tests/test_ewr_guide.js
+node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_performance.js tests/test_ewr_guide.js tests/test_heatmap_selection.js
 ```
 
 | File | What it checks |

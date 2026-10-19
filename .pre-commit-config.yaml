@@ -1,5 +1,9 @@
 # Install once with `pip install -r requirements-dev.txt && pre-commit install`; run everything with `pre-commit run --all-files`.
 # The slow tests (py_ewr over many years of data, a full dashboard rebuild) are marked `slow` and run with plain `pytest`, not here.
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+fail_fast: false
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -10,6 +14,11 @@ repos:
       - id: check-json
         files: \.(json|geojson)$
       - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
       - id: check-case-conflict
       - id: debug-statements
       - id: mixed-line-ending
@@ -45,7 +54,7 @@ repos:
         files: ^(src/|tests/|data/|requirements|pyproject\.toml|ewr_analysis_dashboard\.html)
       - id: node-tests
         name: node --test (dashboard JavaScript)
-        entry: node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js
+        entry: node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js tests/test_heatmap_selection.js
         language: system # node comes from nodejs-wheel in requirements-dev.txt (or any Node >= 22 on PATH)
         pass_filenames: false
         files: ^(src/(dashboard_template\.html|performance\.js|ewr_guide\.js|custom_ewr\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
