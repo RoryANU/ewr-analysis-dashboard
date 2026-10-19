@@ -140,7 +140,7 @@ function performancePanels(view) {
     <div id="jointPlot"></div><p id="jointNote" class="note"></p>
     <p class="note">${q.n} of ${view.rows.length} EWRs have both metrics.</p>
     </div>
-    <details id="otherDetails" class="flowp"><summary>Advanced data</summary>
+    <details id="otherDetails" class="flowp"><summary>Extra data</summary>
     <details id="jointDetails"><summary>Exact rule values and baseline comparisons</summary><div class="jointTable"></div></details>
     <details id="robustnessDetails"><summary>Policy × climate robustness · target FR 1.0</summary>
       <p class="note">Joint score counts an EWR as meeting both when its frequency ratio is at least 1.0 and its time beyond the maximum gap is within the allowed limit. Severe failure uses FR &lt; ${S.fbthr}. Coverage = valid paired / selected EWRs. Colours are fixed at 0–100%. Resilience and threshold crossings require all expected climates; incomplete rules are shown separately. Cells with no data are greyed out. Hover or focus a cell for exact rule values; activate it to read the full details.</p>
@@ -256,7 +256,7 @@ function jointRegimeOrder(rows) {
  */
 function drawJointPlot(view) {
   const g = jointGeometry(view.rows,view.i,view.base,false);
-  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Advanced data.'; return; }
+  if (typeof Plotly === 'undefined') { $('jointPlot').textContent = 'Chart library unavailable. Exact values are in Extra data.'; return; }
   const regimes = [...new Set(view.rows.map(jointRegime))].sort(jointRegimeOrder(view.rows));
   const colours = new Map(regimes.map((name,i) => [name, name === 'Unmapped' ? '#6b7280' : jointRegimeColour(i,regimes.length)]));
   const traces = regimes.map(name => {
