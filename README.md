@@ -151,9 +151,7 @@ If you have an Azure ML compute instance, you can run the server there to get th
    pip install -r requirements.txt
    ```
 
-2. **Copy your data files** onto the compute. The model output files live on Databricks mounts (`/dbfs/mnt/...`), which are not reachable from Azure ML. Either copy them from the underlying Azure Storage account using `azcopy` / Azure CLI, or download them from Databricks and upload to the compute.
-
-3. **Start the server** listening on all addresses so Azure ML's port proxy can reach it (by default it listens on `127.0.0.1` only, which blocks external access):
+2. **Start the server** listening on all addresses so Azure ML's port proxy can reach it (by default it listens on `127.0.0.1` only, which blocks external access):
 
    ```bash
    python3 run.py --host=0.0.0.0 --no-browser
@@ -161,7 +159,7 @@ If you have an Azure ML compute instance, you can run the server there to get th
 
    Because this makes the tool reachable by other computers, it prints an address ending in `?token=...`. A random access token is required for every page and API request, so use that exact address and do not share it. Without `--host` (the default) the server only accepts connections from your own computer and needs no token. The tool serves only the dashboard page (never repository files or the stored uploads in `.user_scenarios/`) and has no other login: for anything beyond a private compute instance, put it behind an authenticated proxy.
 
-4. **Open the dashboard** in your browser at:
+3. **Open the dashboard** in your browser at:
 
    ```
    https://<compute-name>-8792.<region>.instances.azureml.ms/ewr_analysis_dashboard.html?token=<the token printed at start-up>
