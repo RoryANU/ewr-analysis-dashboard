@@ -190,6 +190,7 @@ const obsSaved=()=>{try{return JSON.parse(localStorage.getItem("ewrObservedSelec
 const obsInitial=obsSaved();
 const S={src:"observed",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},obs:{sdl:obsInitial.sdl||"",gauges:new Set(obsInitial.gauges||[]),start:obsInitial.start||"1990-07-01",end:obsInitial.end||todayLocal(),refresh:!!obsInitial.refresh,job:null,status:{},progress:null,notice:"",query:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
+void initObserved();
 
 // ---- values and averages -----------------------------------------------------------------------------------------
 // Hierarchy: EWR -> gauge (mean of its EWRs) -> planning unit (mean of its gauges) -> SDL unit (mean of its planning units).
@@ -1647,6 +1648,5 @@ fillPolicyOptions();
 if(PRELOADED.length&&!location.hash.slice(1)){ S.src="user"; const c=CUSTOM.find(x=>!x.removed&&x.name===PRELOADED[0].name); if(c) S.pol=c.P; fillPolicyOptions(); syncUI(); }   // a page with embedded scenarios opens in Your data
 applyHash();
 refresh();
-void initObserved();
 void UEWR.sync();
 </script></body></html>
