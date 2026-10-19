@@ -1,0 +1,13 @@
+[
+  {"message": "FileNotFoundError: ~/bom_water/cache/stations.json", "retryable": false, "label": "Weather-bureau station list not set up"},
+  {"message": "BOM_WATER/cache/STATIONS.JSON is missing", "retryable": false, "label": "Weather-bureau station list not set up"},
+  {"message": "BoM station cache missing", "retryable": false, "label": "Weather-bureau station list not set up"},
+  {"message": "too many requests in queue", "retryable": true, "label": "Data service busy"},
+  {"message": "TOO MANY REQUESTS IN QUEUE", "retryable": true, "label": "Data service busy"},
+  {"message": "error_num 218", "retryable": true, "label": "Data service busy"},
+  {"message": "response: {\"error_num\": 218}", "retryable": true, "label": "Data service busy"},
+  {"message": "source busy", "retryable": true, "label": "Data service busy"},
+  {"message": "stations.json is missing elsewhere", "retryable": true, "label": "Unexpected problem"},
+  {"message": "bom_water failed", "retryable": true, "label": "Unexpected problem"},
+  {"message": "error_num 219", "retryable": true, "label": "Unexpected problem"}
+]

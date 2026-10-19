@@ -665,21 +665,26 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
             progress = dict(job.get("progress", {}))
             gauge_progress = dict(progress.get("gauges", {}))
             per_gauge = dict(gauge_progress.get(gauge, {}))
-            per_gauge[var.lower()] = {"status": result.status, "message": result.message}
+            per_gauge[var.lower()] = {"status": result.status, "message": result.message, "retryable": result.retryable}
             gauge_progress[gauge] = per_gauge
             progress["gauges"] = gauge_progress
             job["progress"] = progress
 
+        _progress_reporter(job, stage_code="gauges")(observed.GAUGE_STAGE, 0, len(all_gauges))
         results, statuses = observed.fetch_many(
             all_gauges,
             start,
             end,
-            progress=_progress_reporter(job),
+            progress=_progress_reporter(job, stage_code="gauges"),
             refresh=refresh,
             status_progress=report_gauge,
         )
         job["gauge_status"] = {
-            gauge: {var.lower(): {"status": result.status, "message": result.message} for (g, var), result in statuses.items() if g == gauge}
+            gauge: {
+                var.lower(): {"status": result.status, "message": result.message, "retryable": result.retryable}
+                for (g, var), result in statuses.items()
+                if g == gauge
+            }
             for gauge in all_gauges
         }
         if not results:
@@ -756,12 +761,18 @@ def uewr_worker(job_id: str, ids: list[str], scns: list[str]) -> None:
     job["elapsed"] = round(time.time() - job["t0"], 1)
 
 
-def _progress_reporter(job: dict[str, Any]) -> Callable[[str, int, int], None]:
+def _progress_reporter(job: dict[str, Any], stage_code: str | None = None) -> Callable[[str, int, int], None]:
     """A progress(stage, done, total) callback that records the job's current stage and work counts for /api/job."""
 
     def progress(stage: str, done: int, total: int) -> None:
         current = job.get("progress", {})
-        job["progress"] = {"stage": stage, "done": done, "total": total, **({"gauges": current["gauges"]} if "gauges" in current else {})}
+        job["progress"] = {
+            "stage": stage,
+            "done": done,
+            "total": total,
+            **({"stage_code": stage_code} if stage_code else {}),
+            **({"gauges": current["gauges"]} if "gauges" in current else {}),
+        }
 
     return progress
 

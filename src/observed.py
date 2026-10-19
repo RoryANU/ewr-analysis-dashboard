@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import random
 import re
+import socket
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
@@ -26,6 +29,9 @@ GAUGE_ID = re.compile(r"(?:A)?\d+[A-Z]*", re.I)
 DEFAULT_TIMEOUT = 90.0  # per gauge and variable; a full record takes the services 10-60 s to start sending
 DEFAULT_TTL = 24 * 60 * 60
 DEFAULT_RETRIES = 2
+GAUGE_STAGE = "Fetching gauges"
+RETRY_AFTER = re.compile(r"retry after (\d+(?:\.\d+)?) seconds", re.I)
+BUSY_ERROR = re.compile(r"too many requests in queue|error_num\D*218|\bsource busy\b", re.I)
 _CACHE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
 _CACHE_LOCKS_GUARD = threading.Lock()
 
@@ -35,6 +41,53 @@ class GaugeResult:
     frame: pd.DataFrame
     status: str
     message: str = ""
+    retryable: bool = False
+
+
+def _http_status(exc: Exception) -> int | None:
+    code = getattr(getattr(exc, "response", None), "status_code", None)
+    if isinstance(code, int):
+        return code
+    match = re.search(r"\bHTTP(?:\s+(?:status|error))?[:\s]+(\d{3})\b", str(exc), re.I)
+    return int(match[1]) if match else None
+
+
+def _error_result(exc: Exception) -> GaugeResult:
+    """Keep query failures distinct from empty records and local setup failures."""
+    request_errors: tuple[type[Exception], ...] = ()
+    invalid_requests: tuple[type[Exception], ...] = ()
+    http_errors: tuple[type[Exception], ...] = ()
+    try:
+        from requests.exceptions import HTTPError, InvalidHeader, InvalidSchema, InvalidURL, MissingSchema, RequestException, URLRequired
+    except ImportError:
+        pass  # Reporting a missing dependency must not require that dependency.
+    else:
+        request_errors = (RequestException,)
+        invalid_requests = (InvalidHeader, InvalidSchema, InvalidURL, MissingSchema, URLRequired)
+        http_errors = (HTTPError,)
+
+    message = f"{type(exc).__name__}: {exc}"
+    # Keep station/busy message rules aligned with describeResult in src/dashboard_template.html.
+    missing_stations = (re.search(r"stations\.json", message, re.I) and re.search(r"bom_water", message, re.I)) or re.search(
+        r"BoM station cache missing", message, re.I
+    )
+    busy = BUSY_ERROR.search(message)
+    network_error = isinstance(exc, (TimeoutError, ConnectionError, socket.gaierror)) or (
+        isinstance(exc, OSError)
+        and (
+            exc.errno
+            in {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ENETDOWN, errno.ENETRESET, errno.ECONNRESET, errno.ECONNABORTED, errno.ETIMEDOUT, errno.EPIPE}
+            or re.search(r"network is unreachable|no route to host|name resolution|connection (?:reset|aborted|refused)", message, re.I) is not None
+        )
+    )
+    transient = bool(busy) or network_error or isinstance(exc, (*request_errors, json.JSONDecodeError))
+    retryable = transient or not isinstance(exc, (OSError, ImportError, ValueError, TypeError))
+    code = _http_status(exc)
+    if code is not None or isinstance(exc, http_errors):
+        retryable = code in {408, 425, 429} or (code is not None and 500 <= code < 600)
+    if missing_stations or isinstance(exc, (*invalid_requests, FileNotFoundError, PermissionError, NotADirectoryError, IsADirectoryError)):
+        retryable = False
+    return GaugeResult(pd.DataFrame(), "error", message, retryable=bool(retryable))
 
 
 def sdl_gauges(sdl: str) -> list[str]:
@@ -52,7 +105,9 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
     can finish in the background without writing cache entries or blocking shutdown.
     """
     from mdba_gauge_getter.gauge_getter import gauge_pull
-    from requests.exceptions import ConnectionError, HTTPError
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+    from requests.exceptions import RequestException
+    from requests.exceptions import Timeout as RequestTimeout
 
     deadline = time.monotonic() + timeout
     for attempt in range(retries + 1):
@@ -71,16 +126,22 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
         threading.Thread(target=pull, daemon=True).start()
         try:
             return _normalise(future.result(timeout=remaining))
-        except (ConnectionError, HTTPError) as exc:
-            transient = isinstance(exc, ConnectionError) or (
-                re.search(r"\b(?:500|502|503|504)\b", str(exc)) is not None and re.search(r"\b(?:408|429)\b", str(exc)) is None
+        except Exception as exc:
+            busy = BUSY_ERROR.search(str(exc)) is not None
+            code = _http_status(exc)
+            timed_out = isinstance(exc, (TimeoutError, RequestTimeout))
+            network = isinstance(exc, (ConnectionError, RequestsConnectionError, socket.gaierror)) or (
+                isinstance(exc, OSError) and not isinstance(exc, (RequestException, json.JSONDecodeError))
             )
-            if not transient or attempt == retries:
+            transient = _error_result(exc).retryable and (busy or timed_out or network or code is not None)
+            delay = (10.0 if attempt == 0 else 30.0) if busy or timed_out or code in {408, 425, 429} else 0.5 * 2**attempt * random.uniform(0.5, 1.5)
+            if (asked := RETRY_AFTER.search(str(exc))) and code in {429, 503}:
+                delay = max(delay, float(asked[1]))  # honour the server's own back-off; a long one outlasts the deadline and is not retried here
+            if not transient or attempt == retries or delay >= deadline - time.monotonic():
+                if isinstance(exc, TimeoutError):
+                    raise TimeoutError(f"Gauge {gauge} exceeded {timeout:g} s advisory timeout") from exc
                 raise
-            delay = min(0.5 * 2**attempt * random.uniform(0.5, 1.5), max(0.0, deadline - time.monotonic()))
             time.sleep(delay)
-        except TimeoutError as exc:
-            raise TimeoutError(f"Gauge {gauge} exceeded {timeout:g} s advisory timeout") from exc
     raise ValueError("retries must be nonnegative")
 
 
@@ -182,7 +243,7 @@ def _fetch_gauge_cached(
             return GaugeResult(result, "empty", "No data returned for this gauge and period")
         return GaugeResult(result, "ok")
     except Exception as exc:  # a bug here must not take down the other gauges' fetches
-        return GaugeResult(pd.DataFrame(), "error", f"{type(exc).__name__}: {exc}")
+        return _error_result(exc)
 
 
 def fetch_gauge(
@@ -214,12 +275,17 @@ def fetch_many(
     refresh: bool = False,
     timeout: float = DEFAULT_TIMEOUT,
     status_progress: Callable[[str, str, GaugeResult], None] | None = None,
+    retries: int = DEFAULT_RETRIES,
 ) -> tuple[dict[tuple[str, str], pd.DataFrame], dict[tuple[str, str], GaugeResult]]:
     """Fetch flow and level independently; report progress once both variables finish per gauge."""
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     statuses: dict[tuple[str, str], GaugeResult] = {}
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(gauges) or 1))) as pool:
-        pending = {pool.submit(fetch_gauge, gauge, start, end, var, refresh=refresh, timeout=timeout): (gauge, var) for gauge in gauges for var in ("F", "L")}
+        pending = {
+            pool.submit(fetch_gauge, gauge, start, end, var, refresh=refresh, timeout=timeout, retries=retries): (gauge, var)
+            for gauge in gauges
+            for var in ("F", "L")
+        }
         completed_gauges: set[str] = set()
         done = 0
         for future in as_completed(pending):
@@ -227,7 +293,7 @@ def fetch_many(
             try:
                 result = future.result()
             except Exception as exc:
-                result = GaugeResult(pd.DataFrame(), "error", f"{type(exc).__name__}: {exc}")
+                result = _error_result(exc)
             statuses[(gauge, var)] = result
             if status_progress:
                 status_progress(gauge, var, result)
@@ -237,7 +303,7 @@ def fetch_many(
                 completed_gauges.add(gauge)
                 done += 1
                 if progress:
-                    progress("Fetching gauges", done, len(gauges))
+                    progress(GAUGE_STAGE, done, len(gauges))
     return frames, statuses
 
 

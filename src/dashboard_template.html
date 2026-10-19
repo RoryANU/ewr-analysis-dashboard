@@ -112,7 +112,13 @@ body.nobar #bar{display:none}body.nobar #tabT{display:block}
 .uewr-preview-table{overflow-x:auto;margin:10px 0}.uewr-preview-table table{width:100%;font-size:12px}.uewr-preview-table caption{text-align:left;padding:8px 0;font-weight:600}
 .uewr-notice:not(:empty){border-left:3px solid #1f4e8c;background:#eef4fa;padding:10px;line-height:1.5}.uewr-notice[data-tone=error]{border-color:#a12622;background:#fff2f0}.uewr-notice[data-tone=success]{border-color:#1a704f;background:#edf8f2}.uewr-notice[data-tone=warning]{border-color:#976411;background:#fff8e8}
 .uewr-toast{position:fixed;right:20px;bottom:20px;z-index:1200;max-width:min(460px,calc(100vw - 40px));display:flex;align-items:start;gap:12px;padding:14px;background:#fff;color:#1f2937;border:1px solid #9aa3b0;border-left:4px solid #1a704f;border-radius:6px;box-shadow:0 3px 16px #0002;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}.uewr-toast[hidden]{display:none}.uewr-toast[data-tone=error]{border-left-color:#a12622}.uewr-toast[data-tone=info]{border-left-color:#1f4e8c}.uewr-toast[data-tone=warning]{border-left-color:#976411}.uewr-toast button{flex:none;padding:0 5px}.uewr-heading .uewr-actions{margin:0}
-.obs-panel{border:1px solid #b7c6d7;border-radius:6px;padding:12px;margin:0 0 14px;background:#f7fafc;font-size:12px}.obs-panel h2{margin:0 0 8px}.obs-field{display:flex;flex-direction:column;gap:4px;margin:9px 0}.obs-field select,.obs-field input{font:inherit;padding:5px;min-width:0}.obs-gauges{max-height:220px;overflow:auto;border:1px solid #d6dbe1;border-radius:4px;background:white;padding:5px}.obs-gauge{display:flex;gap:7px;align-items:start;padding:3px}.obs-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.obs-status{font-size:11px;color:#44505e;margin-top:8px;white-space:pre-wrap}.obs-gauge-status{display:flex;gap:6px;justify-content:space-between;border-top:1px solid #e2e6eb;padding:4px 2px}.obs-progress{height:6px;width:100%;margin-top:6px}.obs-error{color:#a12622}.obs-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.obs-panel button:disabled{opacity:.55}
+.obs-panel{border:1px solid #b7c6d7;border-radius:6px;padding:12px;margin:0 0 14px;background:#f7fafc;font-size:12px}.obs-panel h2{margin:0 0 8px}.obs-field{display:flex;flex-direction:column;gap:4px;margin:9px 0}.obs-field select,.obs-field input{font:inherit;padding:5px;min-width:0}.obs-gauges{max-height:220px;overflow:auto;border:1px solid #d6dbe1;border-radius:4px;background:white;padding:5px}.obs-gauge{display:flex;gap:7px;align-items:start;padding:3px}.obs-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.obs-status{font-size:11px;color:#44505e;margin-top:8px;white-space:pre-wrap}.obs-gauge-status{display:flex;flex-direction:column;gap:7px;border-top:1px solid #e2e6eb;padding:10px 2px;min-width:0}.obs-progress{height:6px;width:100%;margin-top:6px}.obs-error{color:#a12622}.obs-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.obs-panel button:disabled{opacity:.55}
+.obs-panel{--obs-green:#21613a;--obs-amber:#805600;--obs-red:#a12622;--obs-grey:#52606d}
+.obs-gauge-heading{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.obs-outcome{display:inline-flex;align-items:baseline;gap:5px;font-weight:600;white-space:nowrap}.obs-gauge-identity{flex:1 1 150px;min-width:0;overflow-wrap:anywhere}.obs-gauge-identity b{white-space:nowrap}
+.obs-measurements{display:flex;flex-wrap:wrap;gap:6px}.obs-measurement{display:inline-flex;align-items:baseline;flex-wrap:wrap;gap:4px;max-width:100%;border:1px solid #d6dbe1;border-radius:5px;padding:4px 7px;background:#fff;overflow-wrap:anywhere}.obs-reason{min-width:0}
+.obs-tone-success{color:var(--obs-green)}.obs-tone-warning{color:var(--obs-amber)}.obs-tone-error{color:var(--obs-red)}.obs-tone-muted{color:var(--obs-grey)}
+.obs-measurement-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}.obs-action{font-size:11px;color:#44505e;margin:0;overflow-wrap:anywhere}.obs-technical{margin:6px 0;color:#52606d}.obs-details dd p{margin:4px 0}.obs-details textarea{display:block;width:100%;max-width:100%;min-height:110px;font:11px monospace;margin-top:5px}
+.obs-details{font-size:11px;color:#44505e;min-width:0}.obs-details summary,.obs-complete>summary{cursor:pointer;width:fit-content}.obs-details dl{margin:8px 0;overflow-wrap:anywhere}.obs-details dt{font-weight:600;margin-top:6px}.obs-details dd{margin:2px 0 0}.obs-details pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0}.obs-complete{margin-top:10px}.obs-complete>summary{font-weight:600;color:var(--obs-green);padding:5px 0}
 @media(max-width:600px){.uewr-dialog{padding:12px;width:calc(100vw - 24px)}.uewr-layout{display:block}.uewr-layout nav{position:static;display:grid;grid-template-columns:1fr 1fr;margin-bottom:12px}.uewr-fields,.uewr-rules{grid-template-columns:1fr}.uewr-sections{max-height:65vh}.uewr-sections fieldset{padding:10px}}
 </style></head><body class="nol"><div id="app">
 <div id="bar">
@@ -188,7 +194,7 @@ const OBSERVED_UNITS=[]; let OBSERVED_AVAILABLE=null, OBSERVED_LOADING=false;
 const todayLocal=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);};
 const obsSaved=()=>{try{return JSON.parse(localStorage.getItem("ewrObservedSelection")||"{}");}catch(e){return {};}};
 const obsInitial=obsSaved();
-const S={src:"observed",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:"",heatEwrs:[]},obs:{sdl:obsInitial.sdl||"",gauges:new Set(obsInitial.gauges||[]),filter:!!obsInitial.filter,start:obsInitial.filter?(obsInitial.start||"1990-07-01"):"",end:obsInitial.filter?(obsInitial.end||todayLocal()):"",refresh:!!obsInitial.refresh,job:null,status:{},ranges:obsInitial.ranges||{},progress:null,notice:"",query:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"observed",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:"",heatEwrs:[]},obs:{sdl:obsInitial.sdl||"",gauges:new Set(obsInitial.gauges||[]),filter:!!obsInitial.filter,start:obsInitial.filter?(obsInitial.start||"1990-07-01"):"",end:obsInitial.filter?(obsInitial.end||todayLocal()):"",refresh:!!obsInitial.refresh,job:null,runIds:[],displayIds:[],completed:false,status:{},ranges:obsInitial.ranges||{},progress:null,notice:"",query:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 void initObserved();
 
@@ -497,23 +503,47 @@ const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===
 function persistObserved(){ try{ localStorage.setItem("ewrObservedSelection",JSON.stringify({sdl:S.obs.sdl,gauges:[...S.obs.gauges],filter:S.obs.filter,start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh,ranges:S.obs.ranges})); }catch(e){} }
 function observedSdlIndex(){ return META.sdls.indexOf(S.obs.sdl); }
 function observedScenario(){ return CUSTOM.find(c=>!c.removed&&c.source==="observed"&&c.observedSdl===S.obs.sdl); }
-function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.status={}; S.obs.ranges={}; persistObserved(); }
+function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; observedWatch++; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.job=null; S.obs.runIds=[]; S.obs.displayIds=[]; S.obs.completed=false; S.obs.progress=null; S.obs.status={}; S.obs.ranges={}; persistObserved(); }
 let observedWatch=0;
+async function copyObservedDetails(id,button){
+  const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauge=unit?.gauges.find(g=>g.id===id);
+  const text=observedDetailsText(id,gauge?.name||"",S.obs.status[id]||{});
+  try{
+    if(typeof navigator==="undefined"||!navigator.clipboard?.writeText)throw Error("Clipboard unavailable");
+    await navigator.clipboard.writeText(text); button.textContent="Copied";
+  }catch{
+    const fallback=button.closest("details").querySelector("[data-obs-copy-fallback]"), field=fallback.querySelector("textarea");
+    fallback.hidden=false; field.value=text; field.focus(); field.select(); button.textContent="Select details to copy";
+  }
+}
+function updateObservedStatus(status={}){
+  for(const [id,states] of Object.entries(status))S.obs.status[id]={...(S.obs.status[id]||{}),...states};
+  S.obs.displayIds=[...new Set([...S.obs.displayIds,...Object.keys(status)])];
+}
 async function runObserved(gauges,merge=false){
   if(!S.obs.sdl||!gauges.length||S.obs.job)return;
   if(S.obs.filter&&(!S.obs.start||!S.obs.end||S.obs.start>S.obs.end)){S.obs.notice="Choose a valid start and end date, or turn off date filtering to fetch all available data.";render();return;}
-  const token=++observedWatch; S.obs.notice=""; S.obs.progress=null; S.obs.status={}; S.obs.ranges={}; S.obs.job="starting"; render();
+  const token=++observedWatch;
+  const previousIds=S.obs.displayIds?.length?S.obs.displayIds:Object.keys(S.obs.status||{});
+  S.obs.displayIds=merge?[...new Set([...previousIds,...gauges])]:[...gauges]; S.obs.completed=false;
+  S.obs.completeOpen=false; if(!merge)S.obs.detailsOpen=new Set();
+  S.obs.notice=""; S.obs.progress=null; S.obs.status=merge?{...S.obs.status}:{}; S.obs.ranges=merge?{...S.obs.ranges}:{};
+  for(const id of gauges){delete S.obs.status[id];delete S.obs.ranges[id];}
+  S.obs.runIds=[...gauges]; S.obs.job="starting"; render();
   try{
     const response=await fetch("/api/observed/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdl:S.obs.sdl,gauges,filter_period:S.obs.filter,start:S.obs.filter?S.obs.start:null,end:S.obs.filter?S.obs.end:null,refresh:S.obs.refresh,merge})});
     const started=await response.json();
+    if(token!==observedWatch)return;
     if(response.status===409&&started.job) S.obs.job=started.job;
     else if(!response.ok||!started.job) throw Error(started.message||"Observed run could not be started");
     else S.obs.job=started.job;
     while(token===observedWatch){
       await new Promise(resolve=>setTimeout(resolve,800));
+      if(token!==observedWatch)return;
       const q=await (await fetch("/api/job?id="+encodeURIComponent(S.obs.job),{cache:"no-store"})).json();
       if(token!==observedWatch)return;
-      if(q.status==="running") { S.obs.progress=q.progress||null; S.obs.status=q.gauge_status||q.progress?.gauges||{}; render(); continue; }
+      updateObservedStatus(q.gauge_status||q.progress?.gauges||{});
+      if(q.status==="running") { S.obs.progress=q.progress||null; render(); continue; }
       if(q.status!=="done") throw Error(q.message||"Observed run failed");
       const stats=q.stats||{}, vals=(q.rows||[]).map(row=>VALK.map(k=>row[k]??null)), id=stats.scenario_id||stats.scn_id||("obs_"+S.obs.sdl.toLowerCase().replace(/[^a-z0-9]+/g,"_"));
       const name="Observed – "+S.obs.sdl, old=CUSTOM.find(c=>!c.removed&&c.source==="observed"&&c.observedSdl===S.obs.sdl);
@@ -523,17 +553,19 @@ async function runObserved(gauges,merge=false){
         reindexRows(); performanceRevision++;
         for(const value of old.vals) for(const row of PUKEY.get(value[0]+"|"+value[1]+"|"+value[2])||[]) putVals(row,old.P,[]);
         const matched=[], sdls=new Set();
-        for(const value of vals){const rs=PUKEY.get(value[0]+"|"+value[1]+"|"+value[2]);if(!rs)continue;rs.forEach(row=>{putVals(row,old.P,value);sdls.add(META.sdls[row[1]]);});matched.push(value);}
+        const retried=new Set(gauges), updated=merge?[...old.vals.filter(value=>!retried.has(value[1])),...vals]:vals;
+        for(const value of updated){const rs=PUKEY.get(value[0]+"|"+value[1]+"|"+value[2]);if(!rs)continue;rs.forEach(row=>{putVals(row,old.P,value);sdls.add(META.sdls[row[1]]);});matched.push(value);}
         old.vals=matched; old.sdls=[...sdls]; old.id=id; old.flowGauges=stats.flow_gauges||[]; old.levelGauges=stats.level_gauges||[]; old.salinityGauges=stats.salinity_gauges||[]; old.source="observed"; old.observedSdl=S.obs.sdl; persistCustom(); scenario=old;
       }
       else { addCustom(name,vals,id,stats.flow_gauges||[],"Observed data",{levelGauges:stats.level_gauges,salinityGauges:stats.salinity_gauges,source:"observed",observedSdl:S.obs.sdl}); scenario=CUSTOM[CUSTOM.length-1]; }
-      S.obs.status=stats.gauge_status||{}; S.obs.ranges=stats.observed_ranges||{}; S.obs.job=null; S.obs.progress=null; const partial=stats.partial_water_years||{}; S.obs.notice=`Loaded ${vals.length} EWR results for ${S.obs.sdl}.`+((partial.start||partial.end)?" The requested period includes a partial water year at its "+[partial.start&&"start",partial.end&&"end"].filter(Boolean).join(" and ")+" boundary.":"");
+      updateObservedStatus(stats.gauge_status||{}); S.obs.ranges={...S.obs.ranges,...stats.observed_ranges}; S.obs.completed=true;
+      S.obs.job=null; S.obs.runIds=[]; S.obs.progress=null; const partial=stats.partial_water_years||{}; S.obs.notice=`Loaded ${vals.length} EWR results for ${S.obs.sdl}.`+((partial.start||partial.end)?" The requested period includes a partial water year at its "+[partial.start&&"start",partial.end&&"end"].filter(Boolean).join(" and ")+" boundary.":"");
       fillPolicyOptions(); renderCustomList(); S.pol=scenario.P; S.bpol=scenario.P; S.cli=S.bcli=0;
       const si=observedSdlIndex(); S.sel=si>=0?{type:"sdl",i:si}:{type:"none"};
       if(typeof UEWR!=="undefined"&&UEWR.specs.size) UEWR.offerRun([id]);
       persistObserved(); refresh(); return;
     }
-  }catch(error){ if(token===observedWatch){S.obs.job=null;S.obs.progress=null;S.obs.notice="Failed: "+error.message;render();} }
+  }catch(error){ if(token===observedWatch){S.obs.job=null;S.obs.runIds=[];S.obs.completed=false;S.obs.progress=null;S.obs.notice="Failed: "+error.message;render();} }
 }
 function initObserved(){
   if(PRELOADED.length)return;
@@ -552,8 +584,9 @@ function initObserved(){
 $("panel").addEventListener("click",event=>{const b=event.target.closest("[data-obs]");if(!b)return;const action=b.dataset.obs,unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl),gauges=unit?.gauges||[];
   if(action==="all")S.obs.gauges=new Set(gauges.map(g=>g.id)); else if(action==="none")S.obs.gauges.clear();
   else if(action==="runAll")return runObserved(gauges.map(g=>g.id)); else if(action==="runSelected")return runObserved(gauges.filter(g=>S.obs.gauges.has(g.id)).map(g=>g.id));
-  else if(action==="retry"){const failed=new Set(Object.entries(S.obs.status).filter(([,v])=>Object.values(v||{}).some(x=>["timeout","rate_limited","error"].includes(x?.status))).map(([id])=>id));return runObserved(gauges.filter(g=>failed.has(g.id)).map(g=>g.id),true);}
-  else if(action==="cancel"){observedWatch++;S.obs.job=null;S.obs.progress=null;S.obs.notice="Stopped watching this run; the server may finish it in the background.";}
+  else if(action==="retry")return runObserved(retryableGaugeIds(gauges.map(g=>g.id),S.obs.status),true);
+  else if(action==="copyDetails")return copyObservedDetails(b.dataset.obsGaugeId,b);
+  else if(action==="cancel"){observedWatch++;S.obs.job=null;S.obs.runIds=[];S.obs.completed=false;S.obs.progress=null;S.obs.notice="Stopped watching this run; the server may finish it in the background.";}
   render();
 });
 $("panel").addEventListener("change",event=>{const t=event.target;if(t.id==="obsSdl"){chooseObservedSdl(t.value);const i=observedSdlIndex();S.sel=i>=0?{type:"sdl",i}:{type:"none"};}
@@ -562,20 +595,104 @@ $("panel").addEventListener("change",event=>{const t=event.target;if(t.id==="obs
   persistObserved();refresh();
 });
 $("panel").addEventListener("input",event=>{if(event.target.id==="obsSearch"){S.obs.query=event.target.value;render();const input=$("obsSearch");input?.focus();input?.setSelectionRange(input.value.length,input.value.length);}});
+$("panel").addEventListener("toggle",event=>{
+  const t=event.target;
+  if(t.matches("details[data-obs-details]")){S.obs.detailsOpen||=new Set();t.open?S.obs.detailsOpen.add(t.dataset.obsDetails):S.obs.detailsOpen.delete(t.dataset.obsDetails);}
+  else if(t.matches("details[data-obs-complete]"))S.obs.completeOpen=t.open;
+},true);
+// ---- observed result classification (pure; no DOM or application state)
+const VAR_NAME={f:"Flow",l:"Water level"};
+/** Describe one measurement without changing the raw status or message. */
+function describeResult(v,x){
+  const status=x?.status, message=String(x?.message||""), name=VAR_NAME[v]||v;
+  const description=(label,why,action,retryable=false,severity="info")=>({label,why,action,retryable,severity});
+  if(!status)return description("Waiting",`${name} has not been checked yet.`,"");
+  if(status==="pending"||status==="running")return description(status==="pending"?"Waiting":"Checking",`${name} is being checked.`,"");
+  if(status==="ok")return description("Available",`${name} records were returned.`,"",false,"success");
+  if(status==="empty")return description("No records for this period","The gauge has nothing recorded for the dates you chose.","Widen the date range or ignore this gauge.");
+  if(status==="unsupported")return description("Not available from this source","This source doesn't provide this measurement for this gauge.","");
+  // Keep station/busy message rules aligned with _error_result in src/observed.py.
+  if((/stations\.json/i.test(message)&&/bom_water/i.test(message))||/BoM station cache missing/i.test(message))
+    return description("Weather-bureau station list not set up","The local copy of the Bureau of Meteorology station list is missing, so this gauge can't be looked up.","One-time setup. See docs/observed-gauge-pull-guide.md. Retrying won't help.",false,"error");
+  // Explicit server decisions take precedence over legacy status-only retry rules.
+  const retryable=typeof x?.retryable==="boolean"?x.retryable:["timeout","rate_limited","error"].includes(status);
+  if(!retryable)return description("Setup or request needs attention","This request cannot succeed without a change.","Check the request and local setup before trying again.",false,"error");
+  if(/too many requests in queue|error_num\D*218|\bsource busy\b/i.test(message))
+    return description("Data service busy","The Bureau's server is handling too many requests.","Retry later.",true,"error");
+  if(status==="timeout")return description("Timed out","The data service didn't answer in time.","Retry.",true,"error");
+  if(status==="rate_limited")return description("Slowed down by data service","Too many requests too quickly.","Retry in a minute.",true,"error");
+  return description("Unexpected problem","Something went wrong on our side.","Retry; if it persists, copy details for support.",true,"error");
+}
+/** Account for both requested measurements, including one that has not reported yet. */
+function classifyGauge(states){
+  const vars=Object.keys(VAR_NAME), status=v=>states?.[v]?.status;
+  const okVars=vars.filter(v=>status(v)==="ok"), badVars=vars.filter(v=>status(v)&&!["ok","pending","running"].includes(status(v)));
+  let outcome;
+  if(vars.every(v=>!status(v)))outcome="waiting";
+  else if(vars.some(v=>!status(v)||["pending","running"].includes(status(v))))outcome="running";
+  else if(okVars.length===vars.length)outcome="complete";
+  else if(okVars.length)outcome="partial";
+  else if(vars.every(v=>["empty","unsupported"].includes(status(v))))outcome="nodata";
+  else outcome="failed";
+  return {outcome,okVars,badVars};
+}
+/** Count checked outcomes separately from gauges still waiting or checking. */
+function summarizeGauges(gaugeIds,status={}){
+  const summary={total:gaugeIds.length,checked:0,complete:0,partial:0,nodata:0,failed:0,running:0,waiting:0};
+  for(const id of gaugeIds){
+    const {outcome}=classifyGauge(status?.[id]); summary[outcome]++;
+    if(outcome!=="waiting"&&outcome!=="running")summary.checked++;
+  }
+  return summary;
+}
+function retryableGaugeIds(gaugeIds,status={}){
+  return gaugeIds.filter(id=>Object.entries(status[id]||{}).some(([v,x])=>describeResult(v,x).retryable));
+}
+function observedDetailsText(id,name,states){
+  const measurements=Object.entries(VAR_NAME).filter(([v])=>states[v]?.status!=="ok").map(([v,label])=>`${label}\nStatus: ${states[v]?.status||"not reported"}\nMessage: ${states[v]?.message||""}`);
+  return [`Gauge: ${id}`,`Name: ${name||"Unnamed gauge"}`,...measurements.map(x=>"\n"+x)].join("\n");
+}
+const resultTextKey=text=>String(text||"").trim().replace(/\s+/g," ").toLowerCase();
 function observedPanel(){
   const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauges=unit?.gauges||[], selected=gauges.filter(g=>S.obs.gauges.has(g.id)).length;
   const selectedGaugeId=S.sel.type==="gauge"?META.gauges[S.sel.i]:"", selectedGaugeRange=selectedGaugeId?S.obs.ranges[selectedGaugeId]:null;
-  const failures=Object.values(S.obs.status||{}).some(vars=>Object.values(vars||{}).some(x=>["timeout","rate_limited","error"].includes(x?.status)));
-  const progress=S.obs.progress, statusText=S.obs.job?`${progress?.stage||"Preparing gauges"}${progress?.total?` · ${progress.done||0} of ${progress.total}`:""}`:(S.obs.notice||"");
-  const stateIcon=s=>({ok:"✓",empty:"–",timeout:"✗",rate_limited:"✗",unsupported:"–",error:"✗",running:"⟳",pending:"·"}[s]||"·");
-  const failureLabel=x=>{
-    const message=String(x?.message||"");
-    if(/stations\.json/i.test(message)&&/bom_water/i.test(message))return "BoM station cache missing";
-    if(/too many requests in queue|error_num\D*218/i.test(message))return "source busy; retry later";
-    return ({timeout:"request timed out",rate_limited:"source rate-limited request",unsupported:"source unavailable",empty:"no data for requested period",error:"fetch failed"}[x?.status]||x?.status||"fetch failed");
+  const failures=retryableGaugeIds(gauges.map(g=>g.id),S.obs.status).length;
+  const byId=new Map(gauges.map(g=>[g.id,g])), reportIds=S.obs.displayIds?.length?S.obs.displayIds:S.obs.runIds?.length?S.obs.runIds:[...gauges.filter(g=>S.obs.status[g.id]).map(g=>g.id),...Object.keys(S.obs.status||{}).filter(id=>!byId.has(id))];
+  const summary=summarizeGauges(reportIds,S.obs.status), unfinished=summary.waiting+summary.running;
+  const tally=summary.total?[`${summary.checked} of ${summary.total} checked`,...["complete","partial","nodata","failed"].filter(k=>summary[k]).map(k=>`${summary[k]} ${k==="nodata"?"no data":k}`)].join(" · ")+(unfinished?` (${unfinished} not finished)`:""):"";
+  const progress=S.obs.progress, stage=progress?.stage||"Preparing gauges";
+  const statusText=S.obs.job?(progress?.stage_code==="gauges"?"":stage):(S.obs.notice||"");
+  const statusLine=statusText?`<div class="obs-status${S.obs.notice.startsWith("Failed")?" obs-error":""}">${esc(statusText)}</div>`:"";
+  const stateIcon=s=>({ok:"✓",empty:"–",unsupported:"–",running:"⟳",pending:"·"}[s]||(!s?"·":"✗"));
+  const outcomes={complete:{label:"Complete",icon:"✓",tone:"success"},partial:{label:"Partial",icon:"⚠",tone:"warning"},nodata:{label:"No data",icon:"–",tone:"muted"},failed:{label:"Failed",icon:"✗",tone:"error"},waiting:{label:"Waiting",icon:"·",tone:"muted"},running:{label:"Checking…",icon:"⟳",tone:"muted"}};
+  const resultRow=id=>{
+    const g=byId.get(id)||{id,name:""}, states=S.obs.status[id]||{}, outcome=classifyGauge(states).outcome, display=outcomes[outcome];
+    const chips=Object.entries(VAR_NAME).map(([v,name])=>{
+      const x=states[v], description=describeResult(v,x), label=x?.status==="unsupported"?"Not available":description.label;
+      const tone=x?.status==="ok"?"success":["error","timeout","rate_limited"].includes(x?.status)?"error":"muted";
+      const action=x?.status!=="ok"&&typeof description.action==="string"&&description.action.trim()&&resultTextKey(description.action)!==resultTextKey(label)?description.action:"";
+      const icon=x?.status==="ok"?`role="img" aria-label="${esc(label)}"`:`aria-hidden="true"`;
+      return `<div class="obs-measurement-item"><span class="obs-measurement obs-tone-${esc(tone)}" data-obs-measurement="${esc(v)}"><b>${esc(name)}</b> <span ${icon}>${esc(stateIcon(x?.status))}</span>${x?.status==="ok"?"":` <span class="obs-reason">${esc(label)}</span>`}</span>${action?`<p class="obs-action">${esc(action)}</p>`:""}</div>`;
+    }).join("");
+    const explanations=Object.entries(VAR_NAME).map(([v,name])=>{
+      const x=states[v], description=describeResult(v,x), seen=new Set([resultTextKey(description.label)]);
+      const prose=x?.status==="ok"?[]:[description.why,description.action].filter(text=>{
+        if(typeof text!=="string"||!text.trim())return false;
+        const key=resultTextKey(text);if(seen.has(key))return false;seen.add(key);return true;
+      });
+      return prose.length?`<dt>${esc(name)}</dt><dd>${prose.map(text=>`<p>${esc(text)}</p>`).join("")}</dd>`:"";
+    }).join("");
+    const raw=Object.entries(VAR_NAME).map(([v,name])=>`<dt>${esc(name)}</dt><dd>Status: ${esc(states[v]?.status||"not reported")}${states[v]?.message?`<pre>${esc(states[v].message)}</pre>`:""}</dd>`).join("");
+    const range=S.obs.ranges[id];
+    const copyable=Object.keys(VAR_NAME).some(v=>states[v]?.status!=="ok");
+    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span></div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">Copy details</button><div data-obs-copy-fallback hidden><p>Clipboard unavailable. Select and copy these technical details.</p><textarea readonly aria-label="Technical details to copy"></textarea></div>`:""}</details></article>`;
   };
+  const finished=!!S.obs.completed&&!S.obs.job, rank={failed:0,partial:1,nodata:2,running:3,waiting:4,complete:5};
+  const ordered=finished?[...reportIds].sort((a,b)=>rank[classifyGauge(S.obs.status[a]).outcome]-rank[classifyGauge(S.obs.status[b]).outcome]):reportIds;
+  const complete=finished?ordered.filter(id=>classifyGauge(S.obs.status[id]).outcome==="complete"):[];
+  const results=ordered.filter(id=>!finished||classifyGauge(S.obs.status[id]).outcome!=="complete").map(resultRow).join("");
   const rows=gauges.filter(g=>!S.obs.query||`${g.id} ${g.name}`.toLowerCase().includes(S.obs.query.toLowerCase())).map(g=>{
-    const states=S.obs.status[g.id]||{}, short=v=>{const x=states[v];return `${stateIcon(x?.status)} ${v.toUpperCase()}${x?.status&&x.status!=="ok"?`: ${failureLabel(x)}`:""}`;};
+    const states=S.obs.status[g.id]||{}, short=v=>`${VAR_NAME[v]} ${stateIcon(states[v]?.status)}`;
     return `<label class="obs-gauge"><input type="checkbox" data-obs-gauge="${esc(g.id)}"${S.obs.gauges.has(g.id)?" checked":""}><span><b>${esc(g.id)}</b>${g.name?` · ${esc(g.name)}`:""}<small> ${esc(short("f"))} · ${esc(short("l"))}</small></span></label>`;
   }).join("");
   return `<section class="obs-panel"><h2>Observed data</h2>
@@ -587,9 +704,9 @@ function observedPanel(){
     ${S.obs.filter?`<div class="obs-tools"><label class="obs-field">Period <span><input type="date" id="obsStart" value="${esc(S.obs.start)}" required> to <input type="date" id="obsEnd" value="${esc(S.obs.end)}" required></span></label></div>`:`<div class="obs-status">Period: all available data</div>`}
     ${selectedGaugeId?`<div class="obs-status">Selected gauge ${esc(selectedGaugeId)} · ${selectedGaugeRange?`available records ${esc(selectedGaugeRange.start)} to ${esc(selectedGaugeRange.end)}`:"record range will appear after data is fetched"}</div>`:""}
     <label class="obs-gauge"><input type="checkbox" id="obsRefresh"${S.obs.refresh?" checked":""}>Refresh cached data</label>
-    <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry failed</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
-    ${S.obs.job?`<progress class="obs-progress" max="${Math.max(1,progress?.total||1)}" value="${progress?.done||0}"></progress>`:""}<div class="obs-status${S.obs.notice.startsWith("Failed")?" obs-error":""}" aria-live="polite">${esc(statusText)}</div>
-    ${gauges.filter(g=>S.obs.status[g.id]).map(g=>{const v=S.obs.status[g.id], vals=Object.values(v), ok=vals.filter(x=>x.status==="ok").length, failed=vals.filter(x=>x.status!=="ok"), reasons=[...new Set(failed.map(failureLabel))], detail=failed.map(x=>`${x.status}: ${x.message||failureLabel(x)}`).join("\n"), range=S.obs.ranges[g.id], rangeText=range?` · data ${range.start} to ${range.end}`:"";return `<div class="obs-gauge-status"${detail?` title="${esc(detail)}"`:""}><span>${esc(g.id)} · ${esc(g.name||"")}</span><span>${ok} of ${vals.length} variables${reasons.length?` · ${esc(reasons.join(", "))}`:""}${esc(rangeText)}</span></div>`;}).join("")}
+    <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry ${failures} failed</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
+    <div class="obs-progress-status" aria-live="polite">${S.obs.job?`<progress class="obs-progress" max="${esc(Math.max(1,progress?.total||1))}" value="${esc(progress?.done||0)}"></progress>${statusLine}`:""}${tally?`<div class="obs-status">${esc(tally)}</div>`:""}${!S.obs.job?statusLine:""}</div>
+    ${results}${complete.length?`<details class="obs-complete" data-obs-complete${S.obs.completeOpen?" open":""}><summary>Show ${complete.length} complete ${complete.length===1?"gauge":"gauges"}</summary>${complete.map(resultRow).join("")}</details>`:""}
   </section>`;
 }
 function render(){

@@ -101,7 +101,8 @@ test('CSV dialect, numeric validation, size/row bounds, missing values and bound
 });
 test('legacy links retain .9; versioned/new links use 1 and always encode thr',()=>{
   const h=harness();
-  h.run("var location={hash:''}; const METRICS=['fr','ach']; const fillPolicyOptions=()=>{},syncUI=()=>{};");
+  // applyHash restores observed filters for every nonempty hash; mirror the real S.obs state.
+  h.run("S.obs={}; var location={hash:''}; const METRICS=['fr','ach']; const fillPolicyOptions=()=>{},syncUI=()=>{};");
   h.run(template.slice(template.indexOf('function encodeState(){'),template.indexOf('function syncUI(){')));
   h.run('applyHash()');assert.equal(h.run('S.thr'),1);
   h.run("location.hash='#metric=ach';applyHash()");assert.equal(h.run('S.thr'),.9);

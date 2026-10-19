@@ -6,7 +6,7 @@ const assert = require('node:assert/strict'), {test} = require('node:test');
 const template = fs.readFileSync('src/dashboard_template.html','utf8');
 // the "values and averages" and "selection" sections; each marker must occur once so a template edit fails here, not silently
 function section(from,to) {
-  for (const m of [from,to]) assert.equal(template.split(m).length,2,`marker ${JSON.stringify(m)} must occur exactly once in the template`);
+  for (const m of [from,to]) assert.equal(template.split(m).length,2,`marker ${JSON.stringify(m)} must occur exactly once in the template; update the marker in the test if the template section was renamed`);
   return template.slice(template.indexOf(from),template.indexOf(to));
 }
 const core = section('// ---- values and averages','// ---- colours');
@@ -27,6 +27,393 @@ function harness(rows=[]) {
   return code => vm.runInContext(code,ctx);
 }
 const near = (actual,expected) => assert.ok(Math.abs(actual-expected)<1e-12,`${actual} != ${expected}`);
+
+const observedHelpers=section('// ---- observed result classification','function observedPanel(){');
+test('section markers name a missing marker and explain how to update it',()=>{
+  assert.throws(()=>section('// missing observed marker','function observedPanel(){'),/marker "\/\/ missing observed marker".*update the marker in the test if the template section was renamed/);
+});
+function observedHarness(){
+  const ctx=vm.createContext({});
+  vm.runInContext(observedHelpers,ctx);
+  return code=>plain(vm.runInContext(code,ctx));
+}
+test('classifyGauge: every pair of terminal measurement statuses',()=>{
+  const run=observedHarness(), statuses=['ok','empty','unsupported','error','timeout','rate_limited'];
+  for(const f of statuses)for(const l of statuses){
+    const states={f:{status:f},l:{status:l}}, okVars=['f','l'].filter(v=>states[v].status==='ok'), badVars=['f','l'].filter(v=>states[v].status!=='ok');
+    const outcome=okVars.length===2?'complete':okVars.length?'partial':[f,l].every(s=>['empty','unsupported'].includes(s))?'nodata':'failed';
+    assert.deepEqual(run(`classifyGauge(${JSON.stringify(states)})`),{outcome,okVars,badVars},`${f}/${l}`);
+  }
+});
+test('classifyGauge: waiting and in-progress measurements cannot look complete',()=>{
+  const run=observedHarness();
+  for(const input of ['undefined','null','{}','{f:{},l:null}'])assert.deepEqual(run(`classifyGauge(${input})`),{outcome:'waiting',okVars:[],badVars:[]});
+  for(const pending of [undefined,'pending','running'])for(const terminal of ['ok','empty','unsupported','error','timeout','rate_limited'])for(const v of ['f','l']){
+    const other=v==='f'?'l':'f', states={[v]:pending?{status:pending}:{},[other]:{status:terminal}};
+    assert.deepEqual(run(`classifyGauge(${JSON.stringify(states)})`),{outcome:'running',okVars:terminal==='ok'?[other]:[],badVars:terminal==='ok'?[]:[other]});
+  }
+  assert.deepEqual(run('classifyGauge({f:{status:"pending"},l:{status:"running"}})'),{outcome:'running',okVars:[],badVars:[]});
+});
+test('describeResult: labels distinguish unavailable records, query failures and setup failures',()=>{
+  const run=observedHarness(), cases=[
+    [{status:'ok'},'Available',false,'success'],
+    [{status:'empty'},'No records for this period',false,'info'],
+    [{status:'unsupported'},'Not available from this source',false,'info'],
+    [{status:'timeout'},'Timed out',true,'error'],
+    [{status:'rate_limited'},'Slowed down by data service',true,'error'],
+    [{status:'error',message:'unexpected failure'},'Unexpected problem',true,'error'],
+    [{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json'},'Weather-bureau station list not set up',false,'error'],
+    [{status:'error',message:'BOM_WATER/cache/STATIONS.JSON',retryable:true},'Weather-bureau station list not set up',false,'error'],
+    [{status:'error',message:'BoM station cache missing'},'Weather-bureau station list not set up',false,'error'],
+    [{status:'error',message:'too many requests in queue'},'Data service busy',true,'error'],
+    [{status:'error',message:'error_num 218'},'Data service busy',true,'error'],
+    [{status:'error',message:'{"error_num": 218}'},'Data service busy',true,'error'],
+    [{status:'error',message:'PermissionError: cannot read settings',retryable:false},'Setup or request needs attention',false,'error'],
+    [{status:'pending'},'Waiting',false,'info'],
+    [{status:'running'},'Checking',false,'info'],
+    [{},'Waiting',false,'info'],
+  ];
+  for(const [input,label,retryable,severity] of cases){
+    const result=run(`describeResult('f',${JSON.stringify(input)})`);
+    assert.deepEqual(Object.keys(result).sort(),['action','label','retryable','severity','why']);
+    assert.equal(result.label,label);assert.equal(result.retryable,retryable);assert.equal(result.severity,severity);
+    assert.ok(result.why);assert.equal(typeof result.action,'string');
+  }
+  assert.match(run("describeResult('f',null)").why,/Flow/);
+  assert.match(run("describeResult('l',undefined)").why,/Water level/);
+  // Terminal non-failures never become retryable, even with an inconsistent flag.
+  for(const status of ['ok','empty','unsupported','pending','running'])assert.equal(run(`describeResult('l',{status:'${status}',retryable:true})`).retryable,false);
+  for(const status of ['error','timeout','rate_limited'])assert.equal(run(`describeResult('l',{status:'${status}',retryable:false})`).retryable,false);
+});
+test('observed retry button and selection use the same retryability decisions',()=>{
+  const ctx=vm.createContext({}), listeners={};
+  ctx.$=()=>({addEventListener:(event,handler)=>{listeners[event]=handler;}});
+  vm.runInContext(observedHelpers,ctx);
+  vm.runInContext(`
+    const gauges=['setup','busy','timeout','empty','unsupported','permission','mixed'].map(id=>({id,name:id}));
+    const OBSERVED_UNITS=[{sdl:'Test',gauges}], META={};
+    const S={sel:{type:'none'},obs:{sdl:'Test',gauges:new Set(),ranges:{},query:'',notice:'',status:{
+      setup:{f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json'}},
+      busy:{f:{status:'error',message:'error_num 218',retryable:true}},
+      timeout:{l:{status:'timeout',retryable:true}},
+      empty:{f:{status:'empty'}},unsupported:{f:{status:'unsupported'}},
+      permission:{l:{status:'error',retryable:false}},
+      mixed:{f:{status:'error',message:'~/bom_water/cache/stations.json'},l:{status:'error',message:'too many requests in queue'}}
+    }}};
+    const OBSERVED_AVAILABLE=true,esc=String;
+    let requested;
+    function runObserved(ids,merge){requested={ids,merge};}
+  `,ctx);
+  vm.runInContext(section('$("panel").addEventListener("click",event=>{const b=event.target.closest("[data-obs]")','$("panel").addEventListener("change",event=>{const t=event.target;'),ctx);
+  vm.runInContext(section('function observedPanel(){','function render(){'),ctx);
+  assert.match(vm.runInContext('observedPanel()',ctx),/data-obs="retry"/);
+  assert.match(vm.runInContext('observedPanel()',ctx),/data-obs="retry">Retry 3 failed<\/button>/);
+  listeners.click({target:{closest:()=>({dataset:{obs:'retry'}})}});
+  assert.deepEqual(plain(vm.runInContext('requested',ctx)),{ids:['busy','timeout','mixed'],merge:true});
+  vm.runInContext('S.obs.status={setup:S.obs.status.setup,permission:S.obs.status.permission,empty:S.obs.status.empty}',ctx);
+  assert.doesNotMatch(vm.runInContext('observedPanel()',ctx),/data-obs="retry"/);
+});
+test('observed classification helpers preserve their inputs',()=>{
+  const run=observedHarness();
+  assert.equal(run(`(()=>{const states={f:{status:'ok'},l:{status:'error',message:'error_num 218',retryable:true}},before=JSON.stringify(states);classifyGauge(states);describeResult('l',states.l);return JSON.stringify(states)===before;})()`),true);
+});
+test('observed message rules use shared samples with the Python adapter',()=>{
+  const run=observedHarness(),cases=JSON.parse(fs.readFileSync('tests/fixtures/observed_message_cases.json','utf8'));
+  for(const sample of cases){
+    const result=run(`describeResult('f',${JSON.stringify({status:'error',message:sample.message})})`);
+    assert.equal(result.retryable,sample.retryable,sample.message);
+    assert.equal(result.label,sample.label,sample.message);
+  }
+});
+test('summarizeGauges: every outcome contributes once, with only terminal outcomes checked',()=>{
+  const run=observedHarness(),status={
+    complete:{f:{status:'ok'},l:{status:'ok'}},partial:{f:{status:'ok'},l:{status:'error'}},
+    nodata:{f:{status:'empty'},l:{status:'unsupported'}},failed:{f:{status:'timeout'},l:{status:'error'}},
+    running:{f:{status:'error'}},pending:{f:{status:'pending'},l:{status:'ok'}},waiting:{}
+  },ids=[...Object.keys(status),'missing'];
+  const summary=run(`summarizeGauges(${JSON.stringify(ids)},${JSON.stringify(status)})`);
+  assert.deepEqual(summary,{total:8,checked:4,complete:1,partial:1,nodata:1,failed:1,running:2,waiting:2});
+  assert.equal(['complete','partial','nodata','failed','running','waiting'].reduce((sum,k)=>sum+summary[k],0),summary.total);
+  assert.equal(summary.checked+summary.running+summary.waiting,summary.total);
+  assert.deepEqual(run('summarizeGauges([],{})'),{total:0,checked:0,complete:0,partial:0,nodata:0,failed:0,running:0,waiting:0});
+  assert.equal(run('summarizeGauges(["a"]).waiting'),1);
+  assert.equal(run(`(()=>{const ids=['a','b'],status={a:{f:{status:'ok'}}},before=JSON.stringify([ids,status]);summarizeGauges(ids,status);return JSON.stringify([ids,status])===before;})()`),true);
+});
+
+function observedPanelHarness(){
+  const ctx=vm.createContext({});
+  vm.runInContext(observedHelpers,ctx);
+  vm.runInContext(`
+    const gauges=Array.from({length:16},(_,i)=>({id:'G'+(i+1),name:'Gauge '+(i+1)}));
+    const OBSERVED_UNITS=[{sdl:'Test',gauges}],META={};
+    const S={sel:{type:'none'},obs:{sdl:'Test',gauges:new Set(gauges.map(g=>g.id)),ranges:{},query:'',notice:'',job:'job',
+      runIds:gauges.map(g=>g.id),status:{},progress:{stage:'Renamed download stage',stage_code:'gauges',done:12,total:16}}};
+    const OBSERVED_AVAILABLE=true,esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    for(let i=1;i<=4;i++)S.obs.status['G'+i]={f:{status:'ok'},l:{status:'ok'}};
+    for(let i=5;i<=9;i++)S.obs.status['G'+i]={f:{status:'ok'},l:{status:'error',message:'problem'}};
+    S.obs.status.G10={f:{status:'empty'},l:{status:'empty'}};
+    S.obs.status.G11={f:{status:'empty'},l:{status:'unsupported'}};
+    S.obs.status.G12={f:{status:'error'},l:{status:'timeout'}};
+    S.obs.status.G13={f:{status:'error'}};S.obs.status.G14={f:{status:'running'},l:{status:'ok'}};
+  `,ctx);
+  vm.runInContext(section('function observedPanel(){','function render(){'),ctx);
+  return {ctx,run:code=>vm.runInContext(code,ctx),html:()=>vm.runInContext('observedPanel()',ctx)};
+}
+const observedStatusRows=html=>[...html.matchAll(/<article class="obs-gauge-status[^"]*"[^>]*>([\s\S]*?)<\/article>/g)].map(m=>m[1]);
+test('observed panel: 16 rows, honest header, exact tally, and waiting/checking labels',()=>{
+  const h=observedPanelHarness(),html=h.html(),rows=observedStatusRows(html);
+  const tally='12 of 16 checked · 4 complete · 5 partial · 2 no data · 1 failed (4 not finished)';
+  assert.doesNotMatch(html,/Checking gauges:|Renamed download stage/);
+  assert.ok(html.includes(`>${tally}</div>`));
+  assert.match(html,/<progress class="obs-progress" max="16" value="12">/);
+  assert.equal(rows.length,16);
+  assert.match(rows[14],/<span aria-hidden="true">·<\/span> Waiting/);assert.match(rows[14],/<b>G15<\/b> · Gauge 15/);
+  assert.match(rows[15],/<span aria-hidden="true">·<\/span> Waiting/);assert.match(rows[15],/<b>G16<\/b> · Gauge 16/);
+  assert.match(rows[12],/<span aria-hidden="true">⟳<\/span> Checking…/);assert.match(rows[13],/<span aria-hidden="true">⟳<\/span> Checking…/);
+  assert.doesNotMatch(html,/\d+ of \d+ variables/);
+  assert.match(rows[0],/data-obs-measurement="f"[\s\S]*?<b>Flow<\/b>[\s\S]*?aria-label="Available"/);
+  assert.match(rows[0],/data-obs-measurement="l"[\s\S]*?<b>Water level<\/b>[\s\S]*?aria-label="Available"/);
+  assert.match(rows[4],/data-obs-measurement="l"[\s\S]*?Unexpected problem/);
+  assert.equal((html.match(/data-obs-measurement=/g)||[]).length,32);
+  assert.equal((html.match(/aria-live="polite"/g)||[]).length,1);
+  assert.doesNotMatch(html,/<(?:section|article)[^>]*aria-live/);
+  h.run('S.obs.progress.done=16');assert.ok(h.html().includes(tally));
+  h.run('S.obs.progress={stage:"Preparing gauges",done:0,total:1}');
+  assert.match(h.html(),/>Preparing gauges</);
+  assert.doesNotMatch(h.html(),/0 of 1</);
+  assert.doesNotMatch(h.html(),/Checking gauges:/);
+});
+test('observed panel: completion sorts by outcome and collapses complete gauges, keeping the tally above the notice',()=>{
+  const h=observedPanelHarness();
+  h.run(`for(const id of ['G13','G14','G15','G16'])S.obs.status[id]={f:{status:'empty'},l:{status:'empty'}};
+    S.obs.job=null;S.obs.runIds=[];S.obs.completed=true;S.obs.progress=null;S.obs.notice='Loaded 9 EWR results for Test.';`);
+  const html=h.html(),tally='16 of 16 checked · 4 complete · 5 partial · 6 no data · 1 failed';
+  assert.ok(html.includes(`>${tally}</div>`));
+  assert.ok(html.indexOf(tally)<html.indexOf('Loaded 9 EWR results for Test.'));
+  assert.equal(observedStatusRows(html).length,16);
+  assert.doesNotMatch(html,/<progress/);
+  assert.deepEqual([...html.matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]),['G12','G5','G6','G7','G8','G9','G10','G11','G13','G14','G15','G16','G1','G2','G3','G4']);
+  assert.match(html,/<details class="obs-complete" data-obs-complete><summary>Show 4 complete gauges<\/summary>/);
+  assert.equal((html.match(/data-obs-complete/g)||[]).length,1);
+});
+test('observed panel: running and cancelled views keep original order and never group successful rows',()=>{
+  const h=observedPanelHarness(),ids=()=>[...h.html().matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]);
+  const original=Array.from({length:16},(_,i)=>'G'+(i+1));
+  assert.deepEqual(ids(),original);
+  h.run('S.obs.status.G15={f:{status:"error"},l:{status:"error"}};S.obs.status.G5={f:{status:"ok"},l:{status:"ok"}}');
+  assert.deepEqual(ids(),original);assert.doesNotMatch(h.html(),/data-obs-complete/);
+  h.run('S.obs.displayIds=[...S.obs.runIds];S.obs.runIds=[];S.obs.job=null;S.obs.completed=false');
+  assert.deepEqual(ids(),original);assert.doesNotMatch(h.html(),/data-obs-complete/);
+  assert.match(h.html(),/13 of 16 checked · 5 complete · 4 partial · 2 no data · 2 failed \(3 not finished\)/);
+});
+test('observed panel: measurement reasons stay in their own chip and raw details replace hover titles',()=>{
+  const h=observedPanelHarness();
+  h.run(`S.obs.runIds=['G1'];gauges[0].name='';S.obs.status.G1={
+    f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json',retryable:false},
+    l:{status:'error',message:'error_num 218: too many requests in queue',retryable:true}};`);
+  const html=h.html(),row=observedStatusRows(html)[0];
+  const chips=[...row.matchAll(/<span class="obs-measurement[^>]*data-obs-measurement="([fl])">([\s\S]*?)<\/span><\/span>/g)];
+  assert.equal(chips.length,2);
+  assert.match(chips[0][2],/Flow[\s\S]*Weather-bureau station list not set up/);assert.doesNotMatch(chips[0][2],/Data service busy/);
+  assert.match(chips[1][2],/Water level[\s\S]*Data service busy/);assert.doesNotMatch(chips[1][2],/Weather-bureau/);
+  assert.match(row,/Unnamed gauge/);
+  assert.match(row,/<details class="obs-details" data-obs-details="G1"><summary aria-label="Details for gauge G1">Details<\/summary>/);
+  const details=row.slice(row.indexOf('<details'));
+  assert.match(details,/Flow[\s\S]*Status: error[\s\S]*FileNotFoundError: ~\/bom_water\/cache\/stations.json/);
+  assert.match(details,/Water level[\s\S]*Status: error[\s\S]*error_num 218: too many requests in queue/);
+  assert.doesNotMatch(row,/ title=/);
+  const visible=row.replace(/<details class="obs-details"[\s\S]*?<\/details>/g,'');
+  assert.doesNotMatch(visible,/variables|cache|BoM|source busy|error_num|FileNotFoundError/);
+});
+test('observed panel: retry counts only requested gauges, singular waiting and escaped fallback rows',()=>{
+  const h=observedPanelHarness();
+  h.run('S.obs.runIds=["G13"];S.obs.progress={stage:"Fetching gauges",done:0,total:1}');
+  assert.match(h.html(),/>0 of 1 checked \(1 not finished\)<\/div>/);
+  assert.equal(observedStatusRows(h.html()).length,1);
+  h.run('S.obs.runIds=["<gauge>"];S.obs.status["<gauge>"]={f:{status:"error",message:"<message>"},l:{status:"empty"}}');
+  let html=h.html();assert.match(html,/&lt;gauge&gt;/);assert.match(html,/&lt;message&gt;/);assert.doesNotMatch(html,/<gauge>|<message>/);
+  h.run('S.obs.runIds=[]');assert.ok(h.html().includes('&lt;gauge&gt;'));
+  h.run('S.obs.status={};S.obs.runIds=[];S.obs.job=null');html=h.html();
+  assert.equal(observedStatusRows(html).length,0);assert.doesNotMatch(html,/of 0 checked/);
+});
+test('observed panel: actions are visible per non-ok measurement and explanations precede labelled technical details',()=>{
+  const h=observedPanelHarness();
+  h.run('S.obs.runIds=["G5","G10","G11"]');
+  const rows=observedStatusRows(h.html());
+  assert.match(rows[0],/data-obs-measurement="l"[\s\S]*?<p class="obs-action">Retry; if it persists, copy details for support\.<\/p>/);
+  assert.equal((rows[0].match(/class="obs-action"/g)||[]).length,1); // Flow is ok.
+  assert.equal((rows[1].match(/class="obs-action"/g)||[]).length,2); // Both measurements are empty.
+  assert.equal((rows[2].match(/class="obs-action"/g)||[]).length,1); // Unsupported has no action.
+  const details=rows[0].slice(rows[0].indexOf('<details'));
+  assert.match(details,/<dl class="obs-explanations"><dt>Water level<\/dt><dd><p>Something went wrong on our side\.<\/p><p>Retry; if it persists, copy details for support\.<\/p><\/dd><\/dl><div class="obs-technical"><b>Technical details<\/b>/);
+  assert.match(details.slice(details.indexOf('<div class="obs-technical">')),/<dt>Water level<\/dt><dd>Status: error<pre>problem<\/pre>/);
+  assert.doesNotMatch(details,/<dt>Flow<\/dt><dd><p>/);
+  assert.match(h.html(),/id="obsRefresh"[^>]*>Refresh cached data<\/label>/);
+});
+test('observed panel: duplicate chip/why/action copy is omitted and prose is escaped',()=>{
+  const h=observedPanelHarness();
+  h.run(`S.obs.runIds=['G1'];S.obs.status.G1={f:{status:'ok'},l:{status:'error'}};
+    const originalDescription=describeResult;
+    describeResult=(v,x)=>v==='l'?{label:'Same explanation',why:' SAME   explanation ',action:'<Next step>',severity:'error',retryable:true}:originalDescription(v,x);`);
+  let row=observedStatusRows(h.html())[0];
+  assert.equal((row.match(/Same explanation/g)||[]).length,1);
+  assert.doesNotMatch(row,/SAME   explanation|<Next step>/);
+  assert.equal((row.match(/&lt;Next step&gt;/g)||[]).length,2); // Under the chip and inside Details.
+  h.run(`describeResult=(v,x)=>({label:'Same explanation',why:' Same explanation ',action:'same explanation',severity:'error',retryable:true});`);
+  row=observedStatusRows(h.html())[0];assert.doesNotMatch(row,/class="obs-action"/);
+});
+test('observed panel: decorative icons are hidden while a stand-alone success icon is labelled',()=>{
+  const h=observedPanelHarness(),rows=observedStatusRows(h.html());
+  assert.match(rows[0],/class="obs-outcome[^>]*><span aria-hidden="true">✓<\/span> Complete/);
+  assert.match(rows[0],/data-obs-measurement="f"><b>Flow<\/b> <span role="img" aria-label="Available">✓<\/span>/);
+  assert.match(rows[4],/data-obs-measurement="l"><b>Water level<\/b> <span aria-hidden="true">✗<\/span> <span class="obs-reason">Unexpected problem/);
+});
+test('observed panel: retry count is gauges, not measurements, and excludes non-retryable results',()=>{
+  const h=observedPanelHarness();
+  h.run(`S.obs.job=null;S.obs.status={G1:{f:{status:'timeout',retryable:true},l:{status:'rate_limited',retryable:true}},G2:{f:{status:'error',retryable:false}},G3:{f:{status:'empty'}}};`);
+  assert.match(h.html(),/data-obs="retry">Retry 1 failed<\/button>/);
+  h.run('S.obs.status.G1.f.retryable=false;S.obs.status.G1.l.retryable=false');
+  assert.doesNotMatch(h.html(),/data-obs="retry"/);
+});
+test('observedDetailsText: copies only raw non-ok measurements as plain text without mutating input',()=>{
+  const run=observedHarness();
+  const states={f:{status:'ok'},l:{status:'error',message:'<raw>\nsecond line'}};
+  assert.equal(run(`observedDetailsText('G1','Gauge <one>',${JSON.stringify(states)})`),'Gauge: G1\nName: Gauge <one>\n\nWater level\nStatus: error\nMessage: <raw>\nsecond line');
+  assert.match(run(`observedDetailsText('G1','',{f:{status:'empty',message:'nothing recorded'},l:{status:'unsupported',message:'unsupported'}})`),/Name: Unnamed gauge\n\nFlow\nStatus: empty\nMessage: nothing recorded\n\nWater level\nStatus: unsupported\nMessage: unsupported/);
+  assert.equal(run(`(()=>{const s={f:{status:'error',message:'raw'}},before=JSON.stringify(s);observedDetailsText('G1','Name',s);return JSON.stringify(s)===before;})()`),true);
+});
+
+function observedRunHarness(){
+  const ctx=vm.createContext({setTimeout:fn=>fn()}),listeners={};
+  ctx.$=()=>({addEventListener:(event,handler)=>{listeners[event]=handler;}});
+  vm.runInContext(`
+    const S={sel:{type:'none'},obs:{sdl:'Test',gauges:new Set(['G1','G2']),filter:false,start:'',end:'',refresh:false,job:null,
+      runIds:[],displayIds:['G1','G2'],completed:true,status:{G1:{f:{status:'ok'},l:{status:'ok'}}},ranges:{G1:{start:'2000-01-01',end:'2000-01-02'}},progress:{stage:'old'},notice:''}};
+    const OBSERVED_UNITS=[{sdl:'Test',gauges:[{id:'G1'},{id:'G2'}]}],CUSTOM=[],VALK=[];
+    const saved=[],snapshots=[],localStorage={setItem:(key,value)=>saved.push(JSON.parse(value))};
+    function render(){snapshots.push(JSON.parse(JSON.stringify({job:S.obs.job,runIds:S.obs.runIds})));}
+    function refresh(){render();}function flowsChanged(){}function fillPolicyOptions(){}function renderCustomList(){}
+    function observedSdlIndex(){return 0;}function addCustom(){CUSTOM.push({P:1});}
+  `,ctx);
+  vm.runInContext(section('function persistObserved(){','function observedSdlIndex(){'),ctx);
+  vm.runInContext(section('let observedWatch=0;','function initObserved(){'),ctx);
+  vm.runInContext(section('$("panel").addEventListener("click",event=>{const b=event.target.closest("[data-obs]")','$("panel").addEventListener("change",event=>{const t=event.target;'),ctx);
+  return {ctx,listeners,run:code=>vm.runInContext(code,ctx)};
+}
+const observedResponse=(body,status=200)=>({ok:status<400,status,json:async()=>body});
+for(const mode of ['clipboard','unavailable','denied'])test(`Copy details: ${mode} uses plain text or a focused selection fallback`,async()=>{
+  const h=observedRunHarness(),copied=[];
+  vm.runInContext(observedHelpers,h.ctx);
+  h.run(`OBSERVED_UNITS[0].gauges[0].name='Gauge <one>';S.obs.status.G1={f:{status:'ok'},l:{status:'error',message:'raw <error>'}};`);
+  h.ctx.navigator=mode==='unavailable'?{}:{clipboard:{writeText:async text=>{if(mode==='denied')throw Error('denied');copied.push(text);}}};
+  const field={value:'',focused:false,selected:false,focus(){this.focused=true;},select(){this.selected=true;}};
+  const fallback={hidden:true,querySelector:()=>field};
+  const button={dataset:{obs:'copyDetails',obsGaugeId:'G1'},textContent:'Copy details',closest:()=>({querySelector:()=>fallback})};
+  await h.listeners.click({target:{closest:()=>button}});
+  const expected='Gauge: G1\nName: Gauge <one>\n\nWater level\nStatus: error\nMessage: raw <error>';
+  if(mode==='clipboard'){assert.deepEqual(copied,[expected]);assert.equal(button.textContent,'Copied');assert.equal(fallback.hidden,true);}
+  else{assert.equal(field.value,expected);assert.equal(fallback.hidden,false);assert.equal(field.focused,true);assert.equal(field.selected,true);assert.equal(button.textContent,'Select details to copy');}
+});
+for(const merge of [false,true])test(`runObserved: requested ids are copied and cleared on completion (merge=${merge})`,async()=>{
+  const h=observedRunHarness(),requests=[];let start;
+  h.ctx.fetch=async(url,options)=>{
+    requests.push({url,options});
+    if(url==='/api/observed/run')return new Promise(resolve=>{start=resolve;});
+    return observedResponse({status:'done',rows:[],stats:{gauge_status:{G2:{f:{status:'ok'},l:{status:'empty'}}}}});
+  };
+  const pending=h.run(`var requestedIds=['G2'];runObserved(requestedIds,${merge})`);
+  assert.deepEqual(plain(h.run('S.obs.runIds')),['G2']);
+  assert.deepEqual(plain(h.run('S.obs.status')),merge?{G1:{f:{status:'ok'},l:{status:'ok'}}}:{});
+  assert.deepEqual(plain(h.run('S.obs.ranges')),merge?{G1:{start:'2000-01-01',end:'2000-01-02'}}:{});
+  assert.equal(h.run('S.obs.progress'),null);
+  assert.deepEqual(plain(h.run('S.obs.displayIds')),merge?['G1','G2']:['G2']);
+  assert.equal(h.run('S.obs.completed'),false);
+  h.run('requestedIds.push("G1");persistObserved()');
+  assert.deepEqual(plain(h.run('S.obs.runIds')),['G2']);
+  assert.equal(h.run('Object.hasOwn(saved[0],"runIds")'),false);
+  assert.equal(h.run('Object.hasOwn(saved[0],"displayIds")'),false);
+  assert.equal(JSON.parse(requests[0].options.body).merge,merge);
+  start(observedResponse({job:'job'}));await pending;
+  assert.deepEqual(plain(h.run('[S.obs.runIds,S.obs.job]')),[[],null]);
+  assert.match(h.run('S.obs.notice'),/^Loaded 0 EWR results/);
+  assert.deepEqual(plain(h.run('S.obs.status.G2')),{f:{status:'ok'},l:{status:'empty'}});
+  assert.equal(h.run('S.obs.completed'),true);
+  assert.equal(h.run('Object.hasOwn(S.obs.status,"G1")'),merge);
+});
+for(const duringPoll of [false,true])test(`runObserved: failure clears requested ids (duringPoll=${duringPoll})`,async()=>{
+  const h=observedRunHarness();
+  h.ctx.fetch=async url=>url==='/api/observed/run'&&duringPoll?observedResponse({job:'job'}):observedResponse({status:'error',message:'unavailable'},503);
+  await h.run('runObserved(["G1"])');
+  assert.deepEqual(plain(h.run('[S.obs.runIds,S.obs.job]')),[[],null]);
+  assert.match(h.run('S.obs.notice'),/^Failed: unavailable/);
+  assert.deepEqual(plain(h.run('S.obs.displayIds')),['G1']);
+  assert.equal(h.run('S.obs.completed'),false);
+});
+test('runObserved: cancel clears requested ids and a late start response cannot restore the job',async()=>{
+  const h=observedRunHarness();let start;
+  h.ctx.fetch=async()=>new Promise(resolve=>{start=resolve;});
+  const pending=h.run('runObserved(["G1"])');
+  h.listeners.click({target:{closest:()=>({dataset:{obs:'cancel'}})}});
+  assert.deepEqual(plain(h.run('[S.obs.runIds,S.obs.job]')),[[],null]);
+  start(observedResponse({job:'late-job'}));await pending;
+  assert.deepEqual(plain(h.run('[S.obs.runIds,S.obs.job]')),[[],null]);
+  assert.deepEqual(plain(h.run('S.obs.displayIds')),['G1']);
+  assert.equal(h.run('S.obs.completed'),false);
+});
+test('runObserved: retry keeps the full gauge set and merges live and final results and ranges',async()=>{
+  const h=observedRunHarness();let polls=0;
+  h.run('S.obs.displayIds=["G1","G2","G3"];S.obs.status.G2={f:{status:"error"},l:{status:"error"}};S.obs.ranges.G2={start:"old",end:"old"}');
+  h.ctx.fetch=async url=>{
+    if(url==='/api/observed/run')return observedResponse({job:'retry'});
+    if(!polls++)return observedResponse({status:'running',progress:{stage:'Fetching gauges',done:0,total:1,gauges:{G2:{f:{status:'ok'}}}}});
+    assert.deepEqual(plain(h.run('S.obs.displayIds')),['G1','G2','G3']);
+    assert.deepEqual(plain(h.run('S.obs.status.G1')),{f:{status:'ok'},l:{status:'ok'}});
+    assert.deepEqual(plain(h.run('S.obs.status.G2')),{f:{status:'ok'}});
+    assert.equal(h.run('Object.hasOwn(S.obs.ranges,"G2")'),false);
+    return observedResponse({status:'done',rows:[],stats:{gauge_status:{G2:{f:{status:'ok'},l:{status:'empty'}}},observed_ranges:{G2:{start:'new',end:'new'}}}});
+  };
+  await h.run('runObserved(["G2"],true)');
+  assert.deepEqual(plain(h.run('S.obs.displayIds')),['G1','G2','G3']);
+  assert.deepEqual(plain(h.run('S.obs.status')),{G1:{f:{status:'ok'},l:{status:'ok'}},G2:{f:{status:'ok'},l:{status:'empty'}}});
+  assert.deepEqual(plain(h.run('S.obs.ranges')),{G1:{start:'2000-01-01',end:'2000-01-02'},G2:{start:'new',end:'new'}});
+});
+test('runObserved: retry preserves scenario results for gauges outside the retry',async()=>{
+  const h=observedRunHarness();
+  h.run(`const META={sdls:['Test']},PUKEY=new Map([['PU|G1|F1',[[0,0]]],['PU|G2|F1',[[0,0]]]]);
+    let performanceRevision=0;function reindexRows(){}function putVals(){}function persistCustom(){}
+    VALK.push('pu','gauge','ewr','fr');
+    CUSTOM.push({P:1,source:'observed',observedSdl:'Test',vals:[['PU','G1','F1',.8],['PU','G2','F1',.2]]});`);
+  h.ctx.fetch=async url=>url==='/api/observed/run'?observedResponse({job:'retry'}):observedResponse({status:'done',rows:[{pu:'PU',gauge:'G2',ewr:'F1',fr:.9}],stats:{gauge_status:{G2:{f:{status:'ok'},l:{status:'empty'}}}}});
+  await h.run('runObserved(["G2"],true)');
+  assert.deepEqual(plain(h.run('CUSTOM[0].vals')),[['PU','G1','F1',.8],['PU','G2','F1',.9]]);
+  assert.equal(h.run('S.obs.completed'),true);
+});
+test('runObserved: cancel keeps checked and waiting gauges and ignores late poll results',async()=>{
+  const h=observedRunHarness();let polls=0,release,ready;
+  const polling=new Promise(resolve=>{ready=resolve;});
+  vm.runInContext(observedHelpers,h.ctx);
+  h.ctx.fetch=async url=>{
+    if(url==='/api/observed/run')return observedResponse({job:'job'});
+    if(!polls++)return observedResponse({status:'running',progress:{gauges:{G1:{f:{status:'ok'},l:{status:'ok'}}}}});
+    return new Promise(resolve=>{release=resolve;ready();});
+  };
+  const pending=h.run('runObserved(["G1","G2","G3"])');await polling;
+  h.listeners.click({target:{closest:()=>({dataset:{obs:'cancel'}})}});
+  assert.deepEqual(plain(h.run('S.obs.displayIds')),['G1','G2','G3']);
+  assert.deepEqual(plain(h.run('summarizeGauges(S.obs.displayIds,S.obs.status)')),{total:3,checked:1,complete:1,partial:0,nodata:0,failed:0,running:0,waiting:2});
+  assert.equal(h.run('S.obs.completed'),false);
+  release(observedResponse({status:'done',stats:{gauge_status:{G2:{f:{status:'ok'},l:{status:'ok'}}}}}));await pending;
+  assert.deepEqual(plain(h.run('Object.keys(S.obs.status)')),['G1']);
+  assert.deepEqual(plain(h.run('[S.obs.runIds,S.obs.job,S.obs.completed]')),[[],null,false]);
+});
+test('runObserved: a terminal error preserves its final gauge statuses and the full list',async()=>{
+  const h=observedRunHarness();
+  h.ctx.fetch=async url=>url==='/api/observed/run'?observedResponse({job:'job'}):observedResponse({status:'error',message:'No data could be fetched',gauge_status:{G1:{f:{status:'error'},l:{status:'error'}}}});
+  await h.run('runObserved(["G1","G2"])');
+  assert.deepEqual(plain(h.run('S.obs.displayIds')),['G1','G2']);
+  assert.deepEqual(plain(h.run('S.obs.status.G1')),{f:{status:'error'},l:{status:'error'}});
+  assert.equal(h.run('S.obs.completed'),false);
+});
 
 test('val: frequency ratio and ETP pass through, missing values stay missing',()=>{
   const run=harness([row(0,0,0,'A',[.8,null,.6,.7],[.2,.3,null,.4])]);

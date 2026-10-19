@@ -189,7 +189,9 @@ def test_transient_errors_retry_with_jittered_backoff(getter_stub, monkeypatch, 
     assert delays == [0.625, 1.25]
 
 
-@pytest.mark.parametrize("error", [HTTPError("HTTP 429; retry after 500 seconds"), HTTPError("HTTP 408"), json.JSONDecodeError("bad JSON", "x", 0)])
+@pytest.mark.parametrize(
+    "error", [HTTPError("HTTP 400"), HTTPError("HTTP 401"), FileNotFoundError("~/bom_water/cache/stations.json"), json.JSONDecodeError("bad JSON", "x", 0)]
+)
 def test_nontransient_errors_are_not_retried(getter_stub, error):
     calls, answer = getter_stub
 
@@ -268,9 +270,10 @@ def test_same_gauge_variable_is_deduplicated(getter_stub):
     assert len(calls) == 1
 
 
-def test_fetch_many_isolates_failures_and_reports_progress(getter_stub):
+def test_fetch_many_isolates_failures_and_reports_progress(getter_stub, monkeypatch):
     calls, answer = getter_stub
     progress, statuses = [], []
+    monkeypatch.setattr(observed.time, "sleep", lambda delay: None)
 
     def fetch(gauge, start, end, var):
         if gauge == "bad":
@@ -288,7 +291,8 @@ def test_fetch_many_isolates_failures_and_reports_progress(getter_stub):
 
     assert set(frames) == {("412033", "F"), ("412033", "L")}
     assert results[("bad", "F")].status == results[("bad", "L")].status == "error"
-    assert len(calls) == len(statuses) == 4
+    assert len(calls) == 8  # Two successes and three attempts for each failed measurement.
+    assert len(statuses) == 4
     assert progress == [("Fetching gauges", 1, 2), ("Fetching gauges", 2, 2)]
 
 
