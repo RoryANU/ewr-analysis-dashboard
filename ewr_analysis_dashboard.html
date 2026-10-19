@@ -827,7 +827,7 @@ function flowPanel(){
 }
 function customForm(mo){   // user-defined constraint: a name, a flow threshold, a duration and a timing window; it joins the EWR lists
   const f=S.flow, list=CEWR.map((e,i)=>`<span class="chip">${esc(e.code)}: ≥${e.thr.toLocaleString()} ${e.kind==="L"?"m":e.kind==="S"?"EC":"ML/d"} × ${e.dur} d · ${MONTHS[e.sm-1]}–${MONTHS[e.em-1]}${e.consecutive?"":" (any days)"}${e.target!=null?` · target ${e.target}%`:""} <button data-cdel="${i}" title="Remove" class="ghost">×</button></span>`).join(" ");
-  return `<div class="mxbar" style="margin:2px 0"><button class="ghost" id="cewrToggle">${f.cform?"▾":"▸"} Custom constraints</button>${list}</div>`+(f.cform?`<div class="mxbar cform" style="margin:2px 0 6px">
+  return `<div class="mxbar" style="margin:2px 0"><button class="ghost" id="cewrToggle">${f.cform?"▾":"▸"} Custom EWR</button>${list}</div>`+(f.cform?`<div class="mxbar cform" style="margin:2px 0 6px">
     <label class="seg"><span class="lbl">Name</span><input id="cName" type="text" size="9" maxlength="16" placeholder="e.g. Test1"></label>
     <label class="seg"><span class="lbl">Threshold (ML/d)</span><input id="cThr" type="number" min="0" step="10" style="width:84px"></label>
     <label class="seg"><span class="lbl">Duration (days)</span><input id="cDur" type="number" min="1" max="366" step="1" style="width:64px"></label>
@@ -842,7 +842,7 @@ function wireCustom(d){
   const add=d.querySelector("#cewrAdd"); if(add) add.onclick=()=>{ const g=id=>d.querySelector(id), err=m=>{ g("#cewrErr").textContent=m; };
     const name=g("#cName").value.trim()||("Custom"+(CEWR.length+1)), thr=+g("#cThr").value, dur=Math.round(+g("#cDur").value), tgt=g("#cTgt").value===""?null:+g("#cTgt").value;
     if(!(thr>=0)||g("#cThr").value==="") return err("Enter a threshold in ML/d."); if(!(dur>=1&&dur<=366)) return err("Duration must be 1–366 days.");
-    if(CEWR.some(e=>e.code===name)) return err("A custom constraint with that name exists."); if(tgt!=null&&!(tgt>=0&&tgt<=100)) return err("Target must be 0–100.");
+    if(CEWR.some(e=>e.code===name)) return err("A custom EWR with that name exists."); if(tgt!=null&&!(tgt>=0&&tgt<=100)) return err("Target must be 0–100.");
     const e={code:name,pu:"custom",custom:true,handler:+g("#cCons").value?"flow_handle":"lowflow_handle",consecutive:g("#cCons").value==="1",thr,dur,sm:+g("#cSm").value,em:+g("#cEm").value,target:tgt,maxint:0,pus:["custom"]};
     CEWR.push(e); saveCEWR(); S.flow.cform=false; S.flow.ewr=thrKey(e); Object.assign(S.flow,{xlim:String(niceUp(e.thr*1.6)),dmax:Math.min(366,Math.max(30,Math.ceil(e.dur*1.25))),sm:e.sm,em:e.em,days:e.consecutive?"consec":"any"}); render(); };
 }
