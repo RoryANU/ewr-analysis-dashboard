@@ -188,7 +188,7 @@ const OBSERVED_UNITS=[]; let OBSERVED_AVAILABLE=null, OBSERVED_LOADING=false;
 const todayLocal=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);};
 const obsSaved=()=>{try{return JSON.parse(localStorage.getItem("ewrObservedSelection")||"{}");}catch(e){return {};}};
 const obsInitial=obsSaved();
-const S={src:"observed",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},obs:{sdl:obsInitial.sdl||"",gauges:new Set(obsInitial.gauges||[]),start:obsInitial.start||"1990-07-01",end:obsInitial.end||todayLocal(),refresh:!!obsInitial.refresh,job:null,status:{},progress:null,notice:"",query:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"observed",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},obs:{sdl:obsInitial.sdl||"",gauges:new Set(obsInitial.gauges||[]),filter:!!obsInitial.filter,start:obsInitial.filter?(obsInitial.start||"1990-07-01"):"",end:obsInitial.filter?(obsInitial.end||todayLocal()):"",refresh:!!obsInitial.refresh,job:null,status:{},ranges:obsInitial.ranges||{},progress:null,notice:"",query:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 void initObserved();
 
@@ -494,16 +494,17 @@ const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===
  * Replace the panel for S's selection, scenarios, and display settings, including matrices and selected cell details.
  * Mount performance charts and bind flow controls for a selection; dispose performance state when no selection is active.
  */
-function persistObserved(){ try{ localStorage.setItem("ewrObservedSelection",JSON.stringify({sdl:S.obs.sdl,gauges:[...S.obs.gauges],start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh})); }catch(e){} }
+function persistObserved(){ try{ localStorage.setItem("ewrObservedSelection",JSON.stringify({sdl:S.obs.sdl,gauges:[...S.obs.gauges],filter:S.obs.filter,start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh,ranges:S.obs.ranges})); }catch(e){} }
 function observedSdlIndex(){ return META.sdls.indexOf(S.obs.sdl); }
 function observedScenario(){ return CUSTOM.find(c=>!c.removed&&c.source==="observed"&&c.observedSdl===S.obs.sdl); }
-function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.status={}; persistObserved(); }
+function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.status={}; S.obs.ranges={}; persistObserved(); }
 let observedWatch=0;
 async function runObserved(gauges,merge=false){
   if(!S.obs.sdl||!gauges.length||S.obs.job)return;
-  const token=++observedWatch; S.obs.notice=""; S.obs.progress=null; S.obs.status={}; S.obs.job="starting"; render();
+  if(S.obs.filter&&(!S.obs.start||!S.obs.end||S.obs.start>S.obs.end)){S.obs.notice="Choose a valid start and end date, or turn off date filtering to fetch all available data.";render();return;}
+  const token=++observedWatch; S.obs.notice=""; S.obs.progress=null; S.obs.status={}; S.obs.ranges={}; S.obs.job="starting"; render();
   try{
-    const response=await fetch("/api/observed/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdl:S.obs.sdl,gauges,start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh,merge})});
+    const response=await fetch("/api/observed/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdl:S.obs.sdl,gauges,filter_period:S.obs.filter,start:S.obs.filter?S.obs.start:null,end:S.obs.filter?S.obs.end:null,refresh:S.obs.refresh,merge})});
     const started=await response.json();
     if(response.status===409&&started.job) S.obs.job=started.job;
     else if(!response.ok||!started.job) throw Error(started.message||"Observed run could not be started");
@@ -526,7 +527,7 @@ async function runObserved(gauges,merge=false){
         old.vals=matched; old.sdls=[...sdls]; old.id=id; old.flowGauges=stats.flow_gauges||[]; old.levelGauges=stats.level_gauges||[]; old.salinityGauges=stats.salinity_gauges||[]; old.source="observed"; old.observedSdl=S.obs.sdl; persistCustom(); scenario=old;
       }
       else { addCustom(name,vals,id,stats.flow_gauges||[],"Observed data",{levelGauges:stats.level_gauges,salinityGauges:stats.salinity_gauges,source:"observed",observedSdl:S.obs.sdl}); scenario=CUSTOM[CUSTOM.length-1]; }
-      S.obs.status=stats.gauge_status||{}; S.obs.job=null; S.obs.progress=null; const partial=stats.partial_water_years||{}; S.obs.notice=`Loaded ${vals.length} EWR results for ${S.obs.sdl}.`+((partial.start||partial.end)?" The requested period includes a partial water year at its "+[partial.start&&"start",partial.end&&"end"].filter(Boolean).join(" and ")+" boundary.":"");
+      S.obs.status=stats.gauge_status||{}; S.obs.ranges=stats.observed_ranges||{}; S.obs.job=null; S.obs.progress=null; const partial=stats.partial_water_years||{}; S.obs.notice=`Loaded ${vals.length} EWR results for ${S.obs.sdl}.`+((partial.start||partial.end)?" The requested period includes a partial water year at its "+[partial.start&&"start",partial.end&&"end"].filter(Boolean).join(" and ")+" boundary.":"");
       fillPolicyOptions(); renderCustomList(); S.pol=scenario.P; S.bpol=scenario.P; S.cli=S.bcli=0;
       const si=observedSdlIndex(); S.sel=si>=0?{type:"sdl",i:si}:{type:"none"};
       if(typeof UEWR!=="undefined"&&UEWR.specs.size) UEWR.offerRun([id]);
@@ -557,17 +558,24 @@ $("panel").addEventListener("click",event=>{const b=event.target.closest("[data-
 });
 $("panel").addEventListener("change",event=>{const t=event.target;if(t.id==="obsSdl"){chooseObservedSdl(t.value);const i=observedSdlIndex();S.sel=i>=0?{type:"sdl",i}:{type:"none"};}
   else if(t.matches("[data-obs-gauge]")){t.checked?S.obs.gauges.add(t.dataset.obsGauge):S.obs.gauges.delete(t.dataset.obsGauge);}
-  else if(t.id==="obsStart")S.obs.start=t.value;else if(t.id==="obsEnd")S.obs.end=t.value;else if(t.id==="obsRefresh")S.obs.refresh=t.checked;
+  else if(t.id==="obsFilter"){S.obs.filter=t.checked;if(t.checked){S.obs.start||="1990-07-01";S.obs.end||=todayLocal();}}else if(t.id==="obsStart")S.obs.start=t.value;else if(t.id==="obsEnd")S.obs.end=t.value;else if(t.id==="obsRefresh")S.obs.refresh=t.checked;
   persistObserved();refresh();
 });
 $("panel").addEventListener("input",event=>{if(event.target.id==="obsSearch"){S.obs.query=event.target.value;render();const input=$("obsSearch");input?.focus();input?.setSelectionRange(input.value.length,input.value.length);}});
 function observedPanel(){
   const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauges=unit?.gauges||[], selected=gauges.filter(g=>S.obs.gauges.has(g.id)).length;
+  const selectedGaugeId=S.sel.type==="gauge"?META.gauges[S.sel.i]:"", selectedGaugeRange=selectedGaugeId?S.obs.ranges[selectedGaugeId]:null;
   const failures=Object.values(S.obs.status||{}).some(vars=>Object.values(vars||{}).some(x=>["timeout","rate_limited","error"].includes(x?.status)));
   const progress=S.obs.progress, statusText=S.obs.job?`${progress?.stage||"Preparing gauges"}${progress?.total?` · ${progress.done||0} of ${progress.total}`:""}`:(S.obs.notice||"");
   const stateIcon=s=>({ok:"✓",empty:"–",timeout:"✗",rate_limited:"✗",unsupported:"–",error:"✗",running:"⟳",pending:"·"}[s]||"·");
+  const failureLabel=x=>{
+    const message=String(x?.message||"");
+    if(/stations\.json/i.test(message)&&/bom_water/i.test(message))return "BoM station cache missing";
+    if(/too many requests in queue|error_num\D*218/i.test(message))return "source busy; retry later";
+    return ({timeout:"request timed out",rate_limited:"source rate-limited request",unsupported:"source unavailable",empty:"no data for requested period",error:"fetch failed"}[x?.status]||x?.status||"fetch failed");
+  };
   const rows=gauges.filter(g=>!S.obs.query||`${g.id} ${g.name}`.toLowerCase().includes(S.obs.query.toLowerCase())).map(g=>{
-    const states=S.obs.status[g.id]||{}, short=v=>{const x=states[v];return `${stateIcon(x?.status)} ${v.toUpperCase()}${x?.status&&x.status!=="ok"?`: ${x.status}`:""}`;};
+    const states=S.obs.status[g.id]||{}, short=v=>{const x=states[v];return `${stateIcon(x?.status)} ${v.toUpperCase()}${x?.status&&x.status!=="ok"?`: ${failureLabel(x)}`:""}`;};
     return `<label class="obs-gauge"><input type="checkbox" data-obs-gauge="${esc(g.id)}"${S.obs.gauges.has(g.id)?" checked":""}><span><b>${esc(g.id)}</b>${g.name?` · ${esc(g.name)}`:""}<small> ${esc(short("f"))} · ${esc(short("l"))}</small></span></label>`;
   }).join("");
   return `<section class="obs-panel"><h2>Observed data</h2>
@@ -575,11 +583,13 @@ function observedPanel(){
     <label class="obs-field">SDL unit <select id="obsSdl"><option value="">Select a unit…</option>${OBSERVED_UNITS.map(x=>`<option value="${esc(x.sdl)}"${x.sdl===S.obs.sdl?" selected":""}>${esc(x.sdl)}</option>`).join("")}</select><small>Choosing a unit on the map selects it here.</small></label>
     <label class="obs-field">Gauges <span>${selected} of ${gauges.length} selected</span><input id="obsSearch" type="search" placeholder="Search name or gauge ID" value="${esc(S.obs.query)}"></label>
     <div class="obs-tools"><button type="button" data-obs="all">Select all</button><button type="button" data-obs="none">Select none</button></div><div class="obs-gauges">${rows||`<span class="obs-status">${unit?"No gauges are mapped to this SDL unit.":"Choose an SDL unit to list its gauges."}</span>`}</div>
-    <div class="obs-tools"><label class="obs-field">Period <span><input type="date" id="obsStart" value="${esc(S.obs.start)}"> to <input type="date" id="obsEnd" value="${esc(S.obs.end)}"></span></label></div>
+    <label class="obs-gauge"><input type="checkbox" id="obsFilter"${S.obs.filter?" checked":""}>Filter by date range</label>
+    ${S.obs.filter?`<div class="obs-tools"><label class="obs-field">Period <span><input type="date" id="obsStart" value="${esc(S.obs.start)}" required> to <input type="date" id="obsEnd" value="${esc(S.obs.end)}" required></span></label></div>`:`<div class="obs-status">Period: all available data</div>`}
+    ${selectedGaugeId?`<div class="obs-status">Selected gauge ${esc(selectedGaugeId)} · ${selectedGaugeRange?`available records ${esc(selectedGaugeRange.start)} to ${esc(selectedGaugeRange.end)}`:"record range will appear after data is fetched"}</div>`:""}
     <label class="obs-gauge"><input type="checkbox" id="obsRefresh"${S.obs.refresh?" checked":""}>Refresh cached data</label>
     <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry failed</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
     ${S.obs.job?`<progress class="obs-progress" max="${Math.max(1,progress?.total||1)}" value="${progress?.done||0}"></progress>`:""}<div class="obs-status${S.obs.notice.startsWith("Failed")?" obs-error":""}" aria-live="polite">${esc(statusText)}</div>
-    ${gauges.filter(g=>S.obs.status[g.id]).map(g=>{const v=S.obs.status[g.id], vals=Object.values(v), ok=vals.filter(x=>x.status==="ok").length;return `<div class="obs-gauge-status"><span>${esc(g.id)} · ${esc(g.name||"")}</span><span>${ok} of ${vals.length} variables</span></div>`;}).join("")}
+    ${gauges.filter(g=>S.obs.status[g.id]).map(g=>{const v=S.obs.status[g.id], vals=Object.values(v), ok=vals.filter(x=>x.status==="ok").length, failed=vals.filter(x=>x.status!=="ok"), reasons=[...new Set(failed.map(failureLabel))], detail=failed.map(x=>`${x.status}: ${x.message||failureLabel(x)}`).join("\n"), range=S.obs.ranges[g.id], rangeText=range?` · data ${range.start} to ${range.end}`:"";return `<div class="obs-gauge-status"${detail?` title="${esc(detail)}"`:""}><span>${esc(g.id)} · ${esc(g.name||"")}</span><span>${ok} of ${vals.length} variables${reasons.length?` · ${esc(reasons.join(", "))}`:""}${esc(rangeText)}</span></div>`;}).join("")}
   </section>`;
 }
 function render(){
@@ -845,7 +855,7 @@ async function loadMcn(){ const gen=FLOWGEN; for(const td of document.querySelec
     try{ const d=await flowGet(`/api/ewryears?base=${encodeURIComponent(b)}&comp=${encodeURIComponent(c)}&gauge=${encodeURIComponent(g)}&ewr=${encodeURIComponent(e)}&pu=${encodeURIComponent(pu)}`); if(gen!==FLOWGEN)return; MCN.set(k,d.paired?d.paired.p_mcnemar??null:null); }
     catch(er){ if(gen!==FLOWGEN)return; MCN.set(k,"err"); }
     document.querySelectorAll("td[data-mcn]").forEach(x=>{ if(x.dataset.mcn===k) x.textContent=mcnFmt(MCN.get(k)); }); } }
-// ---- flow analysis (uploaded scenarios only): achievement heat map, hydrograph / flow-duration curves ------------------------------
+// ---- flow analysis (uploaded and observed scenarios): achievement heat map, hydrograph / flow-duration curves ---------------------
 // colour scales as in the reference plots (plotly express RdBu: red = negative, blue = positive; Blues for absolute values)
 const RDBU=["rgb(103,0,31)","rgb(178,24,43)","rgb(214,96,77)","rgb(244,165,130)","rgb(253,219,199)","rgb(247,247,247)","rgb(209,229,240)","rgb(146,197,222)","rgb(67,147,195)","rgb(33,102,172)","rgb(5,48,97)"];
 const BLUES=["rgb(247,251,255)","rgb(222,235,247)","rgb(198,219,239)","rgb(158,202,225)","rgb(107,174,214)","rgb(66,146,198)","rgb(33,113,181)","rgb(8,81,156)","rgb(8,48,107)"];
@@ -866,7 +876,7 @@ const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov",
 let FLOWTOKEN=0;
 const customOf=P=>CUSTOM.find(c=>c.P===P&&!c.removed&&c.id);
 function flowCtx(){
-  if(S.src!=="user"||S.sel.type!=="gauge"||!CUSTOM.some(c=>!c.removed)) return null;
+  if(!["user","observed"].includes(S.src)||S.sel.type!=="gauge"||!CUSTOM.some(c=>!c.removed)) return null;
   const g=META.gauges[S.sel.i], comp=customOf(S.pol), base=customOf(S.bpol);
   const need=isDiff()?"In Differential mode both the Base and the Comparison must be uploaded scenarios.":"Select one of your uploaded scenarios.";
   const has=(c,kind)=>!!c&&(c[kind]||[]).includes(g), any=c=>["flowGauges","levelGauges","salinityGauges"].some(k=>has(c,k));
@@ -1600,7 +1610,7 @@ function encodeState(){
   p.set("metric",S.metric);
   if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
   if(S.sort!=="default") p.set("sort",S.sort); if(S.band!==2) p.set("band",S.band); if(S.period) p.set("period",S.period);
-  if(S.src==="observed"){ if(S.obs.sdl) p.set("osdl",S.obs.sdl); if(S.obs.gauges.size) p.set("og",[...S.obs.gauges].sort().join(",")); if(S.obs.start) p.set("ostart",S.obs.start); if(S.obs.end) p.set("oend",S.obs.end); if(S.obs.refresh) p.set("orefresh","1"); }
+  if(S.src==="observed"){ if(S.obs.sdl) p.set("osdl",S.obs.sdl); if(S.obs.gauges.size) p.set("og",[...S.obs.gauges].sort().join(",")); if(S.obs.filter){p.set("ofilter","1");if(S.obs.start)p.set("ostart",S.obs.start);if(S.obs.end)p.set("oend",S.obs.end);} if(S.obs.refresh) p.set("orefresh","1"); }
   if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
   else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
   else if(s.type==="gauge") p.set("sel","gauge~"+META.gauges[s.i]+"~"+(s.sdl!=null?META.sdls[s.sdl]:"")+"~"+(s.pu!=null?META.pus[s.pu]:""));
@@ -1610,7 +1620,7 @@ function applyHash(){
   const p=new URLSearchParams(location.hash.slice(1)); if(![...p.keys()].length) return;
   if(["observed","demo","user"].includes(p.get("src"))) S.src=p.get("src");
   if(p.has("osdl")) S.obs.sdl=p.get("osdl")||""; if(p.has("og")) S.obs.gauges=new Set((p.get("og")||"").split(",").filter(Boolean));
-  if(/^\d{4}-\d\d-\d\d$/.test(p.get("ostart")||"")) S.obs.start=p.get("ostart"); if(/^\d{4}-\d\d-\d\d$/.test(p.get("oend")||"")) S.obs.end=p.get("oend"); if(p.has("orefresh")) S.obs.refresh=p.get("orefresh")==="1";
+  S.obs.filter=p.get("ofilter")==="1"; if(S.obs.filter&&/^\d{4}-\d\d-\d\d$/.test(p.get("ostart")||"")) S.obs.start=p.get("ostart"); if(S.obs.filter&&/^\d{4}-\d\d-\d\d$/.test(p.get("oend")||"")) S.obs.end=p.get("oend"); if(p.has("orefresh")) S.obs.refresh=p.get("orefresh")==="1";
   const pi=n=>META.policies.indexOf(n), ci=n=>META.climates.indexOf(n);
   if(pi(p.get("pol"))>=0) S.pol=pi(p.get("pol")); if(ci(p.get("cli"))>=0) S.cli=ci(p.get("cli"));
   if(pi(p.get("bpol"))>=0) S.bpol=pi(p.get("bpol")); if(ci(p.get("bcli"))>=0) S.bcli=ci(p.get("bcli"));

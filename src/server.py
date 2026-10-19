@@ -649,8 +649,10 @@ def worker(
     job["elapsed"] = round(time.time() - job["t0"], 1)
 
 
-def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: Any, refresh: bool, merge: bool) -> None:
+def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: Any, refresh: bool, merge: bool, filter_period: bool = True) -> None:
     """Fetch observed flow/level series, then evaluate them through the standard upload path."""
+    import pandas as pd
+
     job = JOBS[job_id]
     scn_id = _observed_scenario_id(sdl)
     try:
@@ -681,6 +683,16 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
         }
         if not results:
             raise ValueError("No selected gauges returned flow or level data")
+        observed_ranges: dict[str, dict[str, str]] = {}
+        for (gauge, _var), result_frame in results.items():
+            if result_frame.empty or "DATETIME" not in result_frame:
+                continue
+            dates = pd.to_datetime(result_frame["DATETIME"], errors="coerce").dropna()
+            if dates.empty:
+                continue
+            record = observed_ranges.setdefault(gauge, {"start": dates.min().date().isoformat(), "end": dates.max().date().isoformat()})
+            record["start"] = min(record["start"], dates.min().date().isoformat())
+            record["end"] = max(record["end"], dates.max().date().isoformat())
         frame = observed.to_standard_frame(results)
         body = frame.to_csv(index=False).encode("utf-8")
         rows, stats = run_scenario(
@@ -695,9 +707,10 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
         )
         stats["gauge_status"] = job["gauge_status"]
         stats["observed_sdl"] = sdl
+        stats["observed_ranges"] = observed_ranges
         stats["partial_water_years"] = {
-            "start": (start.month, start.day) != (7, 1),
-            "end": (end.month, end.day) != (6, 30),
+            "start": filter_period and (start.month, start.day) != (7, 1),
+            "end": filter_period and (end.month, end.day) != (6, 30),
         }
         job["rows"], job["stats"], job["status"] = rows, stats, "done"
     except Exception as exc:
@@ -2102,8 +2115,15 @@ class Handler(SimpleHTTPRequestHandler):
             sdl = data.get("sdl")
             if not isinstance(sdl, str) or not sdl.strip():
                 raise ValueError("sdl is required")
-            start = date.fromisoformat(data.get("start", ""))
-            end = date.fromisoformat(data.get("end", ""))
+            filter_period = data.get("filter_period", True)
+            if not isinstance(filter_period, bool):
+                raise ValueError("filter_period must be a boolean")
+            if filter_period:
+                start = date.fromisoformat(data.get("start", ""))
+                end = date.fromisoformat(data.get("end", ""))
+            else:
+                # The getter requires explicit dates; this deliberately wide request means "all available".
+                start, end = date(1800, 1, 1), date.today()
             if start > end:
                 raise ValueError("start must not follow end")
             if not isinstance(data.get("refresh", False), bool) or not isinstance(data.get("merge", False), bool):
@@ -2129,7 +2149,7 @@ class Handler(SimpleHTTPRequestHandler):
             JOBS[job_id] = {"status": "running", "t0": time.time(), "progress": {"stage": "Preparing gauges", "done": 0, "total": len(gauges), "gauges": {}}}
             OBSERVED_ACTIVE[scenario_id] = job_id
         threading.Thread(
-            target=observed_worker, args=(job_id, sdl, gauges, start, end, data.get("refresh", False), data.get("merge", False)), daemon=True
+            target=observed_worker, args=(job_id, sdl, gauges, start, end, data.get("refresh", False), data.get("merge", False), filter_period), daemon=True
         ).start()
         return self._json({"job": job_id})
 

@@ -135,6 +135,39 @@ def test_timeout_empty_and_429_are_classified(monkeypatch, tmp_path):
     assert observed.fetch_gauge("412035", start, end).status == "rate_limited"
 
 
+def test_mdb_queue_full_408_is_rate_limited_without_retry(monkeypatch, tmp_path):
+    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
+    calls = 0
+
+    def queue_full(*args):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("HTTPError: HTTP Response code 408: Too many requests in queue (21), limit is 20")
+
+    monkeypatch.setattr(observed, "_fetch_isolated", queue_full)
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), retries=2)
+
+    assert result.status == "rate_limited"
+    assert "Too many requests in queue" in result.message
+    assert calls == 1
+
+
+def test_timeout_does_not_repeat_the_full_deadline(monkeypatch, tmp_path):
+    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
+    calls = 0
+
+    def timeout(*args):
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("deadline")
+
+    monkeypatch.setattr(observed, "_fetch_isolated", timeout)
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), retries=2)
+
+    assert result.status == "timeout"
+    assert calls == 1
+
+
 def test_transient_fetch_error_retries(monkeypatch, tmp_path):
     monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
     calls = 0

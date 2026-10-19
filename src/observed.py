@@ -111,6 +111,14 @@ def _fetch_isolated(gauge: str, start: date, end: date, var: str, timeout: float
     return payload
 
 
+def _is_rate_limited_message(message: str) -> bool:
+    """Recognize explicit rate limits and MDBA's HTTP 408 queue-full response."""
+    return bool(
+        re.search(r"(?:status(?: code)?[=: ]+|response code\s+)429\b|\b429\b", message, re.I)
+        or re.search(r"too many requests in queue|error_num\D*218", message, re.I)
+    )
+
+
 def _cache_paths(gauge: str, var: str) -> tuple[Path, Path]:
     key = hashlib.sha256(f"{gauge}\0{var}".encode()).hexdigest()
     return CACHE_DIR / f"{key}.csv", CACHE_DIR / f"{key}.json"
@@ -152,7 +160,17 @@ def _fetch_with_retries(gauge: str, start: date, end: date, var: str, timeout: f
             return _fetch_isolated(gauge, start, end, var, timeout)
         except NotImplementedError:
             raise
-        except Exception:
+        except TimeoutError:
+            # A hard-deadline failure already consumed the full wait budget. Repeating
+            # the same unbounded third-party request makes a single gauge take
+            # (retries + 1) * timeout without improving its chance of success.
+            raise
+        except Exception as exc:
+            # MDBA reports a full request queue as HTTP 408, and an ordinary retry
+            # immediately makes the same overloaded queue worse. Leave retrying to
+            # the user after the upstream queue has had time to drain.
+            if _is_rate_limited_message(str(exc)):
+                raise
             if attempt >= retries:
                 raise
             time.sleep(min(0.5 * (2**attempt), 4.0))
@@ -220,7 +238,7 @@ def _fetch_gauge_cached(
         return GaugeResult(pd.DataFrame(), "unsupported", str(exc))
     except Exception as exc:
         message = str(exc)
-        if re.search(r"(?:status(?: code)?[=: ]+|response code\s+)429\b|\b429\b", message, re.I):
+        if _is_rate_limited_message(message):
             status = "rate_limited"
         else:
             status = "error"

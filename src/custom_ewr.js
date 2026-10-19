@@ -343,6 +343,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
 // ---- part 3: guide controls and configuration form ----------------------------------------------------------------
 (()=>{
   const add=document.getElementById('uewrAdd'),list=document.getElementById('uewrList');if(!add||!list)return;
+  const scenarioMode=()=>S.src==='user'||S.src==='observed';
   const KINDS={F:'Flow',V:'Accumulated volume',L:'Level',S:'Salinity'};
   const RULES={flow_handle:'Continuous spell',lowflow_handle:'Total days in the window',ctf_handle:'Cease-to-flow spell',flow_handle_anytime:'Spell across 30 June',flow_handle_check_ctf:'Spell after a dry period',cumulative_handle:'Accumulated volume',rise_and_fall_handle:'Rate of rise or fall',flow_handle_multi:'Continuous spell: two gauges',lowflow_handle_multi:'Total days: two gauges',ctf_handle_multi:'Cease to flow: two gauges',cumulative_handle_multi:'Accumulated volume: two gauges',level_handle:'Level spell with drawdown limit'};
   const STEPS_USER=[['Reading series','Read stored daily series'],['Evaluating','Evaluate your EWRs'],['Summarising','Summarise results']];
