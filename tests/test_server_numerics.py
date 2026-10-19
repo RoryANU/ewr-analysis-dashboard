@@ -865,6 +865,27 @@ class TestHttpPayloads:
         finally:
             release.set()
 
+    def test_observed_all_available_uses_earliest_record(self, live_server, monkeypatch):
+        from datetime import date
+
+        monkeypatch.setattr(server.observed, "sdl_gauges", lambda sdl: ["412033"])
+        finished = threading.Event()
+        calls = []
+
+        def worker(job_id, sdl, gauges, start, end, refresh, merge, filter_period=True):
+            calls.append((start, end, filter_period))
+            with server.OBSERVED_ACTIVE_LOCK:
+                server.OBSERVED_ACTIVE.pop(server._observed_scenario_id(sdl), None)
+            finished.set()
+
+        monkeypatch.setattr(server, "observed_worker", worker)
+        status, body = post_json(live_server, "/api/observed/run", {"sdl": "All records SDL", "gauges": ["412033"], "filter_period": False})
+
+        assert status == 200, body
+        assert finished.wait(5)
+        assert server.EARLIEST_RECORD == date(1890, 1, 1)
+        assert calls == [(server.EARLIEST_RECORD, date.today(), False)]
+
     def test_curves_payload_is_strict_json_with_nulls_for_missing_days(self, live_server, store):
         put(store, "a", pd.date_range("2000-01-01", periods=5), [1, np.nan, 3, 4, 5])
         status, body = get(live_server, f"/api/curves?base=a&gauge={G}&kind=hydro")

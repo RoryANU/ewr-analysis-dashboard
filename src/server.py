@@ -81,6 +81,7 @@ FLOWS: dict[tuple[str, str], Any] = {}  # (scenario id, kind) -> DataFrame (date
 SERIES_SUFFIX = {"flow": "", "level": "_level", "salinity": "_salinity"}
 MAX_BYTES = 400 * 1024 * 1024
 MAX_JSON_BYTES = 64 * 1024
+EARLIEST_RECORD = date(1890, 1, 1)
 DEFAULT_PORT = 8792
 PAGE = "/ewr_analysis_dashboard.html"
 # py_ewr handlers that count any days at or above the threshold rather than one consecutive run
@@ -2123,7 +2124,7 @@ class Handler(SimpleHTTPRequestHandler):
                 end = date.fromisoformat(data.get("end", ""))
             else:
                 # The getter requires explicit dates; this deliberately wide request means "all available".
-                start, end = date(1800, 1, 1), date.today()
+                start, end = EARLIEST_RECORD, date.today()
             if start > end:
                 raise ValueError("start must not follow end")
             if not isinstance(data.get("refresh", False), bool) or not isinstance(data.get("merge", False), bool):
