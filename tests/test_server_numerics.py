@@ -700,7 +700,7 @@ class TestHeatmap:
         self.three_years(store, 100.0)
         out = server.heatmap({"base": "a", "gauge": G, "xlim": "200", "dmax": "5"})
         assert out["xlim"] == 200 and out["spacing"] == 1 and out["years"] == 3
-        assert out["thresholds"] == list(range(0, 201)) and out["durations"] == [1, 2, 3, 4, 5]
+        assert out["thresholds"] == list(range(201)) and out["durations"] == [1, 2, 3, 4, 5]
         assert out["dates"] == ["2000-07-01", "2003-06-30"]
         z = out["base"]
         assert len(z) == 5 and all(len(row) == 201 for row in z)  # durations x thresholds

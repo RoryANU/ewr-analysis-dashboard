@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -559,7 +559,7 @@ def save_spec(d: dict) -> dict[str, Any]:
         old = registry.get(spec_id, {})
         spec["id"] = spec_id or "u_" + uuid.uuid4().hex[:12]
         spec["ver"] = old.get("ver", 0) + 1
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         spec["created"], spec["updated"] = old.get("created", now), now
         registry[spec["id"]] = spec
         _write_registry(registry)
