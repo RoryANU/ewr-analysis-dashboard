@@ -87,6 +87,11 @@ test('Demo mode rejects frontend mutations and exposes no user EWR chart options
  const h=registryHarness({definitions:[spec()]});await h.api.sync();h.run("S.src='demo'");
  assert.deepEqual(plain(h.api.atGauge('404216')),[]);await assert.rejects(h.api.save(fixtures.base),/Your data/);await assert.rejects(h.api.run(['u_one'],['a']),/Your data/);
 });
+test('Observed mode supports defining and offering custom EWRs on observed scenarios',async()=>{
+ const h=registryHarness();await h.api.sync();h.run("S.src='observed';addCustom('Observed – one',[],'obs_one',[], 'Observed data',{source:'observed',observedSdl:'one'})");
+ const saved=await h.api.save(fixtures.base);assert.ok(saved.id);
+ assert.deepEqual(plain(h.api.offerRun(['obs_one'])),{ids:[saved.id],scns:['obs_one']});
+});
 
 test('threshold deletion matches the complete user code and leaves sibling codes selected',()=>{
  const s=spec();const keys=['g:'+s.code+'|200|7|6','g:U_OTHER|200|7|6','g:U|200|7|6'];

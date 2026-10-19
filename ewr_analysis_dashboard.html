@@ -112,11 +112,12 @@ body.nobar #bar{display:none}body.nobar #tabT{display:block}
 .uewr-preview-table{overflow-x:auto;margin:10px 0}.uewr-preview-table table{width:100%;font-size:12px}.uewr-preview-table caption{text-align:left;padding:8px 0;font-weight:600}
 .uewr-notice:not(:empty){border-left:3px solid #1f4e8c;background:#eef4fa;padding:10px;line-height:1.5}.uewr-notice[data-tone=error]{border-color:#a12622;background:#fff2f0}.uewr-notice[data-tone=success]{border-color:#1a704f;background:#edf8f2}.uewr-notice[data-tone=warning]{border-color:#976411;background:#fff8e8}
 .uewr-toast{position:fixed;right:20px;bottom:20px;z-index:1200;max-width:min(460px,calc(100vw - 40px));display:flex;align-items:start;gap:12px;padding:14px;background:#fff;color:#1f2937;border:1px solid #9aa3b0;border-left:4px solid #1a704f;border-radius:6px;box-shadow:0 3px 16px #0002;font-size:13px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}.uewr-toast[hidden]{display:none}.uewr-toast[data-tone=error]{border-left-color:#a12622}.uewr-toast[data-tone=info]{border-left-color:#1f4e8c}.uewr-toast[data-tone=warning]{border-left-color:#976411}.uewr-toast button{flex:none;padding:0 5px}.uewr-heading .uewr-actions{margin:0}
+.obs-panel{border:1px solid #b7c6d7;border-radius:6px;padding:12px;margin:0 0 14px;background:#f7fafc;font-size:12px}.obs-panel h2{margin:0 0 8px}.obs-field{display:flex;flex-direction:column;gap:4px;margin:9px 0}.obs-field select,.obs-field input{font:inherit;padding:5px;min-width:0}.obs-gauges{max-height:220px;overflow:auto;border:1px solid #d6dbe1;border-radius:4px;background:white;padding:5px}.obs-gauge{display:flex;gap:7px;align-items:start;padding:3px}.obs-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.obs-status{font-size:11px;color:#44505e;margin-top:8px;white-space:pre-wrap}.obs-gauge-status{display:flex;gap:6px;justify-content:space-between;border-top:1px solid #e2e6eb;padding:4px 2px}.obs-progress{height:6px;width:100%;margin-top:6px}.obs-error{color:#a12622}.obs-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.obs-panel button:disabled{opacity:.55}
 @media(max-width:600px){.uewr-dialog{padding:12px;width:calc(100vw - 24px)}.uewr-layout{display:block}.uewr-layout nav{position:static;display:grid;grid-template-columns:1fr 1fr;margin-bottom:12px}.uewr-fields,.uewr-rules{grid-template-columns:1fr}.uewr-sections{max-height:65vh}.uewr-sections fieldset{padding:10px}}
 </style></head><body class="nol"><div id="app">
 <div id="bar">
   <h1>EWR analysis tool</h1><button id="barHide" class="ghost" title="Hide this bar to see more of the map (a tab at the top brings it back)" aria-label="Hide the title and options bar">▴</button><button id="barTog" class="ghost" aria-expanded="false" aria-controls="bar">Controls ▾</button>
-  <span class="tabs" id="srcTabs"><button id="srcD" class="on" title="The review's built-in results: all policies and climates, all SDL units">Demo data</button><button id="srcU" title="Only the model output you add yourself, with the extra flow charts">Your data</button></span>
+  <span class="tabs" id="srcTabs"><button id="srcO" class="on" title="Fetch observed gauge records from the local server">Observed</button><button id="srcD" title="The review's built-in results: all policies and climates, all SDL units">Demo data</button><button id="srcU" title="Only the model output you add yourself, with the extra flow charts">Your data</button></span>
   <label>Mode <span class="tabs"><button id="modeS" class="on" title="One scenario: raw FR and % of record beyond MRIP">Single scenario</button><button id="modeD" title="Comparison scenario minus base scenario">Differential</button></span></label>
   <label id="baseL" style="display:none">Base <select id="bpol"></select><select id="bcli"></select></label>
   <button id="swapBC" title="Swap base and comparison" style="display:none">⇄ Reverse</button>
@@ -183,7 +184,11 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const $=id=>document.getElementById(id);
 
 const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
-const S={src:"demo",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const OBSERVED_UNITS=[]; let OBSERVED_AVAILABLE=null, OBSERVED_LOADING=false;
+const todayLocal=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10);};
+const obsSaved=()=>{try{return JSON.parse(localStorage.getItem("ewrObservedSelection")||"{}");}catch(e){return {};}};
+const obsInitial=obsSaved();
+const S={src:"observed",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:""},obs:{sdl:obsInitial.sdl||"",gauges:new Set(obsInitial.gauges||[]),start:obsInitial.start||"1990-07-01",end:obsInitial.end||todayLocal(),refresh:!!obsInitial.refresh,job:null,status:{},progress:null,notice:"",query:""},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 
 // ---- values and averages -----------------------------------------------------------------------------------------
@@ -285,7 +290,7 @@ const f3=(v,m)=>v==null?"–":m==="dr"?num(v,2):m==="sev"?num(v,2)+"×":m==="et"
 const mn=m=>dyc(m)?"mean change in achieved years per century":MN[m], msn=m=>dyc(m)?"change in achieved yrs/century":MS[m];   // differential FR labels
 
 // ---- selection ---------------------------------------------------------------------------------------------------
-const vis=r=>!r.user||S.src==="user";
+const vis=r=>!r.user||S.src!=="demo";
 function selRows(){
   const s=S.sel, rows=ROWS.filter(vis);
   if(s.type==="sdl") return rows.filter(r=>r[1]===s.i);
@@ -331,7 +336,7 @@ const ESRI="Tiles &copy; Esri, HERE, Garmin, OpenStreetMap contributors | SDL un
 const gray=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,attribution:ESRI}).addTo(map);
 map.createPane("labels").style.zIndex=650; map.getPane("labels").style.pointerEvents="none";
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",{maxZoom:16,pane:"labels"}).addTo(map);
-const activeSdl=i=>i>=0&&(S.src!=="user"||CUSTOM.some(c=>!c.removed&&c.sdls.includes(META.sdls[i])));   // demo: every SDL unit in the review; your data: units you have added a scenario for
+const activeSdl=i=>i>=0&&(S.src!=="user"||CUSTOM.some(c=>!c.removed&&c.sdls.includes(META.sdls[i])));   // demo and observed: every review SDL; your data: units covered by an uploaded scenario
 const inReview=f=>activeSdl(f.properties.sdl);
 const clickable=f=>!(f.properties.state==="SA"&&!inReview(f));   // other SA units are drawn but not interactive
 // map fills show the selected measure's performance (the hierarchical mean of the SDL unit / gauge); grey = no result
@@ -488,9 +493,98 @@ const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===
  * Replace the panel for S's selection, scenarios, and display settings, including matrices and selected cell details.
  * Mount performance charts and bind flow controls for a selection; dispose performance state when no selection is active.
  */
+function persistObserved(){ try{ localStorage.setItem("ewrObservedSelection",JSON.stringify({sdl:S.obs.sdl,gauges:[...S.obs.gauges],start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh})); }catch(e){} }
+function observedSdlIndex(){ return META.sdls.indexOf(S.obs.sdl); }
+function observedScenario(){ return CUSTOM.find(c=>!c.removed&&c.source==="observed"&&c.observedSdl===S.obs.sdl); }
+function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.status={}; persistObserved(); }
+let observedWatch=0;
+async function runObserved(gauges,merge=false){
+  if(!S.obs.sdl||!gauges.length||S.obs.job)return;
+  const token=++observedWatch; S.obs.notice=""; S.obs.progress=null; S.obs.status={}; S.obs.job="starting"; render();
+  try{
+    const response=await fetch("/api/observed/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdl:S.obs.sdl,gauges,start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh,merge})});
+    const started=await response.json();
+    if(response.status===409&&started.job) S.obs.job=started.job;
+    else if(!response.ok||!started.job) throw Error(started.message||"Observed run could not be started");
+    else S.obs.job=started.job;
+    while(token===observedWatch){
+      await new Promise(resolve=>setTimeout(resolve,800));
+      const q=await (await fetch("/api/job?id="+encodeURIComponent(S.obs.job),{cache:"no-store"})).json();
+      if(token!==observedWatch)return;
+      if(q.status==="running") { S.obs.progress=q.progress||null; S.obs.status=q.gauge_status||q.progress?.gauges||{}; render(); continue; }
+      if(q.status!=="done") throw Error(q.message||"Observed run failed");
+      const stats=q.stats||{}, vals=(q.rows||[]).map(row=>VALK.map(k=>row[k]??null)), id=stats.scenario_id||stats.scn_id||("obs_"+S.obs.sdl.toLowerCase().replace(/[^a-z0-9]+/g,"_"));
+      const name="Observed – "+S.obs.sdl, old=CUSTOM.find(c=>!c.removed&&c.source==="observed"&&c.observedSdl===S.obs.sdl);
+      flowsChanged();
+      let scenario;
+      if(old){
+        reindexRows(); performanceRevision++;
+        for(const value of old.vals) for(const row of PUKEY.get(value[0]+"|"+value[1]+"|"+value[2])||[]) putVals(row,old.P,[]);
+        const matched=[], sdls=new Set();
+        for(const value of vals){const rs=PUKEY.get(value[0]+"|"+value[1]+"|"+value[2]);if(!rs)continue;rs.forEach(row=>{putVals(row,old.P,value);sdls.add(META.sdls[row[1]]);});matched.push(value);}
+        old.vals=matched; old.sdls=[...sdls]; old.id=id; old.flowGauges=stats.flow_gauges||[]; old.levelGauges=stats.level_gauges||[]; old.salinityGauges=stats.salinity_gauges||[]; old.source="observed"; old.observedSdl=S.obs.sdl; persistCustom(); scenario=old;
+      }
+      else { addCustom(name,vals,id,stats.flow_gauges||[],"Observed data",{levelGauges:stats.level_gauges,salinityGauges:stats.salinity_gauges,source:"observed",observedSdl:S.obs.sdl}); scenario=CUSTOM[CUSTOM.length-1]; }
+      S.obs.status=stats.gauge_status||{}; S.obs.job=null; S.obs.progress=null; const partial=stats.partial_water_years||{}; S.obs.notice=`Loaded ${vals.length} EWR results for ${S.obs.sdl}.`+((partial.start||partial.end)?" The requested period includes a partial water year at its "+[partial.start&&"start",partial.end&&"end"].filter(Boolean).join(" and ")+" boundary.":"");
+      fillPolicyOptions(); renderCustomList(); S.pol=scenario.P; S.bpol=scenario.P; S.cli=S.bcli=0;
+      const si=observedSdlIndex(); S.sel=si>=0?{type:"sdl",i:si}:{type:"none"};
+      if(typeof UEWR!=="undefined"&&UEWR.specs.size) UEWR.offerRun([id]);
+      persistObserved(); refresh(); return;
+    }
+  }catch(error){ if(token===observedWatch){S.obs.job=null;S.obs.progress=null;S.obs.notice="Failed: "+error.message;render();} }
+}
+function initObserved(){
+  if(PRELOADED.length)return;
+  Promise.resolve().then(async()=>{
+    try{
+      const ping=await (await fetch("/api/ping",{cache:"no-store"})).json();
+      OBSERVED_AVAILABLE=!!ping.observed?.available;
+      if(OBSERVED_AVAILABLE){const result=await (await fetch("/api/observed/units",{cache:"no-store"})).json(); OBSERVED_UNITS.splice(0,OBSERVED_UNITS.length,...(result.units||[]));}
+      else S.obs.notice=ping.observed?.message||"Observed data support is unavailable. Install requirements-observed.txt and restart the local server.";
+    }catch{OBSERVED_AVAILABLE=false;S.obs.notice="Start the local analysis server to fetch observed gauge data.";}
+    if(S.src==="observed"&&OBSERVED_AVAILABLE===false){S.src="demo";fillPolicyOptions();}
+    if(S.obs.sdl){const si=observedSdlIndex(); if(si>=0&&S.src==="observed") S.sel={type:"sdl",i:si};}
+    refresh();
+  });
+}
+$("panel").addEventListener("click",event=>{const b=event.target.closest("[data-obs]");if(!b)return;const action=b.dataset.obs,unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl),gauges=unit?.gauges||[];
+  if(action==="all")S.obs.gauges=new Set(gauges.map(g=>g.id)); else if(action==="none")S.obs.gauges.clear();
+  else if(action==="runAll")return runObserved(gauges.map(g=>g.id)); else if(action==="runSelected")return runObserved(gauges.filter(g=>S.obs.gauges.has(g.id)).map(g=>g.id));
+  else if(action==="retry"){const failed=new Set(Object.entries(S.obs.status).filter(([,v])=>Object.values(v||{}).some(x=>["timeout","rate_limited","error"].includes(x?.status))).map(([id])=>id));return runObserved(gauges.filter(g=>failed.has(g.id)).map(g=>g.id),true);}
+  else if(action==="cancel"){observedWatch++;S.obs.job=null;S.obs.progress=null;S.obs.notice="Stopped watching this run; the server may finish it in the background.";}
+  render();
+});
+$("panel").addEventListener("change",event=>{const t=event.target;if(t.id==="obsSdl"){chooseObservedSdl(t.value);const i=observedSdlIndex();S.sel=i>=0?{type:"sdl",i}:{type:"none"};}
+  else if(t.matches("[data-obs-gauge]")){t.checked?S.obs.gauges.add(t.dataset.obsGauge):S.obs.gauges.delete(t.dataset.obsGauge);}
+  else if(t.id==="obsStart")S.obs.start=t.value;else if(t.id==="obsEnd")S.obs.end=t.value;else if(t.id==="obsRefresh")S.obs.refresh=t.checked;
+  persistObserved();refresh();
+});
+$("panel").addEventListener("input",event=>{if(event.target.id==="obsSearch"){S.obs.query=event.target.value;render();const input=$("obsSearch");input?.focus();input?.setSelectionRange(input.value.length,input.value.length);}});
+function observedPanel(){
+  const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauges=unit?.gauges||[], selected=gauges.filter(g=>S.obs.gauges.has(g.id)).length;
+  const failures=Object.values(S.obs.status||{}).some(vars=>Object.values(vars||{}).some(x=>["timeout","rate_limited","error"].includes(x?.status)));
+  const progress=S.obs.progress, statusText=S.obs.job?`${progress?.stage||"Preparing gauges"}${progress?.total?` · ${progress.done||0} of ${progress.total}`:""}`:(S.obs.notice||"");
+  const stateIcon=s=>({ok:"✓",empty:"–",timeout:"✗",rate_limited:"✗",unsupported:"–",error:"✗",running:"⟳",pending:"·"}[s]||"·");
+  const rows=gauges.filter(g=>!S.obs.query||`${g.id} ${g.name}`.toLowerCase().includes(S.obs.query.toLowerCase())).map(g=>{
+    const states=S.obs.status[g.id]||{}, short=v=>{const x=states[v];return `${stateIcon(x?.status)} ${v.toUpperCase()}${x?.status&&x.status!=="ok"?`: ${x.status}`:""}`;};
+    return `<label class="obs-gauge"><input type="checkbox" data-obs-gauge="${esc(g.id)}"${S.obs.gauges.has(g.id)?" checked":""}><span><b>${esc(g.id)}</b>${g.name?` · ${esc(g.name)}`:""}<small> ${esc(short("f"))} · ${esc(short("l"))}</small></span></label>`;
+  }).join("");
+  return `<section class="obs-panel"><h2>Observed data</h2>
+    ${!OBSERVED_AVAILABLE?`<div class="obs-status obs-error">${esc(S.obs.notice||"Observed data is unavailable. Start the local analysis server and check its observed-data support.")}</div>`:""}
+    <label class="obs-field">SDL unit <select id="obsSdl"><option value="">Select a unit…</option>${OBSERVED_UNITS.map(x=>`<option value="${esc(x.sdl)}"${x.sdl===S.obs.sdl?" selected":""}>${esc(x.sdl)}</option>`).join("")}</select><small>Choosing a unit on the map selects it here.</small></label>
+    <label class="obs-field">Gauges <span>${selected} of ${gauges.length} selected</span><input id="obsSearch" type="search" placeholder="Search name or gauge ID" value="${esc(S.obs.query)}"></label>
+    <div class="obs-tools"><button type="button" data-obs="all">Select all</button><button type="button" data-obs="none">Select none</button></div><div class="obs-gauges">${rows||`<span class="obs-status">${unit?"No gauges are mapped to this SDL unit.":"Choose an SDL unit to list its gauges."}</span>`}</div>
+    <div class="obs-tools"><label class="obs-field">Period <span><input type="date" id="obsStart" value="${esc(S.obs.start)}"> to <input type="date" id="obsEnd" value="${esc(S.obs.end)}"></span></label></div>
+    <label class="obs-gauge"><input type="checkbox" id="obsRefresh"${S.obs.refresh?" checked":""}>Refresh cached data</label>
+    <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry failed</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
+    ${S.obs.job?`<progress class="obs-progress" max="${Math.max(1,progress?.total||1)}" value="${progress?.done||0}"></progress>`:""}<div class="obs-status${S.obs.notice.startsWith("Failed")?" obs-error":""}" aria-live="polite">${esc(statusText)}</div>
+    ${gauges.filter(g=>S.obs.status[g.id]).map(g=>{const v=S.obs.status[g.id], vals=Object.values(v), ok=vals.filter(x=>x.status==="ok").length;return `<div class="obs-gauge-status"><span>${esc(g.id)} · ${esc(g.name||"")}</span><span>${ok} of ${vals.length} variables</span></div>`;}).join("")}
+  </section>`;
+}
 function render(){
   FLOWTOKEN++;EVTOKEN++;SPTOKEN++;RGTOKEN++;MTOKEN++;LASTMX={};
   const s=S.sel; mripSeen=false;
+  if(S.src==="observed"&&(s.type==="none"||!observedScenario())){ disposePerformance(); $("panel").innerHTML=observedPanel()+(s.type==="none"?"":`<div class="note">Run observed data for ${esc(S.obs.sdl)} to show its EWR results here.</div>`); return; }
   if(s.type==="none"){
     disposePerformance();
     const names=META.sdls.map((n,i)=>[n,i]).filter(([n,i])=>activeSdl(i)).sort((a,b)=>a[0].localeCompare(b[0]));
@@ -521,6 +615,7 @@ function render(){
     ${s.type==="sdl"?[["pu","How many EWRs support each objective, by planning unit (gauges per unit in the column label)"],["regime","How many EWRs support each objective, by flow regime"]].map(([k,l])=>`<details class="mxd" data-mx="${k}"${S.mxopen[k]?" open":""}><summary><b>${l}</b></summary><div class="mxbar">${themeSeg(k)}</div><div class="mxw">${matrixSvg(rows,k)}</div>${matrixLegend(true,k)}</details>`).join(""):`<div class="mxw">${matrixSvg(rows)}</div>${matrixLegend(false)}</details>`}${cellDetail()}${flowPanel()}`;
 
   const pv=preparePerformance(rows);
+  if(S.src==="observed") h=observedPanel()+h;
   $("panel").innerHTML=h; mountPerformance(pv); wireFlow(); loadMcn();
 }
 
@@ -1281,7 +1376,7 @@ async function drawFlow(keepZoom){
   }catch(e){ if(tok===FLOWTOKEN) msg.textContent="Could not draw: "+e.message; }
 }
 
-function select(sel){ S.cell=null;  S.sel=singlePU(sel); refresh(); }
+function select(sel){ S.cell=null; if(S.src==="observed"&&sel.type==="sdl") chooseObservedSdl(META.sdls[sel.i]); S.sel=singlePU(sel); refresh(); }
 function guardSame(){   // differential mode: base and comparison cannot be the same scenario (same policy and climate)
   if(S.mode!=="diff"||!$("pol")) return;
   if(S.pol===S.bpol&&S.cli===S.bcli){ const alt=policyChoices().find(i=>i!==S.bpol); if(alt!=null){ S.pol=alt; $("pol").value=alt; } else { const c=META.climates.findIndex((_,k)=>k!==S.bcli); if(c>=0&&!isCustom(S.pol)){ S.cli=c; $("cli").value=c; } } }
@@ -1302,9 +1397,9 @@ function addCustom(name,vals,id,flowGauges,fmt,seriesInfo={}){
   const P=META.policies.length, key="custom:"+name; META.policies.push(key); POL_L[key]=name;
   ROWS.forEach(r=>{ for(let k=0;k<NC;k++){ r[6].push(null); r[7].push(null); if(r[9]) r[9].push(null); } });
   const matched=[], sdls=new Set(); for(const v of vals){ const rs=PUKEY.get(v[0]+"|"+v[1]+"|"+v[2]); if(!rs) continue; rs.forEach(r=>{ putVals(r,P,v); sdls.add(META.sdls[r[1]]); }); matched.push(v); }   // the file's results go onto every SDL unit that uses the gauge
-  CUSTOM.push({key,name,sdls:[...sdls],P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],levelGauges:seriesInfo.levelGauges||[],salinityGauges:seriesInfo.salinityGauges||[],fmt:fmt||"Standard time-series"}); persistCustom(); return {P,matched:matched.length};
+  CUSTOM.push({key,name,sdls:[...sdls],P,vals:matched,removed:false,id:id||null,flowGauges:flowGauges||[],levelGauges:seriesInfo.levelGauges||[],salinityGauges:seriesInfo.salinityGauges||[],fmt:fmt||"Standard time-series",source:seriesInfo.source||"user",observedSdl:seriesInfo.observedSdl||null}); persistCustom(); return {P,matched:matched.length};
 }
-function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,levelGauges:c.levelGauges||[],salinityGauges:c.salinityGauges||[],fmt:c.fmt})))); }catch(e){} }
+function persistCustom(){ try{ localStorage.setItem("ewrCustomScenarios",JSON.stringify(CUSTOM.filter(c=>!c.removed).map(c=>({name:c.name,vals:c.vals,id:c.id,flowGauges:c.flowGauges,levelGauges:c.levelGauges||[],salinityGauges:c.salinityGauges||[],fmt:c.fmt,source:c.source,observedSdl:c.observedSdl})))); }catch(e){} }
 function restoreCustom(){ try{ for(const c of JSON.parse(localStorage.getItem("ewrCustomScenarios")||"[]")) addCustom(c.name,c.vals,c.id,c.flowGauges,c.fmt,c); }catch(e){} }
 function removeCustom(i){ performanceRevision++; const c=CUSTOM[i]; c.removed=true; flowsChanged(); if(c.id) fetch("/api/forget?id="+encodeURIComponent(c.id),{method:"POST"}).catch(()=>{}); ROWS.forEach(r=>putVals(r,c.P,[]));
   if(S.pol===c.P){ S.pol=META.policies.indexOf("Basin plan full implementation"); } if(S.bpol===c.P){ S.bpol=META.policies.indexOf("Pre Basin Plan"); }
@@ -1367,6 +1462,7 @@ $("scnRun").onclick=async()=>{
       if(q.status==="error") throw new Error(q.message||"run failed");
       showSteps("Adding to the dashboard"); $("scnBar").value=100;
       const vals=q.rows.map(x=>VALK.map(k=>x[k]??null)), st=q.stats||{}, sk=Object.keys(st.skipped||{});
+      if(S.src==="observed") setSrc("user");
       flowsChanged(); let res; if(into){ res=mergeCustom(into,vals,st.flow_gauges||[],{levelGauges:st.level_gauges,salinityGauges:st.salinity_gauges}); res.P=into.P; } else res=addCustom(name,vals,scnId,st.flow_gauges||[],fmt,{levelGauges:st.level_gauges,salinityGauges:st.salinity_gauges});
       fillPolicyOptions(); renderCustomList();
       if(UEWR.specs.size) UEWR.offerRun([scnId]);
@@ -1379,18 +1475,19 @@ $("scnRun").onclick=async()=>{
 };
 function updateClimDisable(){ if(isCustom(S.pol)&&S.cli!==0){ S.cli=0; $("cli").value=0; } if(isCustom(S.bpol)&&S.bcli!==0){ S.bcli=0; $("bcli").value=0; }
   $("cli").disabled=isCustom(S.pol); $("bcli").disabled=isCustom(S.bpol); }
-function syncSrc(){ $("srcD").classList.toggle("on",S.src==="demo"); $("srcU").classList.toggle("on",S.src==="user");
-  $("mSV").disabled=S.src==="demo"; if(S.src==="demo"&&S.metric==="sev"){ S.metric="et"; syncUI(); }   // the review results hold the MRIP parameter, not the observed gaps
-  const pd=S.src==="demo"; $("period").disabled=pd; if(pd) S.period=""; $("period").value=S.period; $("perL").classList.toggle("on",!!S.period);   // drought windows need yearly results: uploads only
-  $("perL").title=pd?"Drought windows need yearly results, which the review results do not have: add your own scenarios (Your data)":"Metrics over a drought window (water years, July–June) instead of the whole record";
-  $("addScn").style.display=S.src==="user"?"":"none"; $("cli").style.display=$("bcli").style.display=S.src==="user"?"none":""; }
+function syncSrc(){ $("srcO").classList.toggle("on",S.src==="observed"); $("srcD").classList.toggle("on",S.src==="demo"); $("srcU").classList.toggle("on",S.src==="user");
+  $("srcO").disabled=OBSERVED_AVAILABLE===false; $("srcO").title=OBSERVED_AVAILABLE===false?(S.obs.notice||"Observed data needs the local server and mdba-gauge-getter."):"Fetch observed gauge records from the local server";
+  $("mSV").disabled=S.src==="demo"; if(S.src==="demo"&&S.metric==="sev"){ S.metric="et"; syncUI(); }
+  const pd=S.src==="demo"; $("period").disabled=pd; if(pd) S.period=""; $("period").value=S.period; $("perL").classList.toggle("on",!!S.period);
+  $("perL").title=pd?"Drought windows need yearly results, which the review results do not have: choose Your data or Observed":"Metrics over a drought window (water years, July–June) instead of the whole record";
+  $("addScn").style.display=S.src==="demo"?"none":""; $("cli").style.display=$("bcli").style.display=S.src==="demo"?"":"none"; }
 function setSrc(src){ S.src=src; S.cell=null;
   if(src==="demo"){ S.pol=META.policies.indexOf("Basin plan full implementation"); S.bpol=META.policies.indexOf("Pre Basin Plan"); }
-  else { const u=CUSTOM.filter(c=>!c.removed).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } S.cli=0; S.bcli=0; }
+  else { const u=CUSTOM.filter(c=>!c.removed&&(src==="observed"?c.source==="observed":c.source!=="observed")).map(c=>c.P); if(u.length){ S.pol=u[u.length-1]; S.bpol=u[0]; } else if(src==="observed"){ S.pol=-1; S.bpol=-1; } S.cli=0; S.bcli=0; }
   S.sel={type:"none"}; fillPolicyOptions(); syncSrc(); refresh(); }
 $("barTog").onclick=()=>{ const o=$("bar").classList.toggle("open"); $("barTog").setAttribute("aria-expanded",o); $("barTog").textContent=o?"Controls ▴":"Controls ▾"; };
 $("glossBtn").onclick=()=>$("glossDlg").showModal(); $("glossClose").onclick=()=>$("glossDlg").close();
-$("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
+$("srcO").onclick=()=>{if(OBSERVED_AVAILABLE!==false)setSrc("observed");}; $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 
 // ---- resizable panel: drag the divider; the map and any open flow plot resize with it ------------------------------------
 (function(){ const dv=$("divider"), pn=$("panel"), main=$("main");
@@ -1439,9 +1536,10 @@ $("srcD").onclick=()=>setSrc("demo"); $("srcU").onclick=()=>setSrc("user");
 })();
 
 // ---- events ------------------------------------------------------------------------------------------------------
-const policyChoices=()=>S.src==="user"?CUSTOM.filter(c=>!c.removed).map(c=>c.P):[0,1,2,3];   // demo: the four built-in policies; your data: your scenarios
+const policyChoices=()=>S.src==="demo"?[0,1,2,3]:CUSTOM.filter(c=>!c.removed&&(S.src==="observed"?c.source==="observed":c.source!=="observed")).map(c=>c.P);
 function fillPolicyOptions(){
   const ch=policyChoices();
+  if(!ch.length){ S.pol=-1; S.bpol=-1; $("pol").innerHTML=$("bpol").innerHTML='<option value="-1">No scenarios yet</option>'; return; }
   if(ch.length){ if(!ch.includes(S.pol)) S.pol=ch[ch.length-1]; if(!ch.includes(S.bpol)) S.bpol=ch[0]; }
   const html=ch.map(i=>`<option value="${i}">${esc(POL_L[META.policies[i]])}</option>`).join("");
   $("pol").innerHTML=html; $("bpol").innerHTML=html; $("pol").value=S.pol; $("bpol").value=S.bpol; }
@@ -1496,11 +1594,12 @@ $("panel").addEventListener("click",e=>{
 function encodeState(){
   const p=new URLSearchParams(), s=S.sel;
   p.set("v","2"); p.set("thr",S.thr);
-  p.set("src",S.src); p.set("mode",S.mode); p.set("pol",META.policies[S.pol]); p.set("cli",META.climates[S.cli]);
-  if(isDiff()){ p.set("bpol",META.policies[S.bpol]); p.set("bcli",META.climates[S.bcli]); }
+  p.set("src",S.src); p.set("mode",S.mode); if(META.policies[S.pol]) p.set("pol",META.policies[S.pol]); if(META.climates[S.cli]) p.set("cli",META.climates[S.cli]);
+  if(isDiff()){ if(META.policies[S.bpol]) p.set("bpol",META.policies[S.bpol]); if(META.climates[S.bcli]) p.set("bcli",META.climates[S.bcli]); }
   p.set("metric",S.metric);
   if(S.ethr!==0) p.set("ethr",S.ethr); if(S.fbthr!==0.5) p.set("fbthr",S.fbthr);
   if(S.sort!=="default") p.set("sort",S.sort); if(S.band!==2) p.set("band",S.band); if(S.period) p.set("period",S.period);
+  if(S.src==="observed"){ if(S.obs.sdl) p.set("osdl",S.obs.sdl); if(S.obs.gauges.size) p.set("og",[...S.obs.gauges].sort().join(",")); if(S.obs.start) p.set("ostart",S.obs.start); if(S.obs.end) p.set("oend",S.obs.end); if(S.obs.refresh) p.set("orefresh","1"); }
   if(s.type==="sdl") p.set("sel","sdl~"+META.sdls[s.i]);
   else if(s.type==="pu") p.set("sel","pu~"+META.sdls[s.sdl]+"~"+META.pus[s.i]);
   else if(s.type==="gauge") p.set("sel","gauge~"+META.gauges[s.i]+"~"+(s.sdl!=null?META.sdls[s.sdl]:"")+"~"+(s.pu!=null?META.pus[s.pu]:""));
@@ -1508,7 +1607,9 @@ function encodeState(){
 }
 function applyHash(){
   const p=new URLSearchParams(location.hash.slice(1)); if(![...p.keys()].length) return;
-  if(["demo","user"].includes(p.get("src"))) S.src=p.get("src");
+  if(["observed","demo","user"].includes(p.get("src"))) S.src=p.get("src");
+  if(p.has("osdl")) S.obs.sdl=p.get("osdl")||""; if(p.has("og")) S.obs.gauges=new Set((p.get("og")||"").split(",").filter(Boolean));
+  if(/^\d{4}-\d\d-\d\d$/.test(p.get("ostart")||"")) S.obs.start=p.get("ostart"); if(/^\d{4}-\d\d-\d\d$/.test(p.get("oend")||"")) S.obs.end=p.get("oend"); if(p.has("orefresh")) S.obs.refresh=p.get("orefresh")==="1";
   const pi=n=>META.policies.indexOf(n), ci=n=>META.climates.indexOf(n);
   if(pi(p.get("pol"))>=0) S.pol=pi(p.get("pol")); if(ci(p.get("cli"))>=0) S.cli=ci(p.get("cli"));
   if(pi(p.get("bpol"))>=0) S.bpol=pi(p.get("bpol")); if(ci(p.get("bcli"))>=0) S.bcli=ci(p.get("bcli"));
@@ -1521,7 +1622,7 @@ function applyHash(){
   if(sel[0]==="sdl"&&sdl(sel[1])>=0) S.sel={type:"sdl",i:sdl(sel[1])};
   else if(sel[0]==="pu"&&sdl(sel[1])>=0&&pu(sel[2])>=0) S.sel={type:"pu",i:pu(sel[2]),sdl:sdl(sel[1])};
   else if(sel[0]==="gauge"&&ga(sel[1])>=0) S.sel={type:"gauge",i:ga(sel[1]),sdl:sdl(sel[2])>=0?sdl(sel[2]):null,pu:pu(sel[3])>=0?pu(sel[3]):null};
-  S.cell=null; fillPolicyOptions(); syncUI();
+  S.cell=null; fillPolicyOptions(); syncUI(); if(typeof persistObserved==="function") persistObserved();
 }
 function syncUI(){   // bring the header controls in line with the state
   syncSrc();
@@ -2935,7 +3036,8 @@ const UEWR=(()=>{
   const announce=()=>{if(typeof window.dispatchEvent==='function')window.dispatchEvent(new CustomEvent('uewr-change'));};
   const invalidate=gauge=>{performanceRevision++;flowsChanged();if(gauge)EWRLIST.delete(gauge);if(typeof invalidateInventory==='function')invalidateInventory(gauge);};
   const redraw=()=>{if(typeof refresh==='function')refresh();announce();};
-  const assertUser=()=>{if(S.src!=='user')throw Error('User EWRs are available only in Your data mode.');};
+  const scenarioMode=()=>S.src==='user'||S.src==='observed';
+  const assertUser=()=>{if(!scenarioMode())throw Error('User EWRs are available only with Your data or Observed scenarios.');};
   const assertOnline=()=>{assertUser();if(!online||!schema)throw Error('Connect to the local analysis server to change or evaluate user EWRs.');};
   async function request(path,options){
     const response=await fetch(path,{cache:'no-store',...options}),payload=await response.json();
@@ -3065,11 +3167,11 @@ const UEWR=(()=>{
     return {...plan,pending:pendingDeletes.has(id)};
   }
   function atGauge(gauge){
-    if(S.src!=='user')return [];
+    if(!scenarioMode())return [];
     return [...specs.values()].filter(s=>s.gauge===gauge&&!orphaned.has(s.id)).flatMap(s=>s.pus.map(pu=>({code:s.code,pu,pus:[pu],kind:s.kind,custom:true,user:true,name:s.name,handler:s.handler,
       consecutive:!s.handler.startsWith('lowflow_handle'),thr:s.params[s.kind==='L'?'LevelThresholdMin':'FlowThresholdMin']??0,thr_max:s.params[s.kind==='L'?'LevelThresholdMax':'FlowThresholdMax'],dur:s.params.Duration,sm:s.params.StartMonth,em:s.params.EndMonth,target:s.params.TargetFrequency,maxint:s.params['MaxInter-event'],detailed:['F','V'].includes(s.kind)})));
   }
-  function offerRun(scns){const available=scns.filter(id=>CUSTOM.some(c=>!c.removed&&c.id===id));if(!specs.size||!available.length||S.src!=='user')return null;api.pendingScenarios=available;announce();return {ids:[...specs.keys()].filter(id=>!orphaned.has(id)),scns:available};}
+  function offerRun(scns){const available=scns.filter(id=>CUSTOM.some(c=>!c.removed&&c.id===id));if(!specs.size||!available.length||!scenarioMode())return null;api.pendingScenarios=available;announce();return {ids:[...specs.keys()].filter(id=>!orphaned.has(id)),scns:available};}
   const api={specs,orphaned,unmapped,pendingDeletes,statuses,get schema(){return schema;},get online(){return online;},context,loadLocal,sync,save,run,applyResults,remove,addRows,removeRows,atGauge,offerRun,pendingScenarios:[],request,post};
   return api;
 })();
@@ -3089,7 +3191,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
   const el=id=>document.getElementById(id),live=()=>CUSTOM.filter(c=>!c.removed&&c.id);
   const errorText=e=>(Object.entries(e.errors||{}).map(([k,v])=>k+': '+v).join('\n')||e.message||'Something went wrong. Please try again.').slice(0,1200);
   function formStatus(text,tone='info'){const node=el('uewrStatus');if(!node)return;node.textContent=text;node.dataset.tone=tone;node.setAttribute('role',tone==='error'?'alert':'status');}
-  const showNotice=(text,tone='success')=>{notice=text;noticeTone=tone;toast.querySelector('span').textContent=text;toast.dataset.tone=tone;toast.setAttribute('role',tone==='error'?'alert':'status');toast.hidden=S.src!=='user';render();};
+  const showNotice=(text,tone='success')=>{notice=text;noticeTone=tone;toast.querySelector('span').textContent=text;toast.dataset.tone=tone;toast.setAttribute('role',tone==='error'?'alert':'status');toast.hidden=!scenarioMode();render();};
   const safeAsync=fn=>{Promise.resolve().then(fn).catch(e=>{if(dialog.open&&el('uewrStatus'))formStatus(errorText(e),'error');else showNotice(errorText(e),'error');});};
   async function actionTask(key,work){if(pendingActions.has(key))return;pendingActions.add(key);render();try{return await work();}finally{pendingActions.delete(key);render();}}
   const currentForm=token=>dialog.open&&token===formEpoch;
@@ -3128,7 +3230,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     return values.length?values.every(v=>userVersion(v)===s.ver)?'evaluated':'stale':'not run';
   }
   function render(){
-    const opened=new Set([...list.querySelectorAll('details.uewr-item[open]')].map(x=>x.dataset.spec));const visible=S.src==='user';add.hidden=!visible;list.hidden=!visible;
+    const opened=new Set([...list.querySelectorAll('details.uewr-item[open]')].map(x=>x.dataset.spec));const visible=scenarioMode();add.hidden=!visible;list.hidden=!visible;
     if(!visible){toast.hidden=true;if(dialog.open)dialog.close();return;}
     add.disabled=!UEWR.online||!UEWR.schema||!live().length;
     add.title=add.disabled?'Upload a scenario and connect to the local analysis server to define user EWRs.':'Define an EWR for your uploaded scenarios';
@@ -3170,14 +3272,14 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     const file=importInput.files?.[0];if(!file)return;
     if(file.size>UEWR_FILE_LIMIT)throw Error('Cannot import EWR: choose a JSON file no larger than 64 KiB.');
     let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());}catch{throw Error('Cannot import EWR: the file must use UTF-8 text encoding.');}
-    if(S.src!=='user'||!UEWR.online||!UEWR.schema||!live().length)throw Error('Connect to the local server and upload a scenario in Your data before importing.');
+    if(!scenarioMode()||!UEWR.online||!UEWR.schema||!live().length)throw Error('Connect to the local server and select a scenario before importing.');
     const imported=parseDefinition(text,UEWR.schema,UEWR.context());openForm(imported);
     const collision=[...UEWR.specs.values()].some(s=>s.code===imported.code);
     formStatus(collision?'Imported as a new draft. This code already exists; choose a new U_ code before saving.':'Imported as a new draft. Review the rule, test a scenario, then Save or Save & run.','info');
   }));
   const option=(value,label,selected=false,disabled=false)=>`<option value="${esc(value)}"${selected?' selected':''}${disabled?' disabled':''}>${esc(label)}</option>`;
   function openForm(s){
-    if(S.src!=='user'||!UEWR.online||!UEWR.schema||!live().length)return;
+    if(!scenarioMode()||!UEWR.online||!UEWR.schema||!live().length)return;
     formEpoch++;previewController?.abort();previewController=null;stopTutorial();previewKey='';previewSignature='';
     original=s?.id?userClone(s):null;draft=s?userClone(s):{code:'U_',name:'',kind:'F',handler:'flow_handle',gauge:'',pus:[],objectives:[],regime:null,second_gauge:null,params:{Duration:5,TargetFrequency:50,MinSpell:5},salinity:null};
     minAuto=!s?.params?.MinSpell;busy=false;
@@ -3230,7 +3332,7 @@ if(typeof window!=='undefined')window.UEWR=UEWR;
     if(raw.params.MinSpell===''){check.errors['params.MinSpell']='Enter the minimum spell shown in the default hint.';check.ok=false;}
     for(const node of dialog.querySelectorAll('[data-error]'))node.textContent=check.errors[node.dataset.error]||'';
     for(const input of dialog.querySelectorAll('[data-param]'))input.setAttribute('aria-invalid',String(!!check.errors['params.'+input.dataset.param]));
-    for(const id of ['uewrPreview','uewrSave','uewrSaveRun'])el(id).disabled=busy||!check.ok||!UEWR.online||S.src!=='user';
+    for(const id of ['uewrPreview','uewrSave','uewrSaveRun'])el(id).disabled=busy||!check.ok||!UEWR.online||!scenarioMode();
     const selected=dialog.querySelectorAll('[data-scenario]:checked').length;el('uewrSaveRun').disabled||=!selected;
     el('uewrSentence').textContent=check.ok?ruleSentence(check.spec):'Complete the required fields to review your EWR.';
     if(check.ok){const key=JSON.stringify(check.spec);if(key!==previewKey){previewKey=key;renderTutorial(check.spec);}}
@@ -3312,5 +3414,6 @@ fillPolicyOptions();
 if(PRELOADED.length&&!location.hash.slice(1)){ S.src="user"; const c=CUSTOM.find(x=>!x.removed&&x.name===PRELOADED[0].name); if(c) S.pol=c.P; fillPolicyOptions(); syncUI(); }   // a page with embedded scenarios opens in Your data
 applyHash();
 refresh();
+void initObserved();
 void UEWR.sync();
 </script></body></html>

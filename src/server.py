@@ -5,6 +5,8 @@
 
 Endpoints (used by ewr_analysis_dashboard.html):
     GET  /api/ping                     -> {"ok": true}
+    GET  /api/observed/units            -> SDL units and locally known gauge names
+    POST /api/observed/run              body = {sdl, gauges[], start, end, refresh, merge?} -> {job}
     POST /api/run                      body = a model output file in one of the EWR tool's formats (FORMATS below)
                                        headers X-Format (model_format), X-Filename, X-Scn-Id, X-Gauges (gauge ids to look for in the file),
                                        X-Merge (1 = add series to the scenario stored under X-Scn-Id),
@@ -38,6 +40,7 @@ For each EWR in the uploaded scenario the job returns the two metrics the tool u
 """
 
 import hmac
+import importlib.util
 import ipaddress
 import json
 import math
@@ -56,12 +59,14 @@ import webbrowser
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
+from datetime import date
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
 
+import observed
 from drought_windows import DROUGHTS, window_dates
 
 HERE = Path(__file__).parent
@@ -69,6 +74,8 @@ ROOT = HERE.parent  # repository root: the page is served from here; py_ewr come
 warnings.filterwarnings("ignore")
 
 JOBS: dict[str, dict[str, Any]] = {}
+OBSERVED_ACTIVE: dict[str, str] = {}
+OBSERVED_ACTIVE_LOCK = threading.Lock()
 STORE = ROOT / ".user_scenarios"
 FLOWS: dict[tuple[str, str], Any] = {}  # (scenario id, kind) -> DataFrame (date index, one column per gauge)
 SERIES_SUFFIX = {"flow": "", "level": "_level", "salinity": "_salinity"}
@@ -518,6 +525,7 @@ def run_scenario(
     merge: bool = False,
     progress: Callable[[str, int, int], None] | None = None,
     tds_factor: float = 0.6,
+    storage_gauges: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """py_ewr on the uploaded file (only the gauges the SDL unit needs); returns (rows, stats). `progress(stage, done, total)`
     is called as the run advances."""
@@ -554,7 +562,7 @@ def run_scenario(
         if not results:
             raise ValueError("No gauge in the file could be evaluated: " + "; ".join(f"{g} ({m})" for g, m in skipped.items()))
         rows = summarise_rows(results, events, df_F, df_L, table, report=report)
-    stored = _store_series(scn_id, {"flow": df_F, "level": df_L, "salinity": df_S}, sdl_gauges, merge)
+    stored = _store_series(scn_id, {"flow": df_F, "level": df_L, "salinity": df_S}, storage_gauges or sdl_gauges, merge)
     stats = {
         "gauges_in_file": len(found),
         "gauges_requested": len(sdl_gauges),
@@ -641,6 +649,87 @@ def worker(
     job["elapsed"] = round(time.time() - job["t0"], 1)
 
 
+def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: Any, refresh: bool, merge: bool) -> None:
+    """Fetch observed flow/level series, then evaluate them through the standard upload path."""
+    job = JOBS[job_id]
+    scn_id = _observed_scenario_id(sdl)
+    try:
+        table = parameter_sheet()
+        partner_rows = table[table.Gauge.astype(str).isin(gauges)]
+        all_gauges = sorted(set(gauges) | _partner_gauges(partner_rows))
+
+        def report_gauge(gauge: str, var: str, result: observed.GaugeResult) -> None:
+            progress = dict(job.get("progress", {}))
+            gauge_progress = dict(progress.get("gauges", {}))
+            per_gauge = dict(gauge_progress.get(gauge, {}))
+            per_gauge[var.lower()] = {"status": result.status, "message": result.message}
+            gauge_progress[gauge] = per_gauge
+            progress["gauges"] = gauge_progress
+            job["progress"] = progress
+
+        results, statuses = observed.fetch_many(
+            all_gauges,
+            start,
+            end,
+            progress=_progress_reporter(job),
+            refresh=refresh,
+            status_progress=report_gauge,
+        )
+        job["gauge_status"] = {
+            gauge: {var.lower(): {"status": result.status, "message": result.message} for (g, var), result in statuses.items() if g == gauge}
+            for gauge in all_gauges
+        }
+        if not results:
+            raise ValueError("No selected gauges returned flow or level data")
+        frame = observed.to_standard_frame(results)
+        body = frame.to_csv(index=False).encode("utf-8")
+        rows, stats = run_scenario(
+            body,
+            gauges,
+            scn_id,
+            "Standard time-series",
+            f"Observed - {sdl}",
+            merge=merge,
+            progress=_progress_reporter(job),
+            storage_gauges=all_gauges,
+        )
+        stats["gauge_status"] = job["gauge_status"]
+        stats["observed_sdl"] = sdl
+        stats["partial_water_years"] = {
+            "start": (start.month, start.day) != (7, 1),
+            "end": (end.month, end.day) != (6, 30),
+        }
+        job["rows"], job["stats"], job["status"] = rows, stats, "done"
+    except Exception as exc:
+        _record_job_error(job, exc)
+    finally:
+        job["elapsed"] = round(time.time() - job["t0"], 1)
+        with OBSERVED_ACTIVE_LOCK:
+            if OBSERVED_ACTIVE.get(scn_id) == job_id:
+                OBSERVED_ACTIVE.pop(scn_id, None)
+
+
+def _observed_scenario_id(sdl: str) -> str:
+    return "obs_" + re.sub(r"[^a-z0-9]+", "_", sdl.lower()).strip("_")[:48]
+
+
+def observed_units() -> list[dict[str, Any]]:
+    """Local-only observed selector data; no upstream request is made."""
+    import pandas as pd
+
+    params = parameter_sheet()
+    station_path = ROOT / "data/map/bom_gauge_stations.csv"
+    stations = pd.read_csv(station_path, dtype=str).fillna("")
+    names = {row.station_no.strip(): row.station_name.strip().strip('"') for row in stations.itertuples() if row.station_no.strip()}
+    units = []
+    for sdl in sorted(params.SWSDLName.dropna().astype(str).str.strip().unique()):
+        gauges = observed.sdl_gauges(sdl)
+        if not gauges:
+            continue
+        units.append({"sdl": sdl, "gauges": [{"id": gauge, "name": names.get(gauge, "")} for gauge in gauges]})
+    return units
+
+
 def uewr_worker(job_id: str, ids: list[str], scns: list[str]) -> None:
     """Evaluate saved user EWRs via the existing job/polling contract."""
     import custom_ewr
@@ -657,7 +746,8 @@ def _progress_reporter(job: dict[str, Any]) -> Callable[[str, int, int], None]:
     """A progress(stage, done, total) callback that records the job's current stage and work counts for /api/job."""
 
     def progress(stage: str, done: int, total: int) -> None:
-        job["progress"] = {"stage": stage, "done": done, "total": total}
+        current = job.get("progress", {})
+        job["progress"] = {"stage": stage, "done": done, "total": total, **({"gauges": current["gauges"]} if "gauges" in current else {})}
 
     return progress
 
@@ -1912,7 +2002,15 @@ class Handler(SimpleHTTPRequestHandler):
         if url.path == "/api/forget":
             return self._json({"message": "method not allowed"}, 405, {"Allow": "POST"})
         if url.path == "/api/ping":
-            return self._json({"ok": True, "formats": FORMATS})
+            return self._json(
+                {"ok": True, "formats": FORMATS, "observed": {"available": importlib.util.find_spec("mdba_gauge_getter") is not None, "bom": False}}
+            )
+        if url.path == "/api/observed/units":
+            try:
+                return self._json({"units": observed_units()})
+            except Exception as exc:
+                traceback.print_exc()
+                return self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
         if url.path == "/api/job":
             return self._job_status(parse_qs(url.query).get("id", [""])[0])
 
@@ -1950,6 +2048,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._user_ewr_post(url.path, url.query)
         if url.path == "/api/forget":
             return self._forget(parse_qs(url.query).get("id", [""])[0])
+        if url.path == "/api/observed/run":
+            return self._run_observed()
         if url.path != "/api/run":
             return self._json({"message": "not found"}, 404)
         return self._run_upload()
@@ -1992,6 +2092,46 @@ class Handler(SimpleHTTPRequestHandler):
             self.headers.get("X-Merge") == "1",
             tds_factor,
         )
+
+    def _run_observed(self) -> None:
+        """Validate an observed request and start one deterministic scenario job per SDL."""
+        if not self._origin_allowed():
+            return self._json({"message": "origin or host not allowed"}, 403)
+        try:
+            data = self._read_json()
+            sdl = data.get("sdl")
+            if not isinstance(sdl, str) or not sdl.strip():
+                raise ValueError("sdl is required")
+            start = date.fromisoformat(data.get("start", ""))
+            end = date.fromisoformat(data.get("end", ""))
+            if start > end:
+                raise ValueError("start must not follow end")
+            if not isinstance(data.get("refresh", False), bool) or not isinstance(data.get("merge", False), bool):
+                raise ValueError("refresh and merge must be booleans")
+            requested = data.get("gauges")
+            if not isinstance(requested, list) or not requested or any(not isinstance(gauge, str) for gauge in requested):
+                raise ValueError("gauges must be a non-empty list of gauge IDs")
+            allowed = set(observed.sdl_gauges(sdl))
+            gauges = sorted(set(requested))
+            if not gauges or not set(gauges) <= allowed:
+                raise ValueError("one or more gauges do not belong to the selected SDL unit")
+            if importlib.util.find_spec("mdba_gauge_getter") is None:
+                return self._json({"message": "Observed data support is unavailable; install requirements-observed.txt"}, 503)
+        except (ValueError, TypeError, UnicodeError, RecursionError) as exc:
+            return self._json({"message": str(exc) or type(exc).__name__}, 400)
+
+        scenario_id = _observed_scenario_id(sdl)
+        with OBSERVED_ACTIVE_LOCK:
+            current = OBSERVED_ACTIVE.get(scenario_id)
+            if current and JOBS.get(current, {}).get("status") == "running":
+                return self._json({"message": "an observed run for this SDL is already active", "job": current}, 409)
+            job_id = uuid.uuid4().hex[:10]
+            JOBS[job_id] = {"status": "running", "t0": time.time(), "progress": {"stage": "Preparing gauges", "done": 0, "total": len(gauges), "gauges": {}}}
+            OBSERVED_ACTIVE[scenario_id] = job_id
+        threading.Thread(
+            target=observed_worker, args=(job_id, sdl, gauges, start, end, data.get("refresh", False), data.get("merge", False)), daemon=True
+        ).start()
+        return self._json({"job": job_id})
 
     def end_headers(self) -> None:
         if not self.path.startswith("/api/"):
