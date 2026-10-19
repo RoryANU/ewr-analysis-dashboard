@@ -1617,11 +1617,26 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
     }
     if len(ids) == 2:
         out["comp"], out["diff"] = as_grid(af[1]), as_grid(af[1] - af[0])
-    if q.get("mthr") and q.get("mdur"):  # exact % of years at one (threshold, duration), e.g. an EWR's own requirement
-        one, _ = achievement_frequencies(df.to_numpy(dtype=float), df.index, np.array([float(q["mthr"])]), np.array([int(float(q["mdur"]))]), sm, em, consec)
-        mark = [round(float(v), 3) for v in one[:, 0, 0]]
-        if all(math.isfinite(v) for v in mark):  # no complete shared year -> no mark (the page then shows no EWR table)
-            out["mark"] = mark
+    if q.get("mthr") or q.get("mdur"):
+        # Evaluate exact selected points in one batch; grid cells may use coarser thresholds.
+        mark_thresholds = [float(v) for v in q.get("mthr", "").split(",")]
+        mark_durations = [float(v) for v in q.get("mdur", "").split(",")]
+        if len(mark_thresholds) != len(mark_durations):
+            raise ValueError("Each EWR threshold must have a matching duration")
+        if any(not math.isfinite(v) or v < 0 for v in mark_thresholds):
+            raise ValueError("EWR thresholds must be finite and non-negative")
+        if any(not math.isfinite(v) or not v.is_integer() or not 1 <= v <= 366 for v in mark_durations):
+            raise ValueError("EWR durations must be whole days between 1 and 366")
+        th, ti = np.unique(mark_thresholds, return_inverse=True)
+        du, di = np.unique(np.asarray(mark_durations, dtype=int), return_inverse=True)
+        points, _ = achievement_frequencies(df.to_numpy(dtype=float), df.index, th, du, sm, em, consec)
+        out["marks"] = []
+        for i, (threshold, duration) in enumerate(zip(mark_thresholds, mark_durations, strict=True)):
+            values = [round(float(v), 3) for v in points[:, ti[i], di[i]]]
+            if all(math.isfinite(v) for v in values):
+                out["marks"].append({"thr": threshold, "dur": int(duration), "values": values})
+        if len(mark_thresholds) == 1 and out["marks"]:
+            out["mark"] = out["marks"][0]["values"]  # retain the original single-point API
     out["consecutive"] = consec
     return out
 

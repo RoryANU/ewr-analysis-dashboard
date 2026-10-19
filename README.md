@@ -88,6 +88,7 @@ The script prints a short summary (EWR rows, SDL units, planning units and gauge
 The page cannot run the EWR tool by itself, so "Your data" uses a small server on your own computer. Start it with the [quick start](#quick-start-no-technical-knowledge-needed) above (or `python3 run.py`); it opens the page for you at an address like <http://localhost:8792/> (the page must be opened from that address, not as a file). Choose **Your data**, then **Add scenario**, pick the data format, and choose your file. You do not choose an SDL unit: the file is scanned for every gauge in the review, so one file can cover several SDL units. The scenario name defaults to the file name. The results are FR and ETP per EWR, and they appear as an extra scenario in the pickers (Historical climate only).
 
 - Formats: Standard time-series, Bigmod, FIRM, res.csv (MDBA), Source NSW res.csv, IQQM netCDF and ten-thousand-year runs. A Standard time-series file has a `Date` column and one column per gauge named `<gauge>_flow` or `<gauge>_level`, e.g. `404216_flow`.
+- Heatmap: use the **EWRs** dropdown to select several EWRs with the same timing window. Each gets a labelled point and a row of exact achievement percentages. Clear the selection to choose a different window; the chart’s **Any days / Consecutive** setting applies to all selected points.
 - Try it with the files in `data/example_scenarios/` (`dummy_broken_scenario_A.csv` and `..._B_wetter.csv` for Differential mode).
 - The server listens on localhost only. Uploaded daily flows, levels and salinity are kept in `.user_scenarios/` (not committed) for charts and user EWR evaluation.
 - Flow charts: open a gauge, then **Flow analysis** and pick a chart from the **Chart** dropdown. *Flow*: threshold × duration heat map, hydrograph with annual volumes, and (Differential) the differential and monthly differential flow duration curves. *EWR performance* (py_ewr's own results for one EWR): achievement by year, events, event timing, gaps between events against the maximum inter-event period. *Flow regime*: flow regime components (each regime's threshold is the lowest EWR threshold for it at the gauge, from the EWR tool's parameter sheet) and low-flow spells. In Differential mode, comparisons use only the dates or years both scenarios cover.
@@ -232,7 +233,7 @@ pytest                    # entire Python suite, including real py_ewr runs and 
 pytest -m "not slow"      # fast Python suite used by pre-commit
 pytest -m slow            # only the slow tests: py_ewr over many years of data, and a full rebuild of the HTML
 pytest tests/test_server_numerics.py -k heatmap   # one file / one topic
-node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_performance.js tests/test_ewr_guide.js
+node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_performance.js tests/test_ewr_guide.js tests/test_heatmap_selection.js
 ```
 
 | File | What it checks |

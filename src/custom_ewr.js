@@ -211,6 +211,7 @@ const UEWR=(()=>{
   function clearSelections(spec){
     const plan=cascadePlan(spec,{scenarios:CUSTOM,rows:ROWS,guideSelection:window.ewrGuide?.getSel?.()||read('ewrGuideSel',[]),flowEwr:S.flow.ewr,eventEwr:S.ev.ewr,thresholdKeys:S.flow.thr,cell:S.cell});
     if(plan.flowSelected){if(S.flow.ewr.startsWith(spec.code+'|'))S.flow.ewr='';if(S.ev.ewr.startsWith(spec.code+'|'))S.ev.ewr='';}
+    S.flow.heatEwrs=(S.flow.heatEwrs||[]).filter(k=>!k.startsWith(spec.code+'|'));
     S.flow.thr=S.flow.thr.filter(k=>!plan.thresholdKeys.includes(k));if(plan.cellSelected)S.cell=null;
     const selected=read('ewrGuideSel',[]).filter(k=>!plan.guideKeys.includes(k));write('ewrGuideSel',selected);window.ewrGuide?.setSel?.(selected);
     return plan;
