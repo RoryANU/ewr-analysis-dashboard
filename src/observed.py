@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
-import multiprocessing
 import os
 import re
 import threading
@@ -12,19 +12,28 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date, timedelta
+from importlib import resources
 from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
 
+import observed_source
+from observed_source import RAW_COLUMNS, NoData, ObservedSourceError, StationNotFound
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = ROOT / ".observed_cache"
+CACHE_VERSION = "2"  # 2: unavailable-day placeholders dropped, numeric VALUE, UNITS column
 PARAMETER_SHEET = ROOT / "data/reference/parameter_sheet.csv"
-DEFAULT_TIMEOUT = 45.0
+GAUGE_ID = re.compile(r"(?:A)?\d+[A-Z]*", re.I)
+SUPPORTED_STATES = tuple(observed_source.ENDPOINTS)
+DEFAULT_TIMEOUT = 90.0  # per gauge and variable; a full record takes the services 10-60 s to start sending
 DEFAULT_TTL = 24 * 60 * 60
 DEFAULT_RETRIES = 2
 _CACHE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
 _CACHE_LOCKS_GUARD = threading.Lock()
+_CLIENT = observed_source.StateClient()
+_ROUTES: dict[str, str] = {}  # gauge -> the state service that answered for it in this process
 
 
 @dataclass
@@ -38,89 +47,74 @@ def sdl_gauges(sdl: str) -> list[str]:
     """Return gauges in an SDL, including partner gauges named by Multigauge."""
     params = pd.read_csv(PARAMETER_SHEET, dtype=str).fillna("")
     selected = params[params["SWSDLName"].str.strip() == sdl.strip()]
-    gauges = {value for value in selected["Gauge"].str.strip() if re.fullmatch(r"(?:A)?\d+[A-Z]*", value, flags=re.I)}
+    gauges = {value for value in selected["Gauge"].str.strip() if GAUGE_ID.fullmatch(value)}
     return sorted(gauges)
 
 
-def _source_for(gauge: str) -> str | None:
+@functools.lru_cache(maxsize=1)
+def sheet_states() -> dict[str, frozenset[str]]:
+    """Gauge -> the states parameter_sheet.csv lists it under."""
     params = pd.read_csv(PARAMETER_SHEET, dtype=str).fillna("")
-    rows = params[params["Gauge"].str.strip() == gauge]
-    sources = {s.strip().upper() for s in rows["State"] if s.strip()}
-    catalog = _catalog_sources(gauge)
-    if catalog.intersection(sources):
-        return next(iter(sorted(catalog.intersection(sources))))
-    return next(iter(sources)) if len(sources) == 1 else None
+    states: dict[str, set[str]] = {}
+    for gauge, state in zip(params["Gauge"].str.strip(), params["State"].str.strip().str.upper(), strict=True):
+        if GAUGE_ID.fullmatch(gauge) and state:
+            states.setdefault(gauge, set()).add(state)
+    return {gauge: frozenset(found) for gauge, found in states.items()}
 
 
-def _catalog_sources(gauge: str) -> set[str]:
-    from mdba_gauge_getter import gauge_getter
-
-    return set(gauge_getter.get_states_for_gauge(gauge))
-
-
-def _raw_fetch(gauge: str, start: date, end: date, var: str) -> pd.DataFrame:
-    """Fetch through the package router, bypassing it for audited state mismatches."""
-    from mdba_gauge_getter import gauge_getter as getter
-
-    source = _source_for(gauge)
-    if source not in {"NSW", "VIC", "QLD"}:
-        raise NotImplementedError(f"Observed source unavailable for {gauge} ({source or 'unknown'})")
-    catalog = _catalog_sources(gauge)
-    if source in catalog:
-        return getter.gauge_pull([gauge], start, end, var=var, interval="day", data_type="mean")
-
-    # Use the package's endpoint/payload implementation while choosing the repo's audited state.
-    source_codes = {"NSW": "CP", "VIC": "PUBLISH", "QLD": "AT"}
-    response = getter.call_state_api(source, [gauge], start, end, source_codes[source], var, "day", "mean")
-    rows = getter.extract_data(source, response)
-    return pd.DataFrame(rows, columns=["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME", "VALUE", "QUALITYCODE"])
-
-
-def _fetch_child(conn: Any, gauge: str, start: date, end: date, var: str) -> None:
+@functools.lru_cache(maxsize=1)
+def catalog_states() -> dict[str, frozenset[str]]:
+    """Gauge -> states in mdba-gauge-getter's bundled catalog, read as its `init()` does (without importing bom_water)."""
     try:
-        frame = _raw_fetch(gauge, start, end, var)
-        conn.send(("ok", frame))
-    except Exception as exc:  # child failures are returned as simple, picklable data
-        conn.send((type(exc).__name__, str(exc)))
-    finally:
-        conn.close()
+        source = resources.files("mdba_gauge_getter") / "data/bom_gauge_data.csv"
+        with resources.as_file(source) as path:
+            catalog = pd.read_csv(path, skiprows=1, skipfooter=1, names=["name", "gauge", "owner", "lat", "lon"], engine="python", dtype=str)
+    except (ModuleNotFoundError, FileNotFoundError):
+        return {}
+    states: dict[str, set[str]] = {}
+    for gauge, owner in zip(catalog["gauge"].fillna("").str.strip(), catalog["owner"].fillna("").str.strip(), strict=True):
+        if gauge and owner:
+            states.setdefault(gauge, set()).add(owner.split(" ", 1)[0].upper())
+    return {gauge: frozenset(found) for gauge, found in states.items()}
 
 
-def _fetch_isolated(gauge: str, start: date, end: date, var: str, timeout: float) -> pd.DataFrame:
-    ctx = multiprocessing.get_context("spawn")
-    parent, child = ctx.Pipe(duplex=False)
-    process = ctx.Process(target=_fetch_child, args=(child, gauge, start, end, var), daemon=True)
-    process.start()
-    child.close()
-    if not parent.poll(timeout):
-        process.terminate()
-        process.join(5)
-        if process.is_alive() and hasattr(process, "kill"):
-            process.kill()
-            process.join()
-        parent.close()
-        raise TimeoutError(f"Gauge request exceeded {timeout:g}s")
-    kind, payload = parent.recv()
-    process.join(5)
-    if process.is_alive():
-        process.terminate()
-        process.join()
-    parent.close()
-    if kind != "ok":
-        raise RuntimeError(f"{kind}: {payload}")
-    return payload
+def candidate_states(gauge: str) -> list[str]:
+    """State services to ask, in order: the getter catalog's, then the parameter sheet's. Only NSW, VIC and QLD are served.
+
+    The catalog comes first because it names the service that holds the record: 422030 is listed under QLD in the
+    parameter sheet, but Queensland answers "Invalid station" and WaterNSW serves it.
+    """
+    ordered = [*sorted(catalog_states().get(gauge, ())), *sorted(sheet_states().get(gauge, ()))]
+    return [state for state in dict.fromkeys(ordered) if state in SUPPORTED_STATES]
 
 
-def _is_rate_limited_message(message: str) -> bool:
-    """Recognize explicit rate limits and MDBA's HTTP 408 queue-full response."""
-    return bool(
-        re.search(r"(?:status(?: code)?[=: ]+|response code\s+)429\b|\b429\b", message, re.I)
-        or re.search(r"too many requests in queue|error_num\D*218", message, re.I)
-    )
+def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, retries: int) -> pd.DataFrame:
+    """Ask each candidate state service in turn; a station unknown to one service moves on to the next."""
+    states = candidate_states(gauge)
+    if not states:
+        listed = sorted(sheet_states().get(gauge, frozenset()) | catalog_states().get(gauge, frozenset()))
+        raise StationNotFound(f"Observed source unavailable for {gauge} ({', '.join(listed) or 'unknown'}; BOM and SA are not enabled)")
+    if gauge in _ROUTES and _ROUTES[gauge] in states:
+        states.remove(_ROUTES[gauge])
+        states.insert(0, _ROUTES[gauge])
+    deadline = time.monotonic() + timeout
+    rejected = []
+    for state in states:
+        try:
+            remaining = max(0.0, deadline - time.monotonic())
+            frame = _CLIENT.fetch(state, gauge, start, end, var, timeout=remaining, retries=retries, clamp_to_record=True).frame
+        except StationNotFound:
+            rejected.append(state)
+            continue
+        except NoData:
+            frame = pd.DataFrame(columns=RAW_COLUMNS)
+        _ROUTES[gauge] = state
+        return frame
+    raise StationNotFound(f"{gauge} is not a station on the {', '.join(rejected)} service{'s' if len(rejected) > 1 else ''}")
 
 
 def _cache_paths(gauge: str, var: str) -> tuple[Path, Path]:
-    key = hashlib.sha256(f"{gauge}\0{var}".encode()).hexdigest()
+    key = hashlib.sha256(f"v{CACHE_VERSION}\0{gauge}\0{var}".encode()).hexdigest()
     return CACHE_DIR / f"{key}.csv", CACHE_DIR / f"{key}.json"
 
 
@@ -154,29 +148,6 @@ def _slice(frame: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
     return frame.loc[(dates >= start) & (dates <= end)].reset_index(drop=True)
 
 
-def _fetch_with_retries(gauge: str, start: date, end: date, var: str, timeout: float, retries: int) -> pd.DataFrame:
-    for attempt in range(retries + 1):
-        try:
-            return _fetch_isolated(gauge, start, end, var, timeout)
-        except NotImplementedError:
-            raise
-        except TimeoutError:
-            # A hard-deadline failure already consumed the full wait budget. Repeating
-            # the same unbounded third-party request makes a single gauge take
-            # (retries + 1) * timeout without improving its chance of success.
-            raise
-        except Exception as exc:
-            # MDBA reports a full request queue as HTTP 408, and an ordinary retry
-            # immediately makes the same overloaded queue worse. Leave retrying to
-            # the user after the upstream queue has had time to drain.
-            if _is_rate_limited_message(str(exc)):
-                raise
-            if attempt >= retries:
-                raise
-            time.sleep(min(0.5 * (2**attempt), 4.0))
-    raise RuntimeError("unreachable retry state")
-
-
 def _fetch_gauge_cached(
     gauge: str,
     start: date,
@@ -188,61 +159,50 @@ def _fetch_gauge_cached(
     ttl: float = DEFAULT_TTL,
     retries: int = DEFAULT_RETRIES,
 ) -> GaugeResult:
-    """Fetch one gauge with a hard subprocess deadline and an extending raw-data cache."""
+    """Fetch one gauge (each missing date range within `timeout`) through an extending raw-data cache."""
     if var not in {"F", "L"}:
         return GaugeResult(pd.DataFrame(), "unsupported", f"Unsupported variable {var}")
     if start > end:
         return GaugeResult(pd.DataFrame(), "error", "Start date must not follow end date")
+    # The cache holds one contiguous covered interval. It is extended only by a fresh entry that the request overlaps or
+    # adjoins; otherwise (refresh, expired, disjoint) the request replaces it, so coverage never claims unfetched days.
     cached = None if refresh else _read_cache(gauge, var)
-    needed: list[tuple[date, date]] = []
     cached_frame = pd.DataFrame()
+    covered_start, covered_end = start, end
+    needed = [(start, end)]
     if cached:
-        cached_frame, meta = cached
-        covered_start, covered_end = date.fromisoformat(meta["start"]), date.fromisoformat(meta["end"])
+        frame, meta = cached
+        lo, hi = date.fromisoformat(meta["start"]), date.fromisoformat(meta["end"])
         fresh = time.time() - float(meta["fetched_at"]) < ttl
-        if fresh:
-            if start < covered_start:
-                needed.append((start, min(end, covered_start - timedelta(days=1))))
-            if end > covered_end:
-                needed.append((max(start, covered_end + timedelta(days=1)), end))
+        if fresh and start <= hi + timedelta(days=1) and end >= lo - timedelta(days=1):
+            cached_frame, covered_start, covered_end = frame, min(start, lo), max(end, hi)
+            needed = [(start, lo - timedelta(days=1)), (hi + timedelta(days=1), end)]
+            needed = [(left, right) for left, right in needed if left <= right]
             if not needed:
                 result = _slice(cached_frame, start, end)
                 return GaugeResult(result, "ok" if not result.empty else "empty", "" if not result.empty else "No data in requested period")
-    if refresh or not cached or (cached and time.time() - float(cached[1]["fetched_at"]) >= ttl):
-        needed = [(start, end)]
-        cached_frame = pd.DataFrame()
 
     fetched: list[pd.DataFrame] = []
     try:
         for left, right in needed:
-            if left <= right:
-                fetched.append(_fetch_with_retries(gauge, left, right, var, timeout, retries))
+            fetched.append(_fetch_source(gauge, left, right, var, timeout, retries))
         combined = (
             pd.concat([cached_frame, *fetched], ignore_index=True)
             if (not cached_frame.empty or any(not f.empty for f in fetched))
-            else pd.DataFrame(columns=["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME", "VALUE", "QUALITYCODE"])
+            else pd.DataFrame(columns=RAW_COLUMNS)
         )
         if not combined.empty:
             combined["DATETIME"] = pd.to_datetime(combined["DATETIME"])
             combined = combined.drop_duplicates(["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME"], keep="last").sort_values("DATETIME").reset_index(drop=True)
-        covered_start = min(start, date.fromisoformat(cached[1]["start"])) if cached and not refresh else start
-        covered_end = max(end, date.fromisoformat(cached[1]["end"])) if cached and not refresh else end
         _write_cache(gauge, var, combined, covered_start, covered_end)
         result = _slice(combined, start, end)
         if result.empty:
             return GaugeResult(result, "empty", "No data in requested period")
         return GaugeResult(result, "ok")
-    except TimeoutError as exc:
-        return GaugeResult(pd.DataFrame(), "timeout", str(exc))
-    except NotImplementedError as exc:
-        return GaugeResult(pd.DataFrame(), "unsupported", str(exc))
-    except Exception as exc:
-        message = str(exc)
-        if _is_rate_limited_message(message):
-            status = "rate_limited"
-        else:
-            status = "error"
-        return GaugeResult(pd.DataFrame(), status, f"{type(exc).__name__}: {message}")
+    except ObservedSourceError as exc:
+        return GaugeResult(pd.DataFrame(), exc.status, str(exc))
+    except Exception as exc:  # a bug here must not take down the other gauges' fetches
+        return GaugeResult(pd.DataFrame(), "error", f"{type(exc).__name__}: {exc}")
 
 
 def fetch_gauge(

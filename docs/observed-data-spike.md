@@ -26,3 +26,15 @@ The Phase 1 adapter runs each package fetch in a spawned subprocess so the paren
 
 - [mdba-gauge-getter on PyPI](https://pypi.org/project/mdba-gauge-getter/)
 - [Example of empty-period behavior and the returned columns](https://galenholt.github.io/data_acquisition/gauge_data_pre_gauge.html)
+
+## Phase 2 client (2026-10-19)
+
+Captured replies (`tests/fixtures/observed/`) changed the adapter:
+
+- All three services return JSON with HTTP 200 for errors too. Top-level `error_num` 126 means no data in the period; per-trace `error_num` 20 means the station/datasource is unknown. The getter turns both into an empty result and then falls back to BOM, so out-of-record periods failed with the `bomwater` cache error, and an unknown station read as "empty".
+- Days without data come back as `"0.000"` under quality 255 ("Data Unavailable"), NSW 201 or VIC 151 ("Data lost"). The getter only drops quality >= 999, so these became zero flow: 29,650 of 46,313 days for 412033 between 1900 and 2026. The client drops quality 255, any code the reply's own `quality_codes` describes as unavailable, lost or missing, and the getter's >= 999 cutoff.
+- 422030 is served by WaterNSW (`CP`). Queensland answers "Invalid station", so the Phase 1 direct-QLD route returned nothing. Routing now asks the catalog's state first, then the parameter sheet's.
+- Asking from 1800 makes a service generate a point for every day, which takes 35-60 s before the first byte. The 45 s subprocess deadline timed these out. The client asks `get_variable_list` for the record start (1-2 s, memoised) and starts the trace there.
+- WaterNSW reports a full queue as HTTP 408 with `{"error_num":218,"error_msg":"Too many requests in queue (21), limit is 20"}`, seen live. Queensland once sent the plain-text IIS reply "The page cannot be displayed because the client took too long ..." in place of JSON.
+
+`src/observed_source.py` replaces the getter's `requests.get` with a per-thread session, a connect timeout, and a whole-call deadline that also covers streaming the body. It percent-encodes the JSON query and retries with jittered exponential backoff on connection drops, HTTP 500/502/503/504, empty bodies, malformed JSON and plain-text replies. Rate limits, HTML pages, other HTTP errors and Hydstra errors raise typed exceptions without a retry. Because every network call is now bounded, the spawned subprocess is gone. One gap remains: DNS resolution is outside the `requests` timeout.

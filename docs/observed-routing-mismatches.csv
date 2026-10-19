@@ -1,22 +1,22 @@
 gauge,parameter_sheet_state,getter_catalog_state,routing
-1AS,NSW,missing,direct_state_api
-409017,NSW;VIC,NSW,package_catalog
-409025,NSW;VIC,NSW,package_catalog
-409072,NSW,missing,direct_state_api
-409207,NSW;VIC,VIC,package_catalog
-414203,NSW;VIC,VIC,package_catalog
-416001,NSW;QLD,NSW,package_catalog
-416011,NSW;QLD,NSW,package_catalog
-416048,NSW;QLD,NSW,package_catalog
-416201A,NSW;QLD,QLD,package_catalog
-422015,NSW;QLD,NSW,package_catalog
-422016,NSW;QLD,NSW,package_catalog
-422030,QLD,NSW,direct_state_api
-423004,NSW;QLD,NSW,package_catalog
-423005,NSW;QLD,NSW,package_catalog
-425010,NSW;VIC,NSW,package_catalog
-A4260505,NSW;VIC,SA,unavailable
-A4260507,NSW;VIC,SA,unavailable
-A4260509,NSW;VIC,SA,unavailable
+1AS,NSW,missing,NSW
+409017,NSW;VIC,NSW,NSW then VIC
+409025,NSW;VIC,NSW,NSW then VIC
+409072,NSW,missing,NSW
+409207,NSW;VIC,VIC,VIC then NSW
+414203,NSW;VIC,VIC,VIC then NSW
+416001,NSW;QLD,NSW,NSW then QLD
+416011,NSW;QLD,NSW,NSW then QLD
+416048,NSW;QLD,NSW,NSW then QLD
+416201A,NSW;QLD,QLD,QLD then NSW
+422015,NSW;QLD,NSW,NSW then QLD
+422016,NSW;QLD,NSW,NSW then QLD
+422030,QLD,NSW,NSW then QLD
+423004,NSW;QLD,NSW,NSW then QLD
+423005,NSW;QLD,NSW,NSW then QLD
+425010,NSW;VIC,NSW,NSW then VIC
+A4260505,NSW;VIC,SA,NSW then VIC
+A4260507,NSW;VIC,SA,NSW then VIC
+A4260509,NSW;VIC,SA,NSW then VIC
 A4261002,SA,missing,unavailable
-A5250010,VIC,missing,direct_state_api
+A5250010,VIC,missing,VIC

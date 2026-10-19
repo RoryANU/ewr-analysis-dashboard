@@ -846,7 +846,7 @@ class TestHttpPayloads:
         monkeypatch.setattr(server.observed, "sdl_gauges", lambda sdl: ["412033"])
         started, release = threading.Event(), threading.Event()
 
-        def slow_worker(job_id, sdl, gauges, start, end, refresh, merge):
+        def slow_worker(job_id, sdl, gauges, start, end, refresh, merge, filter_period=True):
             started.set()
             assert release.wait(5)
             server.JOBS[job_id]["status"] = "done"

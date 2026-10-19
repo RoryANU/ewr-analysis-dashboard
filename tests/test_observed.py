@@ -8,6 +8,8 @@ import pandas as pd
 import pytest
 
 import observed
+import observed_source
+from observed_source import DeadlineExceeded, NoData, RateLimited, StationNotFound
 
 
 def raw_frame(gauge: str, dates: list[str], values: list[str] | None = None) -> pd.DataFrame:
@@ -20,6 +22,7 @@ def raw_frame(gauge: str, dates: list[str], values: list[str] | None = None) -> 
             "DATETIME": pd.to_datetime(dates),
             "VALUE": values,
             "QUALITYCODE": [140] * len(dates),
+            "UNITS": ["ML/d"] * len(dates),
         }
     )
 
@@ -31,46 +34,74 @@ def test_optional_getter_imports_on_current_python():
     assert callable(getter.gauge_pull)
 
 
-def test_routing_audit_records_the_known_422016_mismatch():
+def test_routing_audit_records_the_known_mismatches():
     from audit_observed_routing import audit
 
     rows = {row["gauge"]: row for row in audit()}
 
     assert rows["422016"]["parameter_sheet_state"] == "NSW;QLD"
     assert rows["422016"]["getter_catalog_state"] == "NSW"
-    assert rows["422016"]["routing"] == "package_catalog"
-    assert rows["422030"]["routing"] == "direct_state_api"
+    assert rows["422016"]["routing"] == "NSW then QLD"
+    assert rows["A4261002"]["routing"] == "unavailable"
 
 
-def test_known_unambiguous_mismatch_uses_direct_state_endpoint(monkeypatch):
-    getter = pytest.importorskip("mdba_gauge_getter.gauge_getter")
-    monkeypatch.setattr(observed, "_source_for", lambda gauge: "QLD")
-    monkeypatch.setattr(observed, "_catalog_sources", lambda gauge: {"NSW"})
-    request = []
+def test_catalog_state_is_asked_before_the_parameter_sheet(monkeypatch):
+    monkeypatch.setattr(observed, "catalog_states", lambda: {"422030": frozenset({"NSW"}), "A4261002": frozenset({"SA"})})
+    monkeypatch.setattr(observed, "sheet_states", lambda: {"422030": frozenset({"QLD"}), "A4261002": frozenset({"SA"}), "409207": frozenset({"NSW", "VIC"})})
 
-    def call(*args):
-        request.append(args)
-        return {"stub": True}
+    assert observed.candidate_states("422030") == ["NSW", "QLD"]
+    assert observed.candidate_states("409207") == ["NSW", "VIC"]
+    assert observed.candidate_states("A4261002") == []
 
-    monkeypatch.setattr(getter, "call_state_api", call)
-    monkeypatch.setattr(getter, "extract_data", lambda source, body: [[source, "422030", "WATER", date(2000, 1, 1), "1", 140]])
-    monkeypatch.setattr(getter, "gauge_pull", lambda *args, **kwargs: pytest.fail("router should be bypassed"))
 
-    frame = observed._raw_fetch("422030", date(2000, 1, 1), date(2000, 1, 2), "F")
+class FakeClient:
+    """Stands in for StateClient.fetch: `answers[state]` is a frame or an exception to raise."""
 
-    assert request[0][:5] == ("QLD", ["422030"], date(2000, 1, 1), date(2000, 1, 2), "AT")
-    assert frame.loc[0, "DATASOURCEID"] == "QLD"
+    def __init__(self, answers):
+        self.answers, self.calls = answers, []
+
+    def fetch(self, state, gauge, start, end, var, *, timeout, retries, clamp_to_record):
+        self.calls.append(state)
+        answer = self.answers[state]
+        if isinstance(answer, Exception):
+            raise answer
+        return observed_source.Trace(answer, "ML/d", 0, 0)
+
+
+def test_station_unknown_to_one_service_is_asked_of_the_next(monkeypatch, tmp_path):
+    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(observed, "_ROUTES", {})
+    monkeypatch.setattr(observed, "candidate_states", lambda gauge: ["QLD", "NSW"])
+    fake = FakeClient({"QLD": StationNotFound("QLD: Invalid station"), "NSW": raw_frame("422030", ["2000-01-01"])})
+    monkeypatch.setattr(observed, "_CLIENT", fake)
+
+    first = observed.fetch_gauge("422030", date(2000, 1, 1), date(2000, 1, 1))
+    observed.fetch_gauge("422030", date(2000, 1, 1), date(2000, 1, 1), var="L")
+
+    assert first.status == "ok"
+    assert fake.calls == ["QLD", "NSW", "NSW"]  # the service that answered is asked first next time
+
+
+def test_station_unknown_everywhere_is_unsupported(monkeypatch, tmp_path):
+    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(observed, "_ROUTES", {})
+    monkeypatch.setattr(observed, "candidate_states", lambda gauge: ["NSW", "VIC"])
+    monkeypatch.setattr(observed, "_CLIENT", FakeClient({"NSW": StationNotFound("x"), "VIC": StationNotFound("y")}))
+
+    result = observed.fetch_gauge("1AS", date(2000, 1, 1), date(2000, 1, 1))
+
+    assert result.status == "unsupported" and result.message == "1AS is not a station on the NSW, VIC services"
 
 
 def test_cache_hit_and_raw_quality_codes(monkeypatch, tmp_path):
     monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
     calls = []
 
-    def fetch(gauge, start, end, var, timeout):
+    def fetch(gauge, start, end, var, timeout, retries):
         calls.append((start, end))
         return raw_frame(gauge, ["2000-01-01", "2000-01-02"])
 
-    monkeypatch.setattr(observed, "_fetch_isolated", fetch)
+    monkeypatch.setattr(observed, "_fetch_source", fetch)
     start, end = date(2000, 1, 1), date(2000, 1, 2)
 
     first = observed.fetch_gauge("412033", start, end)
@@ -85,18 +116,55 @@ def test_cache_extends_only_missing_head_and_tail(monkeypatch, tmp_path):
     monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
     calls = []
 
-    def fetch(gauge, start, end, var, timeout):
+    def fetch(gauge, start, end, var, timeout, retries):
         calls.append((start, end))
         days = pd.date_range(start, end, freq="D").strftime("%Y-%m-%d").tolist()
         return raw_frame(gauge, days)
 
-    monkeypatch.setattr(observed, "_fetch_isolated", fetch)
+    monkeypatch.setattr(observed, "_fetch_source", fetch)
     observed.fetch_gauge("412033", date(2000, 1, 3), date(2000, 1, 5))
     observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 7))
 
     assert calls == [(date(2000, 1, 3), date(2000, 1, 5)), (date(2000, 1, 1), date(2000, 1, 2)), (date(2000, 1, 6), date(2000, 1, 7))]
     cached = observed._read_cache("412033", "F")
     assert cached is not None and len(cached[0]) == 7
+
+
+def test_disjoint_request_replaces_the_cache_instead_of_leaving_a_hole(monkeypatch, tmp_path):
+    """A 1900 request after a cached 2020 range used to record 1900-2020 as covered with nothing fetched in between."""
+    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
+    calls = []
+
+    def fetch(gauge, start, end, var, timeout, retries):
+        calls.append((start, end))
+        return raw_frame(gauge, pd.date_range(start, end, freq="D").strftime("%Y-%m-%d").tolist())
+
+    monkeypatch.setattr(observed, "_fetch_source", fetch)
+    observed.fetch_gauge("412033", date(2020, 1, 1), date(2020, 1, 4))
+    observed.fetch_gauge("412033", date(1990, 1, 1), date(1990, 1, 4))
+    observed.fetch_gauge("412033", date(1990, 1, 5), date(1990, 1, 6))  # adjoins: extends
+    wide = observed.fetch_gauge("412033", date(1990, 1, 1), date(2020, 1, 4))
+
+    assert calls == [
+        (date(2020, 1, 1), date(2020, 1, 4)),
+        (date(1990, 1, 1), date(1990, 1, 4)),
+        (date(1990, 1, 5), date(1990, 1, 6)),
+        (date(1990, 1, 7), date(2020, 1, 4)),
+    ]
+    assert len(wide.frame) == (date(2020, 1, 4) - date(1990, 1, 1)).days + 1
+
+
+def test_expired_cache_does_not_keep_its_wider_coverage(monkeypatch, tmp_path):
+    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
+    observed._write_cache("412033", "F", raw_frame("412033", ["1990-01-01", "2020-01-02"]), date(1990, 1, 1), date(2020, 1, 2))
+    _, meta_path = observed._cache_paths("412033", "F")
+    meta_path.write_text(__import__("json").dumps(__import__("json").loads(meta_path.read_text()) | {"fetched_at": 0}))
+    monkeypatch.setattr(observed, "_fetch_source", lambda gauge, start, end, *args: raw_frame(gauge, ["2020-01-02"]))
+
+    observed.fetch_gauge("412033", date(2020, 1, 2), date(2020, 1, 2), ttl=1)
+
+    cached = observed._read_cache("412033", "F")
+    assert cached is not None and (cached[1]["start"], cached[1]["end"]) == ("2020-01-02", "2020-01-02")
 
 
 def test_expired_cache_refreshes_range(monkeypatch, tmp_path):
@@ -109,81 +177,49 @@ def test_expired_cache_refreshes_range(monkeypatch, tmp_path):
     meta_path.write_text(__import__("json").dumps(meta))
     calls = []
 
-    def fetch(gauge, left, right, var, timeout):
+    def fetch(gauge, left, right, var, timeout, retries):
         calls.append((left, right))
         return raw_frame(gauge, ["2000-01-01", "2000-01-02"], ["2", "2"])
 
-    monkeypatch.setattr(observed, "_fetch_isolated", fetch)
+    monkeypatch.setattr(observed, "_fetch_source", fetch)
 
     result = observed.fetch_gauge("412033", start, end, ttl=1)
     assert result.status == "ok" and result.frame["VALUE"].tolist() == ["2", "2"]
     assert calls == [(start, end)]
 
 
-def test_timeout_empty_and_429_are_classified(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (DeadlineExceeded("deadline"), "timeout"),
+        (RateLimited("HTTP 429"), "rate_limited"),
+        (StationNotFound("unknown"), "unsupported"),
+        (observed_source.TransientError("HTTP 502"), "error"),
+        (KeyError("bug"), "error"),
+    ],
+)
+def test_source_errors_map_to_gauge_statuses(monkeypatch, tmp_path, error, status):
     monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
-    start, end = date(2000, 1, 1), date(2000, 1, 2)
-    monkeypatch.setattr(observed, "_fetch_isolated", lambda *args: (_ for _ in ()).throw(TimeoutError("deadline")))
-    assert observed.fetch_gauge("412033", start, end).status == "timeout"
+    monkeypatch.setattr(observed, "_fetch_source", lambda *args: (_ for _ in ()).throw(error))
 
-    monkeypatch.setattr(
-        observed, "_fetch_isolated", lambda *args: pd.DataFrame(columns=["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME", "VALUE", "QUALITYCODE"])
-    )
-    assert observed.fetch_gauge("412034", start, end).status == "empty"
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
 
-    monkeypatch.setattr(observed, "_fetch_isolated", lambda *args: (_ for _ in ()).throw(RuntimeError("HTTPError: Request failed HTTP Response code 429")))
-    assert observed.fetch_gauge("412035", start, end).status == "rate_limited"
+    assert result.status == status and result.frame.empty and str(error.args[0]) in result.message
+    assert not any(tmp_path.iterdir())  # failures are never cached
 
 
-def test_mdb_queue_full_408_is_rate_limited_without_retry(monkeypatch, tmp_path):
+def test_no_data_in_period_is_empty_and_cached(monkeypatch, tmp_path):
     monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
-    calls = 0
+    monkeypatch.setattr(observed, "_ROUTES", {})
+    monkeypatch.setattr(observed, "candidate_states", lambda gauge: ["NSW"])
+    fake = FakeClient({"NSW": NoData("NSW service: No data within specified period")})
+    monkeypatch.setattr(observed, "_CLIENT", fake)
 
-    def queue_full(*args):
-        nonlocal calls
-        calls += 1
-        raise RuntimeError("HTTPError: HTTP Response code 408: Too many requests in queue (21), limit is 20")
+    first = observed.fetch_gauge("412033", date(1900, 1, 1), date(1900, 1, 4))
+    second = observed.fetch_gauge("412033", date(1900, 1, 1), date(1900, 1, 4))
 
-    monkeypatch.setattr(observed, "_fetch_isolated", queue_full)
-    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), retries=2)
-
-    assert result.status == "rate_limited"
-    assert "Too many requests in queue" in result.message
-    assert calls == 1
-
-
-def test_timeout_does_not_repeat_the_full_deadline(monkeypatch, tmp_path):
-    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
-    calls = 0
-
-    def timeout(*args):
-        nonlocal calls
-        calls += 1
-        raise TimeoutError("deadline")
-
-    monkeypatch.setattr(observed, "_fetch_isolated", timeout)
-    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), retries=2)
-
-    assert result.status == "timeout"
-    assert calls == 1
-
-
-def test_transient_fetch_error_retries(monkeypatch, tmp_path):
-    monkeypatch.setattr(observed, "CACHE_DIR", tmp_path)
-    calls = 0
-
-    def fetch(gauge, start, end, var, timeout):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise ConnectionError("temporary network failure")
-        return raw_frame(gauge, ["2000-01-01"])
-
-    monkeypatch.setattr(observed, "_fetch_isolated", fetch)
-    result = observed.fetch_gauge("412036", date(2000, 1, 1), date(2000, 1, 1), retries=1)
-
-    assert result.status == "ok"
-    assert calls == 2
+    assert first.status == second.status == "empty"
+    assert fake.calls == ["NSW"]
 
 
 def test_standard_frame_coerces_values_and_fills_daily_dates():
