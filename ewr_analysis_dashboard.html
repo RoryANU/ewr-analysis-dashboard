@@ -183,7 +183,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const $=id=>document.getElementById(id);
 
 const CUSTOM=[];   // user scenarios {key, name, sdl, P, vals, removed, id, flowGauges, fmt}
-const S={src:"demo",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:"",heatEwrs:[]},sort:"default",mxopen:{pu:true,regime:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
+const S={src:"demo",band:2,period:"",flow:{open:false,chart:"heat",thr:[],show:"diff",xlim:"",dmax:120,sm:7,em:6,ylog:false,xlog:false,days:"any",ewr:"",heatEwrs:[]},sort:"default",mxopen:{pu:true,regime:true,main:true},boxOpen:false,cell:null,thr:1.0,ethr:0,fbthr:0.5,mode:"single",bpol:META.policies.indexOf("Pre Basin Plan"),bcli:0,pol:META.policies.indexOf("Basin plan full implementation"),cli:0,metric:"fr",
          sel:{type:"none"}};
 
 // ---- values and averages -----------------------------------------------------------------------------------------
@@ -1205,6 +1205,10 @@ async function drawFlow(keepZoom){
         const lo=Math.floor(mn/5)*5, hi=Math.max(Math.ceil(mx/5)*5,lo+5); return [lo,hi]; };
       let [zmin,zmax]=fitScale();
       const title=(diff?`Change in % of years achieved, ${c.cn} − ${c.bn} (percentage points)`:`% of years achieved (${kind==="comp"?c.cn:c.bn})`)+"<br><i>colour range: visible data</i>";   // the range is refitted on every zoom
+      // Full-width inward ticks mark the same levels as the black contours on the heatmap.
+      const heatColorbar=(lo,hi)=>({title:{text:title,side:"right"},thickness:30,thicknessmode:"pixels",
+        tickmode:"array",tickvals:[lo,...contourLevels(z).filter(v=>v>lo&&v<hi),hi],
+        ticks:"inside",ticklen:30,tickwidth:1,tickcolor:"black"});
       const markFor=ew=>(d.marks||[]).find(m=>m.thr===ew.thr&&m.dur===ew.dur)?.values;
       const labelFor=ew=>ew.code+(ews.filter(e=>e.code===ew.code).length>1?` (${ew.pu})`:"");
       const colourFor=ew=>TCOLS[ews.indexOf(ew)%TCOLS.length];
@@ -1220,7 +1224,7 @@ async function drawFlow(keepZoom){
       let ck=1, coarseNote="";
       for(;;){ try{
       await Plotly.newPlot("flowPlot",[
-        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:{title:{text:title,side:"right"}},customdata:diff&&d.comp?d.base.map((r,j)=>r.map((b,i)=>[b,d.comp[j][i]])):undefined,hovertemplate:(diff?(d.comp?`${esc(c.bn)} <b>%{customdata[0]:.1f}%</b> → ${esc(c.cn)} <b>%{customdata[1]:.1f}%</b><br>`:"")+"Change: <b>%{z:+.1f} pts</b> of years":"<b>%{z:.1f}%</b> of years")+"<br>Flow ≥ %{x:,.0f} ML/d for %{y:.0f} days<extra></extra>"},
+        {type:"heatmap",z,x:d.thresholds,y:d.durations,zmin,zmax,colorscale:diff?divScale(zmin,zmax):scale(BLUES),colorbar:heatColorbar(zmin,zmax),customdata:diff&&d.comp?d.base.map((r,j)=>r.map((b,i)=>[b,d.comp[j][i]])):undefined,hovertemplate:(diff?(d.comp?`${esc(c.bn)} <b>%{customdata[0]:.1f}%</b> → ${esc(c.cn)} <b>%{customdata[1]:.1f}%</b><br>`:"")+"Change: <b>%{z:+.1f} pts</b> of years":"<b>%{z:.1f}%</b> of years")+"<br>Flow ≥ %{x:,.0f} ML/d for %{y:.0f} days<extra></extra>"},
         ].concat(contourLevels(z).map(v=>({type:"contour",z,x:d.thresholds,y:d.durations,contours:{start:v,end:v,size:1,coloring:"none",showlabels:false},line:{color:"black",width:1},showscale:false,hoverinfo:"skip"}))).concat(visibleEwrs().map(ew=>({type:"scatter",mode:"markers",x:[ew.thr],y:[ew.dur],
           marker:{size:14,opacity:0},hovertemplate:`<b>${esc(labelFor(ew))}</b> · ≥${ew.thr.toLocaleString()} ML/d · ${ew.dur} d<br>${hoverFor(ew)}<extra></extra>`,showlegend:false}))),
         lay({xaxis:ax("Threshold (ML/day)",{range:zm?zm.x:[0,d.xlim],hoverformat:",.0f"}),yaxis:ax("Duration (days)",Object.assign({hoverformat:".0f"},zm?{range:[zm.y[0]-.5,zm.y[1]+.5]}:{})),showlegend:false,shapes:shapesFor(),annotations:visibleEwrs().map((ew,i)=>({x:ew.thr,y:ew.dur,xref:"x",yref:"y",text:`<b>${esc(labelFor(ew))}</b>`,showarrow:true,arrowhead:0,arrowcolor:colourFor(ew),ax:(f.heatLabelOffsets?.[thrKey(ew)]||[34,-26-20*(i%3)])[0],ay:(f.heatLabelOffsets?.[thrKey(ew)]||[34,-26-20*(i%3)])[1],captureevents:true,font:{size:13,color:colourFor(ew)},bgcolor:"white",bordercolor:colourFor(ew),borderwidth:1,borderpad:3}))}),Object.assign({},cfg,{edits:{annotationTail:true}},zm?{doubleClick:false,modeBarButtonsToRemove:["resetScale2d","autoScale2d"],modeBarButtonsToAdd:[{name:"resetzoom",title:"Reset zoom",icon:Plotly.Icons.home,click:()=>{ f.zoom=null; drawFlow(true); }}]}:{}));   // the EWR label can be dragged out of the way
@@ -1234,7 +1238,7 @@ async function drawFlow(keepZoom){
           const nz=full||(xa.range[0]<=0&&xa.range[1]>=f.full[0]&&ya.range[0]<=.5&&ya.range[1]>=f.full[1]+.5)?null:{x:[Math.max(0,Math.floor(xa.range[0])),Math.min(200000,Math.ceil(xa.range[1]))],y:[Math.max(1,Math.ceil(ya.range[0]+.5)),Math.min(366,Math.floor(ya.range[1]-.5))]};
           if(nz&&(nz.x[1]-nz.x[0]<2||nz.y[1]-nz.y[0]<1)) return;
           if(JSON.stringify(nz)!==JSON.stringify(f.zoom||null)){ if(nz||f.zoom){ f.zoom=nz; clearTimeout(f.zt); f.zt=setTimeout(()=>drawFlow(true),120); return; } } }
-        const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b],colorscale:[diff?divScale(a,b):scale(BLUES)]},[0]); });
+        const xa=hp.layout.xaxis, ya=hp.layout.yaxis, [a,b]=fitScale(xa.autorange?null:xa.range,ya.autorange?null:ya.range); Plotly.restyle(hp,{zmin:[a],zmax:[b],colorscale:[diff?divScale(a,b):scale(BLUES)],colorbar:[heatColorbar(a,b)]},[0]); });
       let info=`${d.years} water years (${d.dates[0]} to ${d.dates[1]})${D?", dates common to both scenarios":""}; timing window ${MONTHS[f.sm-1]}–${MONTHS[f.em-1]}; ${d.consecutive?"consecutive days":"any days (non-consecutive)"}. The colour range fits the cells in view, so it changes when you zoom.`;
       if(ews.length) info+=" Selected EWR points use the chart's day-count setting.";
       const tbl=ews.length?`<table class="ewrtbl"><tr><th>EWR · % of years achieved</th>`+(D?`<th>${esc(c.bn)}</th><th>${esc(c.cn)}</th><th>Difference</th>`:`<th>${esc(c.bn)}</th>`)+`<th>Target</th></tr>`+
