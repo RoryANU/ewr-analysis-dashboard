@@ -763,7 +763,7 @@ test('phase 2: panel shows retry attempts, one rollup line per gauge, never answ
   assert.equal((rows[rows.length-1].match(/Not retried — needs setup/g)||[]).length,0);
   const setupRow=rows.find(r=>/data-obs-result="B"/.test(r)||/<b>B<\/b>/.test(r));
   assert.equal((setupRow.match(/Not retried — needs setup/g)||[]).length,2);
-  assert.match(setupRow,/Your IT support needs to run a one-time setup\. Copy details → send to IT\./);
+  assert.match(setupRow,/Restore data\/reference\/bom_water from the repository, or send Copy details to your IT support\./);
   assert.match(rows.find(r=>/<b>A<\/b>/.test(r)),/We already retried 2 times\. Tried 3 times\./);
   assert.doesNotMatch(html,/\[contact\]/);
   h.run(`S.obs.status={D:S.obs.status.D};S.obs.runIds=['D'];S.obs.cooldown={'D|f':{diag:'b',until:31000},'D|l':{diag:'b',until:31000}};`);
@@ -848,6 +848,7 @@ test('phase 3: Complete needs BOTH measurements fully backed by coverage; foldin
     {f,l:okWith({...completeCoverage,units:'m',coverage_status:'unassessed_quality_policy'})},{f,l:okWith({...completeCoverage,units:'m',policy_version:''})},{f,l:okWith({...completeCoverage,units:'m',expected_count:0,valid_count:0})},
     {f,l:okWith({...completeCoverage,units:'m',coverage_pct:99.9})},{f,l:okWith({...completeCoverage,units:'m',gaps:null})},{f,l:okWith({...completeCoverage,units:'m',gaps:[{start:'2024-01-02',end_exclusive:'2024-01-03',missing_count:1}]})}])assert.equal(call('gaugeComplete',states),false,JSON.stringify(states).slice(0,120));
   // legitimate zeros keep "Complete" but stop the fold, so the warning stays visible
+  assert.equal(call('gaugeFoldable',{f:okWith({...completeCoverage,unknown_quality_count:40,excluded_quality_count:3}),l}),true); // ungraded codes are kept by design: they never block the fold
   const zeros={f:okWith({...completeCoverage,zero_count:2}),l};
   assert.equal(call('gaugeComplete',zeros),true);assert.equal(call('gaugeFoldable',zeros),false);
   assert.equal(run(`coverageSortKey(${JSON.stringify({f:okWith({coverage_pct:80}),l:okWith({coverage_pct:60})})})`),60);
@@ -883,6 +884,15 @@ test('phase 3: Details list the first 10 gaps while Copy details lists them all,
   assert.equal((copy.match(/\(1 day\)/g)||[]).length,12);assert.doesNotMatch(copy,/…and/);
   assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({period:{start:'2024-01-02',end_exclusive:'2024-01-02',timezone:null},expected_count:0,valid_count:0,coverage_pct:null,gaps:[]}))})`),/No reporting days fall within this assessment period[\s\S]*No reporting days assessed/);
   assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({gaps:null,excluded_quality_count:null}))})`),/Gaps not assessed[\s\S]*Unavailable excluded/);
-  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({policy_version:'p1',unknown_quality_count:3}))})`),/3 with missing or unrecognised quality codes/);
+  const withPolicy=run(`coverageDetailText('Flow',${JSON.stringify(okWith({policy_version:'p1',unknown_quality_count:3,excluded_quality_count:2,quality_table:'NSW DILW',quality_table_selection:'unique_best',quality_table_candidates:['NSW DILW'],quality_table_match_count:986,quality_table_code_count:1000,quality_table_margin_count:400}))})`);
+  assert.match(withPolicy,/Quality codes: 2 readings removed by quality grade \(F or no-record\), 3 readings kept without a matching code/);
+  assert.match(withPolicy,/Inferred quality table: NSW DILW \(986 of 1000 eligible daily quality-code slots matched; 400 ahead of the next table\)/);
+  const tied=run(`coverageDetailText('Flow',${JSON.stringify(okWith({policy_version:'p1',quality_table:null,quality_table_selection:'equivalent_tie',quality_table_candidates:['DNRME','NSW DILW'],quality_table_match_count:4,quality_table_code_count:4}))})`);
+  assert.match(tied,/Quality table tied between DNRME, NSW DILW \(4 of 4 eligible daily quality-code slots matched\); they remove the same readings/);
+  const ambiguous=okWith({policy_version:'p1',coverage_complete:null,quality_table:null,quality_table_selection:'ambiguous',quality_table_candidates:['A1','B1'],quality_table_match_count:2,quality_table_code_count:2});
+  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(ambiguous)})`),/could not be settled between A1, B1[^\n]*completeness is not certified/);
+  assert.ok(run(`coverageLines('f',${JSON.stringify(ambiguous)})`).some(l=>l.warn&&/could not be settled/.test(l.text)));
+  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({policy_version:'p1',quality_table:null,quality_table_selection:'no_match'}))})`),/No quality table matched; finite readings were kept under the mismatch policy/);
+  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({...completeCoverage}))})`),/Complete means every expected day has a finite reading kept under this policy; unmatched quality codes are included\./);
   for(const text of [panel,copy]){assert.match(text,/Usable days: 38 of 50 \(76%\)/);assert.match(text,/Period: 1 Jan 2024 to 19 Feb 2024/);assert.match(text,/Time zone: not recorded \(daily values\)/);assert.match(text,/Zero readings: 2/);}
 });

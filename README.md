@@ -65,6 +65,8 @@ data/
     constraint_sites.csv         constraint sites drawn on the map (MDBA constraint focus areas; hand-maintained, approximate locations)
   reference/
     objective_reference.csv      ecological objective codes, descriptions and themes
+    bom_water/cache/             bomwater's cache, shipped so the Bureau fallback needs no home-folder setup or download
+    bom_quality_codes.json       Bureau agency quality codes -> grades A/B/C/E/F (source: bom.gov.au/water/hrs/qc_doc.shtml)
     parameter_sheet.csv          the EWR tool's parameter sheet (copy of MDBAuth/EWR_tool; the EWR guide's source, kept in step by sync_parameter_sheet.py)
   example_scenarios/             made-up flow files, plus a documented synthetic level/salinity fixture, for trying "Your data"
 requirements.txt                 Python packages for the build and the server (run.py installs them for you)

@@ -13,7 +13,7 @@ import re
 import socket
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 from math import isfinite
 from numbers import Integral, Real
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
@@ -32,6 +33,8 @@ CACHE_DIR = ROOT / ".observed_cache"
 CACHE_VERSION = "3"  # gauge_pull output only; no trace-metadata units or alternate routing
 RAW_COLUMNS = ["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME", "VALUE", "QUALITYCODE"]
 PARAMETER_SHEET = ROOT / "data/reference/parameter_sheet.csv"
+BOM_WATER_HOME = ROOT / "data/reference"  # bomwater caches under <home>/bom_water/cache; see data/reference/bom_water/README.md
+QUALITY_CODES = ROOT / "data/reference/bom_quality_codes.json"  # Bureau agency-code -> grade tables (qc_doc.shtml)
 GAUGE_ID = re.compile(r"(?:A)?\d+[A-Z]*", re.I)
 DEFAULT_TIMEOUT = 90.0  # per gauge and variable; a full record takes the services 10-60 s to start sending
 DEFAULT_TTL = 24 * 60 * 60
@@ -55,23 +58,113 @@ class GaugeResult:
     coverage: dict[str, Any] | None = None  # terminal ok/empty/error only; see assess_coverage
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class QualityPolicy:
-    """The data owner's approved quality-code allowlist. Without one, nothing can be called complete."""
+    """Bureau-grade quality policy, built to clean out clear missing/NA data and nothing more.
 
-    allowed_codes: frozenset[int]
+    Agency numbers mean different things in different agency tables, so each measurement is graded with the table(s) that
+    match the most of its readings. That table is INFERRED from the codes (match share is not agency confidence). Readings
+    graded outside `allowed_grades` (F: missing / not of release quality) are removed. A code the table does not list, or a
+    reading with no usable code, is KEPT: a mismatch is not evidence of bad data. If several tables tie on matches and
+    disagree about what to remove, the disputed readings are kept and the selection is reported as ambiguous.
+    Both mapping levels are frozen on construction; a published policy is never mutated.
+    """
+
+    allowed_grades: frozenset[str]
+    tables: Mapping[str, Mapping[int, str]]
     version: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.allowed_codes, frozenset):
-            raise TypeError("allowed_codes must be a frozenset of integers")
+        if not self.allowed_grades or not set(self.allowed_grades) <= set("ABCEFG"):
+            raise ValueError("allowed_grades must be a non-empty subset of A, B, C, E, F, G")
+        if not self.tables:
+            raise ValueError("A policy needs at least one agency table")
         if not isinstance(self.version, str) or not self.version.strip():
             raise ValueError("A non-empty policy version is required")
-        for code in self.allowed_codes:
-            if isinstance(code, bool) or not isinstance(code, int):
-                raise TypeError("Quality policy codes must be integers")
-            if _is_placeholder_code(code):
-                raise ValueError("A policy cannot approve placeholder codes removed by the source")
+        frozen: dict[str, Mapping[int, str]] = {}
+        for name, table in self.tables.items():
+            if not table or any(isinstance(c, bool) or not isinstance(c, int) or g not in set("ABCEFG") for c, g in table.items()):
+                raise ValueError(f"Agency table {name!r} must map integer codes to grades A, B, C, E, F or G")
+            frozen[name] = MappingProxyType(dict(table))
+        object.__setattr__(self, "allowed_grades", frozenset(self.allowed_grades))
+        object.__setattr__(self, "tables", MappingProxyType(frozen))
+
+    def select_table(self, codes: list[int]) -> dict[str, Any]:
+        """Infer the agency table(s) with the most matching codes. Ties are inspected, never settled by listing order."""
+        total = len(codes)
+        base: dict[str, Any] = {
+            "selection": "no_codes",
+            "table": None,
+            "candidates": [],
+            "match_count": 0,
+            "code_count": total,
+            "runner_up_match_count": None,
+            "margin_count": None,
+        }
+        if not total:
+            return base
+        hits = {name: sum(1 for code in codes if code in table) for name, table in self.tables.items()}
+        top = max(hits.values())
+        if top == 0:
+            return {**base, "selection": "no_match"}
+        candidates = sorted(name for name, h in hits.items() if h == top)
+        lower = [h for h in hits.values() if h < top]
+        runner = max(lower) if lower else None
+        # A missing mapping counts as "keep", as the data owner specified, when comparing what candidates would remove.
+        ambiguous = len(candidates) > 1 and any(len({self.removes(code, [name]) for name in candidates}) > 1 for code in set(codes))
+        selection = "unique_best" if len(candidates) == 1 else "ambiguous" if ambiguous else "equivalent_tie"
+        return {
+            **base,
+            "selection": selection,
+            "table": candidates[0] if selection == "unique_best" else None,
+            "candidates": candidates,
+            "match_count": top,
+            "runner_up_match_count": runner,
+            "margin_count": None if runner is None else top - runner,
+        }
+
+    def removes(self, code: int | None, candidates: list[str]) -> bool:
+        """True only when EVERY candidate table lists the code and grades it outside the allowed grades."""
+        return code is not None and bool(candidates) and all(code in self.tables[n] and self.tables[n][code] not in self.allowed_grades for n in candidates)
+
+    def lists(self, code: int | None, candidates: list[str]) -> bool:
+        return code is not None and any(code in self.tables[n] for n in candidates)
+
+
+_DEFAULT_POLICY: QualityPolicy | None = None
+
+
+def default_quality_policy() -> QualityPolicy | None:
+    """Grades A-E over the Bureau's agency tables. A failure is logged loudly and NOT cached, so a fixed file is picked up; None means
+    "quality policy unavailable: completeness is disabled" (coverage then reads unassessed_quality_policy), never a permissive fallback."""
+    global _DEFAULT_POLICY
+    if _DEFAULT_POLICY is not None:
+        return _DEFAULT_POLICY
+    try:
+        raw = json.loads(QUALITY_CODES.read_text(encoding="utf-8"))
+        tables: dict[str, dict[int, str]] = {}
+        for name, table in raw["tables"].items():
+            converted = {int(code): grade for code, grade in table.items()}
+            if len(converted) != len(table):
+                raise ValueError(f"duplicate code after conversion in {name}")
+            tables[name] = converted
+        grades = frozenset(raw.get("accepted_grades_default", "ABCE"))
+        digest = hashlib.sha256(json.dumps([sorted(grades), {n: sorted(t.items()) for n, t in sorted(tables.items())}, "select-v2"]).encode()).hexdigest()[:10]
+        _DEFAULT_POLICY = QualityPolicy(grades, tables, f"bom-hrs-grades-{''.join(sorted(grades))}-{raw['retrieved']}-{digest}")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        logging.getLogger(__name__).error("Quality policy unavailable (%s: %s); coverage completeness is disabled", type(exc).__name__, exc)
+        return None
+    return _DEFAULT_POLICY
+
+
+def clean_frame(frame: pd.DataFrame, policy: QualityPolicy | None) -> pd.DataFrame:
+    """Remove rows the policy grades outside its allowed grades, so the readings used downstream match the readings counted."""
+    if policy is None or frame.empty or "QUALITYCODE" not in frame.columns:
+        return frame
+    codes = [_coverage_code(q) for q in frame["QUALITYCODE"].tolist()]
+    selection = policy.select_table([c for c in codes if c is not None and not _is_placeholder_code(c)])
+    drop = [policy.removes(code, selection["candidates"]) for code in codes]
+    return frame.loc[[not d for d in drop]].reset_index(drop=True) if any(drop) else frame
 
 
 class _SourceFailure(Exception):
@@ -108,6 +201,39 @@ def _emit_inflight(result: GaugeResult) -> None:
 
 def _is_placeholder_code(code: int) -> bool:
     return code in {255, 201, 151} or code >= 999  # the same rule _normalise applies
+
+
+def _use_repo_bom_cache() -> None:
+    """Point bomwater's cache at data/reference/bom_water/cache instead of ~/bom_water/cache (idempotent, scoped to that module).
+
+    The package builds its cache path from os.path.expanduser("~") and only checks that one file exists before reading another, so a
+    failed first download leaves a permanent half-built cache in the home folder. Shipping the files in the repository removes the
+    download, the home-folder dependency and that failure mode. Only bom_water.bom_water's own `os` name is replaced, so no other
+    code (and no environment variable) is affected.
+    """
+    import importlib
+
+    module: Any = importlib.import_module("bom_water.bom_water")
+    if getattr(module, "_repo_cache_patched", False):
+        return
+    real_os: Any = module.os
+
+    class _Path:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(real_os.path, name)
+
+        @staticmethod
+        def expanduser(path: str) -> str:
+            return str(BOM_WATER_HOME) if path == "~" else str(real_os.path.expanduser(path))
+
+    class _Os:
+        path = _Path()
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(real_os, name)
+
+    module.os = _Os()
+    module._repo_cache_patched = True
 
 
 def _http_status(exc: Exception) -> int | None:
@@ -256,6 +382,7 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
     A timeout stops waiting, but cannot kill the getter's worker thread. Daemon workers
     can finish in the background without writing cache entries or blocking shutdown.
     """
+    _use_repo_bom_cache()
     from mdba_gauge_getter.gauge_getter import gauge_pull
     from requests.exceptions import ConnectionError as RequestsConnectionError
     from requests.exceptions import RequestException
@@ -537,6 +664,16 @@ def _coverage_template(first: date, stop: date, *, units: str | None, status: st
     }
     if policy is not None:
         coverage["policy_version"] = policy.version
+        coverage.update(
+            quality_table=None,
+            quality_table_selection=None,
+            quality_table_candidates=[],
+            quality_table_match_count=None,
+            quality_table_code_count=None,
+            quality_table_runner_up_match_count=None,
+            quality_table_margin_count=None,
+            quality_table_match_pct=None,
+        )
     return coverage
 
 
@@ -554,8 +691,9 @@ def assess_coverage(
 
     Unique calendar-day slots only (the last duplicate wins; an invalid last duplicate does not fall back).
     Without a policy, finite non-placeholder readings qualify provisionally, `coverage_complete` stays null even at 100 %,
-    and every retained slot counts as unknown quality. With a policy only allowed codes qualify, and complete is true only
-    when every expected day has a qualifying reading. An unfiltered run has no meaningful expected period, so its
+    and every retained slot counts as unknown quality. With a policy, readings graded outside its allowed grades (or no-record
+    placeholders) are removed, unlisted/missing codes are kept and counted as unknown, and complete is true only when every
+    expected day has a qualifying reading. An unfiltered run has no meaningful expected period, so its
     expected_count, percentage and gaps are null. Zero is an observation: it never lowers coverage.
     """
     first, stop = _coverage_window(start, end, reporting_cutoff)
@@ -577,17 +715,37 @@ def assess_coverage(
 
     usable: dict[date, tuple[float, int | None]] = {}
     excluded = unknown = 0
-    for day, (raw_value, raw_quality) in slots.items():
-        code = _coverage_code(raw_quality)
+    codes = {day: _coverage_code(quality) for day, (_, quality) in slots.items()}
+    candidates: list[str] = []
+    if policy is not None:
+        sel = policy.select_table([code for code in codes.values() if code is not None and not _is_placeholder_code(code)])
+        candidates = sel["candidates"]
+        coverage.update(
+            quality_table=sel["table"],
+            quality_table_selection=sel["selection"],
+            quality_table_candidates=candidates,
+            quality_table_match_count=sel["match_count"],
+            quality_table_code_count=sel["code_count"],
+            quality_table_runner_up_match_count=sel["runner_up_match_count"],
+            quality_table_margin_count=sel["margin_count"],
+            quality_table_match_pct=None if not sel["code_count"] else round(100.0 * sel["match_count"] / sel["code_count"], 1),
+        )
+    for day, (raw_value, _) in slots.items():
+        code = codes[day]
         if code is not None and _is_placeholder_code(code):
-            excluded += 1  # normally already dropped by _normalise
+            excluded += 1  # no-record sentinels (255/201 are grade F in every table that lists them), dropped upstream too
             continue
-        if policy is None or code is None:
+        kept_unmatched = False
+        if policy is None:
             unknown += 1
-        if policy is not None and (code is None or code not in policy.allowed_codes):
-            excluded += code is not None
+        elif policy.removes(code, candidates):
+            excluded += 1
             continue
+        else:
+            kept_unmatched = not policy.lists(code, candidates)  # no usable code, or no candidate table lists it: kept
         value = _coverage_value(raw_value)
+        if kept_unmatched and value is not None:
+            unknown += 1  # counts only readings that were actually retained without a matching code
         if value is not None:
             usable[day] = (value, code)
 
@@ -619,7 +777,7 @@ def assess_coverage(
     coverage.update(expected_count=expected, gaps=gaps)
     if expected > 0:
         coverage["coverage_pct"] = 100.0 * len(usable) / expected
-        if policy is not None:
+        if policy is not None and coverage.get("quality_table_selection") != "ambiguous":  # an unsettled table cannot certify completeness
             coverage["coverage_complete"] = len(usable) == expected
     return coverage
 
@@ -690,6 +848,12 @@ def fetch_many(
                 result = _error_result(exc, var=var)
             # Attach once, before the callback, so streamed and final payloads carry the same assessment.
             _attach_coverage(result, start, end, var=var, policy=policy, filter_period=filter_period, reporting_cutoff=reporting_cutoff)
+            if policy is not None and result.status in {"ok", "empty"}:
+                cleaned = clean_frame(result.frame, policy)
+                if len(cleaned) != len(result.frame):
+                    result.frame = cleaned
+                    if cleaned.empty and result.status == "ok":
+                        result.status, result.message = "empty", "No usable readings once missing data was removed"
             statuses[(gauge, var)] = result
             notify(status_progress, gauge, var, result)
             if result.status == "ok":

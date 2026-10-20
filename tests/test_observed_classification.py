@@ -226,7 +226,7 @@ def test_retryability_survives_streamed_and_final_job_payloads(monkeypatch, tmp_
     flow = dict(final["412033"]["f"])
     coverage = flow.pop("coverage")  # Phase 3: terminal ok/empty/error carry a coverage block (checked in test_observed.py)
     assert flow == {"status": "ok", "message": "", "retryable": False, "error": None, "attempts": 1, "max_attempts": 3, "schema_version": 2}
-    assert coverage["coverage_status"] == "unassessed_quality_policy" and coverage["coverage_complete"] is None  # no approved policy yet
+    assert coverage["coverage_status"] == "assessed" and coverage["policy_version"].startswith("bom-hrs-grades-ABCE-")  # the server passes the default policy
     assert final["412033"]["l"]["coverage"]["coverage_status"] == "unavailable_error"
     level = final["412033"]["l"]  # legacy keys are unchanged; `error` is the additive envelope
     assert {k: level[k] for k in ("status", "message", "retryable")} == {

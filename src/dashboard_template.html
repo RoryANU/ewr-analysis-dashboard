@@ -647,7 +647,7 @@ const COVERAGE_FOOTNOTE="Records returned does not mean full coverage of the sel
 /** Copy per backend error code. The front end never reads exception text: Python maps text to a code, this maps code to words. */
 const triedText=x=>{const n=attemptsOf(x);return n>1?` We already retried ${countOf(n-1,"time")}. Tried ${countOf(n,"time")}.`:"";};
 const ERROR_COPY={
-  STATION_LIST_SETUP_REQUIRED:()=>({label:"Weather-bureau station list not set up",why:"The local copy of the Bureau of Meteorology station list is missing, so this gauge can't be looked up.",action:"Your IT support needs to run a one-time setup. Copy details → send to IT.",skip:"Not retried — needs setup"}),
+  STATION_LIST_SETUP_REQUIRED:()=>({label:"Weather-bureau station list not set up",why:"A data file that ships with the dashboard (data/reference/bom_water) is missing, so the Bureau fallback for this gauge can't start.",action:`Restore data/reference/bom_water from the repository, or send Copy details to ${supportName()}.`,skip:"Not retried — needs setup"}),
   CONFIGURATION_REQUIRED:()=>({label:"Needs IT support",why:"A local setting, permission or dependency blocks this request.",action:`This needs IT support. Use Copy details and send it to ${supportName()}.`,skip:"Not retried — needs setup"}),
   INVALID_REQUEST:()=>({label:"Setup or request needs attention",why:"This request cannot succeed without a change.",action:"Check the request and local setup before trying again."}),
   SERVICE_BUSY:(name,x)=>({label:"Data service busy",why:"The Bureau's server is handling too many requests."+triedText(x),action:"Retry when available."}),
@@ -742,6 +742,7 @@ function coverageLines(v,x){
   if(c.coverage_complete===true)lines.push({text:`${name} ✓ ${pct}${tail}`,warn:false});
   else if(pct)lines.push({text:`${name} · ${pct} of days have a usable reading${c.coverage_status==="unassessed_quality_policy"?" · quality policy pending":""}${tail}`,warn:false});
   else lines.push({text:`${name} · coverage not assessed${c.coverage_status==="unassessed_open_period"?" for all available data":c.coverage_status==="unassessed_units"?" (units not recognised)":""}${tail}`,warn:false});
+  if(c.quality_table_selection==="ambiguous")lines.push({text:"⚠ Quality table could not be settled; disputed readings were kept",warn:true});
   if(Array.isArray(c.gaps)&&c.gaps.length){const days=c.gaps.reduce((n,g)=>n+(finiteNumber(g.missing_count)?g.missing_count:0),0);lines.push({text:`⚠ ${countOf(c.gaps.length,"gap")} (${countOf(days,"day")} missing)`,warn:true});}
   if(finiteNumber(c.zero_count)&&c.zero_count>0)lines.push({text:c.all_zero===true?`⚠ Every reading was 0 ${c.units||""} — check quality codes`.replace("  "," "):`⚠ 0 ${c.units||""} recorded on ${countOf(c.zero_count,"day")} — check quality codes`.replace("  "," "),warn:true});
   return lines;
@@ -754,9 +755,9 @@ function measurementComplete(v,x){
 }
 /** "Complete": both measurements present and complete. Completeness is about coverage only; it says nothing about EWR eligibility. */
 const gaugeComplete=states=>Object.keys(VAR_NAME).every(v=>measurementComplete(v,states?.[v]));
-/** Folding needs more than completeness: no zero day and no rejected or unrecognised quality code, so warnings stay visible. */
+/** Folding needs more than completeness: no zero day, so that warning stays visible. Codes the policy could not grade are kept by design and do not block it. */
 function gaugeFoldable(states){
-  return gaugeComplete(states)&&Object.keys(VAR_NAME).every(v=>{const c=coverageOf(states[v]);return c.zero_count===0&&c.excluded_quality_count===0&&c.unknown_quality_count===0;});
+  return gaugeComplete(states)&&Object.keys(VAR_NAME).every(v=>coverageOf(states[v]).zero_count===0);
 }
 /** Distinct assessment periods across the list (open-period runs have none). More than one means retries or reruns mixed contexts. */
 function assessedPeriods(gaugeIds,status={}){
@@ -787,9 +788,18 @@ function coverageDetailText(label,x,limit=Infinity){
     if(c.gaps.length>limit)lines.push(`  …and ${c.gaps.length-limit} more`);
   }
   if(finiteNumber(c.zero_count)&&c.zero_count>0)lines.push(`Zero readings: ${c.zero_count}`);
-  lines.push(`Quality codes: ${count(c.excluded_quality_count)} excluded, ${c.policy_version?`${count(c.unknown_quality_count)} with missing or unrecognised quality codes`:`${count(c.unknown_quality_count)} not checked against an approved policy`}`);
+  if(c.policy_version){
+    lines.push(`Quality codes: ${count(c.excluded_quality_count)} readings removed by quality grade (F or no-record), ${count(c.unknown_quality_count)} readings kept without a matching code`);
+    // The table is inferred from which codes appear; the share is a count of matching daily code slots, not confidence in the agency.
+    const cands=Array.isArray(c.quality_table_candidates)?c.quality_table_candidates:[], basis=`${c.quality_table_match_count} of ${c.quality_table_code_count} eligible daily quality-code slots matched`;
+    if(c.quality_table_selection==="unique_best")lines.push(`Inferred quality table: ${c.quality_table} (${basis}${finiteNumber(c.quality_table_margin_count)?`; ${c.quality_table_margin_count} ahead of the next table`:""})`);
+    else if(c.quality_table_selection==="equivalent_tie")lines.push(`Quality table tied between ${cands.join(", ")} (${basis}); they remove the same readings`);
+    else if(c.quality_table_selection==="ambiguous")lines.push(`Quality table could not be settled between ${cands.join(", ")} (${basis}); readings they disagree on were kept and completeness is not certified`);
+    else lines.push("No quality table matched; finite readings were kept under the mismatch policy");
+  }else lines.push(`Quality codes: ${count(c.excluded_quality_count)} excluded, ${count(c.unknown_quality_count)} not checked against an approved policy`);
   lines.push("Counts exclude placeholder readings removed before assessment");
-  if(c.policy_version)lines.push(`Quality policy: ${c.policy_version}`);
+  if(c.policy_version)lines.push(`Quality policy: ${c.policy_version} (readings graded F are removed; grades A, B, C and E are kept)`);
+  if(c.coverage_complete===true)lines.push("Complete means every expected day has a finite reading kept under this policy; unmatched quality codes are included.");
   return lines.join("\n");
 }
 /** One line per gauge while any measurement is retrying, e.g. "Flow: retrying (2 of 3) · Level ✓". */

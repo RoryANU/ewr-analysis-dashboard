@@ -635,7 +635,8 @@ def test_ok_and_empty_results_have_no_envelope(getter_stub):
 
 
 # ---- coverage (daily source; no approved quality policy exists, so nothing may be called complete without one) --------
-POLICY = observed.QualityPolicy(frozenset({10}), "test-v1")
+# Two agency tables: the same number means different things (code 12 is F in T1 and A in T2; 10 is A in both).
+POLICY = observed.QualityPolicy(frozenset("ABCE"), {"T1": {10: "A", 12: "F", 42: "F", 130: "E"}, "T2": {10: "A", 12: "A", 99: "B"}}, "test-v1")
 D = date
 
 
@@ -701,7 +702,8 @@ def test_coverage_policy_gates_completeness_and_98_percent_is_never_complete():
     mixed = _cov(
         ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"], [1, 2, 3, 4], ["10", 42, None, "abc"], start=D(2024, 1, 1), end=D(2024, 1, 4), policy=POLICY
     )
-    assert (mixed["valid_count"], mixed["excluded_quality_count"], mixed["unknown_quality_count"], mixed["coverage_pct"]) == (1, 1, 2, 25.0)
+    # F (42) is cleaned out; a missing or unparseable code is kept and counted as unknown, never as bad data
+    assert (mixed["valid_count"], mixed["excluded_quality_count"], mixed["unknown_quality_count"], mixed["coverage_pct"]) == (3, 1, 2, 75.0)
     provisional = _cov(["2024-01-01", "2024-01-02", "2024-01-03"], [0, 2, None], [10, None, 42], start=D(2024, 1, 1), end=D(2024, 1, 3))
     assert (provisional["valid_count"], provisional["unknown_quality_count"], provisional["all_zero"], "policy_version" in provisional) == (2, 3, False, False)
 
@@ -742,64 +744,162 @@ def test_coverage_unknown_or_incompatible_units_block_assessment(var, units):
     assert (cov["coverage_pct"], cov["coverage_complete"], cov["expected_count"], cov["valid_count"], cov["gaps"]) == (None,) * 5
 
 
-def test_coverage_policy_cannot_approve_removed_placeholders():
-    with pytest.raises(ValueError):
-        observed.QualityPolicy(frozenset({255}), "v1")
-    with pytest.raises(ValueError):
-        observed.QualityPolicy(frozenset({10}), " ")
+def test_coverage_policy_is_validated():
+    for grades, tables, version in (
+        (frozenset(), {"T": {1: "A"}}, "v"),
+        (frozenset("X"), {"T": {1: "A"}}, "v"),
+        (frozenset("A"), {}, "v"),
+        (frozenset("A"), {"T": {1: "A"}}, " "),
+    ):
+        with pytest.raises(ValueError):
+            observed.QualityPolicy(grades, tables, version)
 
 
-def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
-    err = observed._attach_coverage(
-        observed.GaugeResult(pd.DataFrame(), "error", "x", True, {"code": "UNEXPECTED_ERROR"}, 2), D(2024, 1, 1), D(2024, 1, 3), var="F", policy=POLICY
+def test_policy_cleans_only_clear_missing_data_and_keeps_mismatches():
+    days = [f"2024-01-0{n}" for n in range(1, 8)]
+    # T1 matches 6 of the 7 codes, T2 matches 3: T1 wins, so 12 and 42 are F (removed). 7 is listed nowhere (kept); 130 is "not quality coded" (E, kept).
+    cov = _cov(days, [1, 1, 1, 1, 1, 1, 1], [10, 10, 12, 42, 7, 130, 130], start=D(2024, 1, 1), end=D(2024, 1, 7), policy=POLICY)
+    assert (cov["quality_table"], cov["quality_table_match_pct"]) == ("T1", 85.7)
+    assert (cov["valid_count"], cov["excluded_quality_count"], cov["unknown_quality_count"]) == (5, 2, 1)
+    assert (
+        cov["gaps"] == [{"start": "2024-01-03", "end_exclusive": "2024-01-05", "missing_count": 2}] and cov["coverage_complete"] is False
+    )  # adjacent removed days form one gap
+    # the same number graded by the other agency's table: 12 is now A and kept
+    other = _cov(days[:3], [1, 1, 1], [12, 99, 12], start=D(2024, 1, 1), end=D(2024, 1, 3), policy=POLICY)
+    assert (other["quality_table"], other["valid_count"], other["excluded_quality_count"], other["coverage_complete"]) == ("T2", 3, 0, True)
+    # nothing matches any table: everything is a mismatch and is kept; no table is claimed
+    none = _cov(days[:2], [1, 1], [500, 501], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=POLICY)
+    assert (none["quality_table"], none["quality_table_match_pct"], none["valid_count"], none["unknown_quality_count"]) == (None, 0.0, 2, 2)
+    # a NaN/NA value is still removed: that is the other half of "clear missing data"
+    na = _cov(days[:2], [None, 1], [10, 10], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=POLICY)
+    assert (na["valid_count"], na["gaps"]) == (1, [{"start": "2024-01-01", "end_exclusive": "2024-01-02", "missing_count": 1}])
+
+
+def test_default_policy_is_grades_a_to_e_over_the_bureau_tables():
+    policy = observed.default_quality_policy()
+    assert policy is not None and policy.allowed_grades == frozenset("ABCE") and len(policy.tables) == 12
+    assert policy.version.startswith("bom-hrs-grades-ABCE-") and len(policy.version.rsplit("-", 1)[1]) == 10  # content digest
+    dilw = policy.tables["NSW DILW"]
+    assert dilw[130] == "E" and dilw[255] == "F" and 999 not in dilw
+    # sentinels dropped upstream are grade F in every table that lists them (so dropping them agrees with the policy); 151 is the exception
+    for code in (255, 201):
+        assert {t[code] for t in policy.tables.values() if code in t} == {"F"}
+    assert {t[151] for t in policy.tables.values() if 151 in t} == {"E", "F"}
+    few = policy.select_table([130, 130, 26, 38])  # a handful of common codes is listed by several agencies: tied, and no table is claimed
+    assert few["selection"] == "equivalent_tie" and "NSW DILW" in few["candidates"] and few["table"] is None
+    sel = policy.select_table([38, 130, 26, 32, 140, 58, 16, 254, 11, 3, 51, 6, 34])  # a realistic NSW code mix
+    assert (sel["selection"], sel["table"], sel["match_count"], sel["code_count"]) == ("unique_best", "NSW DILW", 11, 13)
+    assert policy.select_table([])["selection"] == "no_codes"
+
+
+def test_table_ties_are_inspected_not_settled_by_listing_order():
+    grades = frozenset("ABCE")
+    both = observed.QualityPolicy(grades, {"A1": {10: "A", 12: "F"}, "B1": {10: "A", 12: "F"}}, "v")
+    swapped = observed.QualityPolicy(grades, {"B1": {12: "F", 10: "A"}, "A1": {12: "F", 10: "A"}}, "v")
+    for policy in (both, swapped):  # same decisions: an equivalent tie keeps working, whatever the JSON order
+        sel = policy.select_table([10, 12])
+        assert (sel["selection"], sel["candidates"], sel["table"]) == ("equivalent_tie", ["A1", "B1"], None)  # no single table is named when none is proven
+    split = observed.QualityPolicy(grades, {"A1": {10: "A", 12: "F"}, "B1": {10: "A", 12: "A"}}, "v")
+    sel = split.select_table([10, 12])
+    assert (sel["selection"], sel["table"], sel["candidates"]) == ("ambiguous", None, ["A1", "B1"])
+    assert split.removes(12, sel["candidates"]) is False  # disputed readings are kept
+    assert split.removes(12, ["A1"]) is True and split.removes(12, ["B1"]) is False
+    third = observed.QualityPolicy(grades, {"A1": {10: "A", 12: "F"}, "B1": {10: "A"}}, "v")  # a missing mapping counts as "keep"
+    assert third.select_table([10, 12])["selection"] == "unique_best"
+    runner = observed.QualityPolicy(grades, {"A1": {10: "A", 11: "A"}, "B1": {10: "A"}}, "v").select_table([10, 11, 11])
+    assert (runner["match_count"], runner["runner_up_match_count"], runner["margin_count"], runner["code_count"]) == (3, 1, 2, 3)
+
+
+def test_ambiguous_selection_keeps_disputed_readings_and_never_certifies_completeness():
+    policy = observed.QualityPolicy(frozenset("ABCE"), {"A1": {10: "A", 12: "F"}, "B1": {10: "A", 12: "A"}}, "v")
+    cov = _cov(["2024-01-01", "2024-01-02"], [1, 1], [10, 12], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=policy)
+    assert (cov["quality_table_selection"], cov["quality_table"], cov["valid_count"], cov["coverage_pct"], cov["coverage_complete"]) == (
+        "ambiguous",
+        None,
+        2,
+        100.0,
+        None,
     )
-    assert err.attempts == 2 and err.coverage["coverage_status"] == "unavailable_error" and err.coverage["units"] == "ML/d"
-    assert all(
-        err.coverage[k] is None
-        for k in ("coverage_pct", "coverage_complete", "expected_count", "valid_count", "last_reading", "gaps", "zero_count", "all_zero")
+    assert cov["quality_table_candidates"] == ["A1", "B1"] and cov["quality_table_match_count"] == 2 and cov["quality_table_code_count"] == 2
+
+
+def test_policy_is_frozen_and_validated():
+    source = {"T": {1: "A"}}
+    policy = observed.QualityPolicy(frozenset("A"), source, "v")
+    source["T"][2] = "F"  # later edits to the caller's dict never reach a published policy
+    assert 2 not in policy.tables["T"]
+    with pytest.raises(TypeError):
+        policy.tables["T"][3] = "A"
+    with pytest.raises(TypeError):
+        policy.tables["U"] = {1: "A"}
+    for bad in ({"T": {}}, {"T": {"1": "A"}}, {"T": {1: "Z"}}, {"T": {True: "A"}}):
+        with pytest.raises(ValueError):
+            observed.QualityPolicy(frozenset("A"), bad, "v")
+
+
+def test_unknown_count_only_counts_readings_that_were_actually_kept():
+    cov = _cov(["2024-01-01", "2024-01-02"], [None, 1], [500, 501], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=POLICY)
+    assert (cov["valid_count"], cov["unknown_quality_count"], cov["quality_table_selection"]) == (1, 1, "no_match")  # the NaN slot is not "kept"
+
+
+def test_clean_frame_removes_f_rows_so_downstream_uses_the_counted_readings():
+    frame = pd.DataFrame(
+        {"DATETIME": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]), "VALUE": [1.0, 2.0, 3.0, 4.0], "QUALITYCODE": [10, 12, 7, 130]}
     )
-    for status in ("running", "retry_wait"):
-        assert observed._attach_coverage(observed.GaugeResult(pd.DataFrame(), status), D(2024, 1, 1), D(2024, 1, 3), var="F").coverage is None
+    cleaned = observed.clean_frame(frame, POLICY)
+    assert list(cleaned["VALUE"]) == [1.0, 3.0, 4.0]  # 12 is F in the winning table; 7 (unlisted) and 130 (E) stay
+    assert observed.clean_frame(frame, None) is frame and observed.clean_frame(pd.DataFrame(), POLICY).empty
 
 
-def test_fetch_many_attaches_coverage_before_terminal_callbacks_and_passes_period_flags(monkeypatch):
+def test_fetch_many_cleans_the_series_it_returns_and_reports_empty_when_nothing_usable_is_left(monkeypatch):
     def fake_fetch_gauge(gauge, start, end, var, **kwargs):
-        if var == "F":
-            return observed.GaugeResult(pd.DataFrame(), "empty")
-        return observed.GaugeResult(pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01"]), "VALUE": [1.2], "QUALITYCODE": [10]}), "ok")
+        codes = [10, 42] if var == "F" else [42, 42]
+        return observed.GaugeResult(pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01", "2024-01-02"]), "VALUE": [1.0, 2.0], "QUALITYCODE": codes}), "ok")
 
     monkeypatch.setattr(observed, "fetch_gauge", fake_fetch_gauge)
-    seen = []
-    _, statuses = observed.fetch_many(
-        ["g"],
-        D(2024, 1, 1),
-        D(2024, 1, 2),
-        status_progress=lambda g, v, r: seen.append((g, v, r.coverage is not None)),
-        policy=POLICY,
-        reporting_cutoff=D(2024, 1, 1),
-    )
-    assert sorted(seen) == [("g", "F", True), ("g", "L", True)]
-    assert statuses[("g", "F")].coverage["coverage_complete"] is False and statuses[("g", "L")].coverage["coverage_complete"] is True
-    _, open_period = observed.fetch_many(["g"], D(1890, 1, 1), D(2024, 1, 1), filter_period=False)
-    assert all(r.coverage["coverage_status"] == "unassessed_open_period" for r in open_period.values())
+    frames, statuses = observed.fetch_many(["g"], D(2024, 1, 1), D(2024, 1, 2), policy=POLICY)
+    assert list(frames[("g", "F")]["VALUE"]) == [1.0] and statuses[("g", "F")].status == "ok"
+    assert statuses[("g", "L")].status == "empty" and ("g", "L") not in frames  # every reading was grade F
+    assert statuses[("g", "L")].coverage["valid_count"] == 0 and statuses[("g", "L")].coverage["excluded_quality_count"] == 2
 
 
-def test_coverage_ignores_rows_outside_the_window():
-    inside = _cov(["2024-01-02", "2024-01-03"], [1, 0], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
-    noisy = _cov(["2023-12-31", "2024-01-02", "2024-01-03", "2024-01-04"], [0, 1, 0, 9], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
-    assert noisy == inside  # zeros, later timestamps or placeholders outside [start, end] change nothing
+def test_policy_load_failure_is_loud_and_not_cached(monkeypatch, tmp_path, caplog):
+    monkeypatch.setattr(observed, "_DEFAULT_POLICY", None)
+    monkeypatch.setattr(observed, "QUALITY_CODES", tmp_path / "missing.json")
+    with caplog.at_level("ERROR"):
+        assert observed.default_quality_policy() is None
+    assert "completeness is disabled" in caplog.text
+    (tmp_path / "ok.json").write_text(json.dumps({"retrieved": "2026-01-01", "tables": {"T": {"1": "A"}}}), encoding="utf-8")
+    monkeypatch.setattr(observed, "QUALITY_CODES", tmp_path / "ok.json")
+    assert observed.default_quality_policy() is not None  # a repaired file is picked up without a restart
+    monkeypatch.setattr(observed, "_DEFAULT_POLICY", None)
 
 
-def test_stale_cache_placeholder_rows_never_come_back_as_zero_readings(getter_stub, tmp_path):
-    """Cache entries written before the placeholder filter hold 'No Record' (255/201/151/>=999) rows with VALUE 0."""
-    calls, _ = getter_stub
-    frame = raw_frame("412033", pd.date_range("2000-01-01", periods=4))
-    frame["QUALITYCODE"] = [140, 255, 201, 999]
-    frame["VALUE"] = ["5.0", "0", "0", "0"]
-    data_path, meta_path = observed._cache_paths("412033", "F")
-    observed.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(data_path, index=False)
-    meta_path.write_text(json.dumps({"start": "2000-01-01", "end": "2000-01-04", "fetched_at": time.time()}), encoding="utf-8")
-    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 4))
-    assert calls == []  # served from cache
-    assert result.status == "ok" and list(result.frame["VALUE"]) == [5.0]  # the three placeholder zeros are gone
+def test_bomwater_cache_lives_in_the_repo_and_needs_no_download(monkeypatch):
+    """The package's default (~/bom_water/cache, built by a download that now fails) is replaced by files shipped in the repository."""
+    pytest.importorskip("bom_water")
+    import requests
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("bomwater tried to download its station list")
+
+    monkeypatch.setattr(requests, "get", no_network)
+    monkeypatch.setattr(requests, "post", no_network)
+    observed._use_repo_bom_cache()
+    observed._use_repo_bom_cache()  # idempotent
+    import bom_water
+
+    client = bom_water.BomWater()
+    assert Path(client.cache) == observed.BOM_WATER_HOME / "bom_water" / "cache"
+    assert client.properties.Water_Course_Discharge and client.procedures.Pat4_C_B_1_DailyMean
+    cache = Path(client.cache)
+    assert json.loads((cache / "stations.json").read_text()) == {"type": "FeatureCollection", "features": []}
+    assert "sos:Capabilities" in json.loads((cache / "waterML_GetCapabilities.json").read_text())
+    import os
+
+    assert os.path.expanduser("~") != str(observed.BOM_WATER_HOME)  # only bomwater's own module is redirected
+
+
+def test_a_missing_shipped_station_file_is_still_reported_as_a_setup_error():
+    result = observed._error_result(FileNotFoundError(f"[Errno 2] No such file or directory: '{observed.BOM_WATER_HOME}/bom_water/cache/stations.json'"))
+    assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False

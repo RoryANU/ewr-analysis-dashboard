@@ -701,6 +701,7 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
             refresh=refresh,
             status_progress=report_gauge,
             inflight_progress=report_gauge,
+            policy=observed.default_quality_policy(),
             filter_period=filter_period,
             reporting_cutoff=date.today() - timedelta(days=1),  # today's daily mean is not complete yet; disclosed in coverage.period
         )
