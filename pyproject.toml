@@ -61,3 +61,20 @@ markers = [
     "network: needs internet (skipped when GitHub is unreachable)",
     "observed: requires the optional mdba-gauge-getter dependency",
 ]
+
+[tool.importlinter]
+root_package = "ewr_analysis"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core calculations have no application or infrastructure dependencies"
+type = "forbidden"
+source_modules = ["ewr_analysis.core"]
+# All siblings includes config, data_io, workflows, interfaces and visualization
+# when they are created, as well as the existing compatibility/server modules.
+# The overlapping core package is allowed to import its own descendants.
+forbidden_modules = [
+    "ewr_analysis.*",
+    "http", "socket", "requests", "subprocess", "threading", "concurrent",
+    "streamlit", "dash", "plotly", "matplotlib",
+]

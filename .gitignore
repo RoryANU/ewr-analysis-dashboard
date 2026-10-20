@@ -10,3 +10,4 @@ ewr_dashboard_with_scenarios.html
 node_modules/
 ewr_analysis_dashboard.html
 *.egg-info/
+.import_linter_cache/

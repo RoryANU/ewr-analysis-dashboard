@@ -46,6 +46,12 @@ repos:
         language: system # uses the project environment so py_ewr / pandas are importable
         types: [python]
         pass_filenames: false # the file list comes from [tool.mypy] in pyproject.toml
+      - id: lint-imports
+        name: lint-imports (core dependency boundary)
+        entry: lint-imports --no-cache
+        language: system
+        pass_filenames: false
+        files: ^(src/|pyproject\.toml|requirements-dev\.txt)
       - id: pytest-fast
         name: pytest (fast, not slow)
         entry: pytest -m "not slow" -q -x -p no:cacheprovider
