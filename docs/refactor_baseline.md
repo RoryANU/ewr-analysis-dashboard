@@ -202,3 +202,103 @@ e803ee7 test: use package imports and relocated assets; no behaviour change
 c2139c7 chore: resolve existing mypy errors with annotations and casts; no behaviour change
 14b14f0 docs: seed 117 pending server function ledger rows; no behaviour change
 ```
+
+
+## Phase 1, slice 1: Step A acceptance check
+
+Commands: `git show --stat c2139c7` and `git show --format=fuller c2139c7`.
+The complete diff was reviewed: 5 files, 62 insertions and 59 deletions.
+Every executable-expression change is an identity-preserving `typing.cast`;
+the remaining changes are annotations and their supporting `typing` imports.
+There are no new assertions/guards, reordered/removed statements, changed
+defaults, altered operations or changed runtime values. The added ordinary
+`typing` imports are needed to resolve casts and type names; they are the only
+supporting imports beyond the user's literal annotation/cast categories.
+No reversion was needed, so there is no Step A reversion commit.
+
+`ast.dump` of each complete module at `c2139c7^` and `c2139c7`, after removing
+annotations, supporting `typing` imports and two-argument `typing.cast` wrappers,
+was identical. This comparison did not remove docstrings, change constants or
+normalize any other runtime statements. Output:
+
+```text
+src/ewr_analysis/custom_ewr.py: equivalent after stripping annotations, typing imports and typing.cast
+src/ewr_analysis/server.py: equivalent after stripping annotations, typing imports and typing.cast
+tests/test_embed_scenarios.py: equivalent after stripping annotations, typing imports and typing.cast
+tests/test_observed.py: equivalent after stripping annotations, typing imports and typing.cast
+tests/test_observed_classification.py: equivalent after stripping annotations, typing imports and typing.cast
+PASS: all 5 complete module ASTs are equivalent; no runtime statement changes outside typing support.
+```
+
+```sh
+source .venv/bin/activate
+pytest -q > /tmp/ewr-slice1-step-a-pytest.log 2>&1
+# 794 passed in 143.15s (0:02:23), zero failures/skips
+node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js tests/test_heatmap_selection.js > /tmp/ewr-slice1-step-a-node.log 2>&1
+# 205 tests, 205 passed, 0 failed, 0 skipped
+```
+
+Step A passed and was reported before the extraction began.
+
+## Phase 1, slice 1: purity and unchanged move
+
+Before moving, `git grep -nE "DROUGHTS|flow_mappings"` was run and every hit
+reviewed, including the table-reader tests. No table mutation was found.
+`test_a_list_value_is_returned_as_a_copy` appends to the returned copy, then
+verifies the mapping's list is unchanged. The dashboard's JavaScript `DROUGHTS`
+is a separate derived array and is only read.
+
+The user explicitly authorized moving these two module-level lookup constants
+and their readers unchanged, with later TOML migration recorded in the ledger.
+The other nine functions have no application-state globals, I/O or locks; their
+only dependencies are stdlib/numpy/pandas operations and another pure helper.
+All nine function ASTs (including signatures, original docstrings, casts and
+operation order) matched the pre-slice versions exactly in the move commit.
+The drought and flow-regime table/reader modules were byte-identical copies.
+No other logic was extracted. Both package `__init__.py` files are empty.
+
+### Old/new comparison
+
+```sh
+python scripts/compare_implementations.py
+```
+
+The script loads original sources with `git show pre-refactor:src/<module>.py`
+into temporary in-memory modules. For `server.py`, it compiles only the nine
+original function ASTs, with their original names/signatures/bodies and the
+required stdlib namespace. This avoids executing the old server's unrelated
+I/O, imports and state initialization. It compares 270 input cases, exact
+structure/types, Series metadata, table order, exceptions and warnings.
+No numerical tolerance is used. Output (exit 0):
+
+```text
+DROUGHTS / flow_mappings: exact values and order match pre-refactor
+mcnemar_p: cases=84, max_abs=0, max_rel=0, matched_exceptions=0
+exceed_pct: cases=24, max_abs=0, max_rel=0, matched_exceptions=0
+nice_ceiling: cases=18, max_abs=0, max_rel=0, matched_exceptions=2
+_mrip_days: cases=9, max_abs=0, max_rel=0, matched_exceptions=0
+record_days: cases=7, max_abs=0, max_rel=0, matched_exceptions=0
+_feb29: cases=8, max_abs=0, max_rel=0, matched_exceptions=0
+_water_year: cases=7, max_abs=0, max_rel=0, matched_exceptions=0
+_water_year_days: cases=8, max_abs=0, max_rel=0, matched_exceptions=0
+_window_days: cases=24, max_abs=0, max_rel=0, matched_exceptions=0
+window_dates: cases=17, max_abs=0, max_rel=0, matched_exceptions=0
+meta: cases=1, max_abs=0, max_rel=0, matched_exceptions=0
+regimes_for: cases=63, max_abs=0, max_rel=0, matched_exceptions=0
+PASS: all 12 moved functions match pre-refactor exactly
+```
+
+A negative control patched only the new `nice_ceiling` result in memory to
+add one. The script returned 1 and printed `max_abs=1, max_rel=1`. No source,
+fixture or data file was changed by this check.
+
+### Observed oddities (preserved)
+
+- `_window_days` uses the year the water year ends; `_water_year`, `_feb29` and
+  `_water_year_days` use its starting year. Their conventions remain distinct.
+- `_mrip_days` maps NaN/nonpositive values to zero, but `None` and an empty
+  string raise `TypeError` before conversion, despite the old "blank" wording.
+- `exceed_pct` on an empty record returns NaN values and emits NumPy's invalid
+  divide warning. No empty-input policy has been invented.
+- `nice_ceiling` returns 100 for nonpositive values (and `None`), but raises
+  for NaN or positive infinity. These results/exceptions are unchanged.
