@@ -1,4 +1,4 @@
-"""Compare slice 1 calculations with untouched definitions from the pre-refactor tag."""
+"""Compare slice 1 and slice 2 calculations with untouched definitions from the pre-refactor tag."""
 
 import ast
 import copy
@@ -16,6 +16,21 @@ import pandas as pd
 from ewr_analysis.paths import ROOT
 
 SERVER_FUNCTIONS = {
+    "_iso_date": "assessment_years",
+    "assessment_start": "assessment_years",
+    "_timing_mask": "assessment_years",
+    "complete_years": "assessment_years",
+    "year_summary": "assessment_years",
+    "window_metrics": "assessment_years",
+    "achievement_frequencies": "assessment_years",
+    "ewr_gaps": "event_gaps",
+    "gap_severity": "event_gaps",
+    "_dateless_gap_stats": "event_gaps",
+    "_runs_by_year": "event_gaps",
+    "_has_any_event": "event_gaps",
+    "dr_years": "duration_ratio",
+    "vr_years": "duration_ratio",
+    "_paired_achievement": "paired_comparison",
     "mcnemar_p": "paired_comparison",
     "exceed_pct": "flow_duration_curves",
     "nice_ceiling": "axis_limits",
@@ -46,6 +61,17 @@ def load_old(path: str, names: set[str] | None = None) -> types.ModuleType:
 
 def compare_values(old: Any, new: Any) -> tuple[float, float]:
     """Require exact structure, metadata and values; also accumulate numeric deviations."""
+    if isinstance(old, pd.DataFrame):
+        pd.testing.assert_index_equal(old.index, new.index, exact=True)
+        pd.testing.assert_index_equal(old.columns, new.columns, exact=True)
+        if not old.dtypes.equals(new.dtypes):
+            raise AssertionError("DataFrame dtypes differ")
+        return compare_values(old.to_numpy(), new.to_numpy())
+    if isinstance(old, pd.Index):
+        pd.testing.assert_index_equal(old, new, exact=True)
+        if getattr(old, "freq", None) != getattr(new, "freq", None):
+            raise AssertionError("Index frequency differs")
+        return 0.0, 0.0
     if isinstance(old, pd.Series):
         pd.testing.assert_index_equal(old.index, new.index, exact=True)
         if old.dtype != new.dtype or old.name != new.name or getattr(old.index, "freq", None) != getattr(new.index, "freq", None):
@@ -128,8 +154,148 @@ def cases() -> dict[str, list[tuple]]:
     }
 
 
+def slice_two_cases() -> dict[str, list[tuple]]:
+    """In-memory daily records, incomplete years, equality and window edges."""
+    leap = pd.Series(10.0, index=pd.date_range("1999-07-01", "2000-06-30"), name="flow")
+    empty = leap.iloc[:0]
+    single = leap.iloc[:1]
+    missing = leap.copy()
+    missing.loc["2000-02-29"] = np.nan
+    short = pd.Series([0.0, 10.0, 10.0, np.nan, 10.0, 10.0, 0.0], index=pd.date_range("2000-02-26", periods=7))
+    boundary = pd.Series([0.0, 10.0, 10.0, 0.0], index=pd.date_range("2000-06-29", periods=4))
+    key = ("g", "pu", "e")
+    years = {"wy": [1998, 1999, 2000], "complete": [1, 1, 0], "achieved": [0, 1, 1], "dr": [0.5, 1.0, None], "ystart": 7}
+    gaps = [
+        {"start": "1999-06-25", "end": "1999-07-05", "days": 11, "censored": False, "boundary": False, "excess": 8},
+        {"start": "2000-06-29", "end": "2000-07-02", "days": 4, "censored": False, "boundary": True, "excess": 1},
+        {"start": "2000-02-28", "end": "2000-03-01", "days": 3, "censored": True, "boundary": False, "excess": None},
+    ]
+    yearly = pd.DataFrame({"maxEventDays": [0, 3, 6, np.nan], "totalEventDays": [6, 9, 12, np.nan]}, index=[1998, 1999, 2000, 2001])
+    by_date = yearly.set_axis(pd.date_range("1998-07-01", periods=4, freq="YS-JUL"))
+    events = {1999: [[1] * 6, [1] * 3, []], 2000: [[1] * 9]}
+    inter = pd.DataFrame({"startDate": ["2000-02-26", "2000-02-29"], "endDate": ["2000-02-28", "2000-03-03"]}, index=pd.date_range("2000-02-26", periods=2))
+    out: dict[str, list[tuple]] = {
+        "_iso_date": [
+            (value,)
+            for value in (
+                date(2000, 2, 29),
+                pd.Timestamp("2024-07-01T00:30:00+10:00"),
+                "2000-02-29",
+                0,
+                86_400_000_000_000,
+                -1,
+                None,
+                pd.NaT,
+                "",
+                "not-a-date",
+                "now",
+                "today",
+            )
+        ],
+        "assessment_start": [(sm, em) for sm in (1, 6, 7, 12) for em in (1, 6, 7, 12)],
+        "_timing_mask": [
+            (s.index, sm, em, sd, ed)
+            for s in (leap, empty, short, boundary)
+            for sm, em, sd, ed in ((7, 6, None, None), (2, 3, 28, 1), (12, 2, 31, 29), (2, 2, 29, 28), (7, 7, 0, 0))
+        ],
+        "complete_years": [
+            (s, wys, ys, sm, em, sd, ed)
+            for s in (leap, missing, empty, single, short)
+            for wys, ys, sm, em, sd, ed in (
+                ([1999], 7, 7, 6, None, None),
+                ([1999, 2000], 7, 2, 3, 28, 1),
+                ([], 7, 7, 6, None, None),
+                ([2000], 1, 1, 12, None, None),
+            )
+        ],
+        "year_summary": [([], []), ([None], [1]), ([0, 0.5, 1, 2, None], [1, 1, 1, 0, 1]), ([np.nan, 0.5], [1, 1]), ([1], []), ([0.4999, 0.9999], [1, 1])],
+        "window_metrics": [
+            (years, gs, mrip, tgt, w0, w1, rec)
+            for gs in ([], gaps, gaps[:1], gaps[2:])
+            for mrip, tgt, w0, w1, rec in (
+                (3, 50, "1999-07-01", "2000-06-30", None),
+                (3, 50, "1999-07-01", "2000-06-30", ("1999-08-01", "2000-05-31")),
+                (0, None, "2000-01-01", "2000-01-01", None),
+                (3, 0, "2002-01-01", "2002-12-31", None),
+                (3, "", "1999-07-01", "2000-06-29", None),
+            )
+        ],
+        "achievement_frequencies": [
+            (np.column_stack([s.to_numpy(), s.to_numpy()]), s.index, np.array([0.0, 10.0, 11.0]), np.array([1, 2, 29, 366, 367]), sm, em, consecutive)
+            for s in (leap, missing, empty, single, short)
+            for sm, em in ((7, 6), (2, 2), (12, 2))
+            for consecutive in (False, True)
+        ],
+        "ewr_gaps": [
+            ({"flow": s, "mrip_days": mrip, "inter": frame, "succ": succ},)
+            for s in (leap, short, empty, single)
+            for mrip in (0, 3)
+            for frame, succ in ((inter.iloc[:0], inter.iloc[:0]), (inter, inter.iloc[:1]), (inter.iloc[:0], inter.iloc[:1]))
+        ],
+        "gap_severity": [(gs, mrip) for gs in ([], gaps, gaps[:1], gaps[2:]) for mrip in (0, 3, 11)],
+        "_dateless_gap_stats": [
+            (key, total, mrip, inters, successes)
+            for total in (0, 10, np.nan)
+            for mrip in (0, 3)
+            for inters, successes in (
+                ({}, {}),
+                ({key: pd.DataFrame({"interEventLength": [3, 7, np.nan, "bad"]}, index=pd.date_range("2000-01-01", periods=4))}, {key: pd.DataFrame()}),
+                ({}, {key: pd.DataFrame()}),
+            )
+        ],
+        "_runs_by_year": [(s, s.to_numpy() >= threshold) for s in (empty, single, leap, missing, short, boundary) for threshold in (0.0, 10.0, 11.0)],
+        "_has_any_event": [
+            ({},),
+            ({"g": {"pu": {"e": {1999: []}}}},),
+            ({"g": {"pu": {"e": {1999: [[]]}}}},),
+            ({"g": {"pu": {"e": {1999: [[(date(1999, 7, 1), 10)]]}}}},),
+        ],
+        "dr_years": [
+            (frame, code, dur, low, per_year, ev)
+            for frame, code in ((yearly, ""), (yearly.add_prefix("e_"), "e"), (by_date, ""), (yearly.iloc[:0], ""))
+            for dur, low, per_year, ev in (
+                (3, False, 1, None),
+                (3, True, 2, events),
+                (3, False, 2, events),
+                (0, False, 1, None),
+                (None, False, 1, None),
+                (3, False, "2.0", None),
+            )
+        ],
+        "vr_years": [
+            (s, [1999, 2000], 7, sm, em, acc, vol, sd, ed)
+            for s in (leap, missing, short, empty)
+            for sm, em, acc, vol, sd, ed in (
+                (7, 6, 2, 20, None, None),
+                (2, 3, 2, 20, 28, 1),
+                (7, 6, 1, 0, None, None),
+                (7, 6, None, 20, None, None),
+                (7, 6, 2.5, 20, None, None),
+            )
+        ],
+        "dr_approx": [
+            (values, params)
+            for values in ([], [None], [0, 1.5, 3, 9, None, np.nan])
+            for params in ({"dur": 3}, {"dur": 0}, {"dur": None}, {"dur": 3, "kind": "V"}, {"dur": -3}, {"dur": np.nan}, {"dur": "3"})
+        ],
+        "_paired_achievement": [
+            (base, comp)
+            for base, comp in (
+                (years, years),
+                (years, {"wy": [2000, 1999, 1998], "complete": [1, 1, 1], "achieved": [1, 0, 1]}),
+                ({"wy": [], "complete": [], "achieved": []}, years),
+                ({"wy": [1999, 1999], "complete": [1, 1], "achieved": [0, 2]}, years),
+            )
+        ],
+    }
+    # Missingness in only one scenario must still remove the year for BOTH.
+    out["achievement_frequencies"].append((np.column_stack([leap.to_numpy(), missing.to_numpy()]), leap.index, np.array([10.0]), np.array([1]), 7, 6, False))
+    return out
+
+
 def main() -> int:
     old_server = load_old("src/server.py", set(SERVER_FUNCTIONS))
+    old_build = load_old("src/build_dashboard.py", {"dr_approx"})
     old_drought = load_old("src/drought_windows.py")
     old_regimes = load_old("src/flow_regime_mappings.py")
     new_drought = importlib.import_module("ewr_analysis.core.calculations.drought_windows")
@@ -140,22 +306,32 @@ def main() -> int:
         raise AssertionError("flow_mappings differ")
     print("DROUGHTS / flow_mappings: exact values and order match pre-refactor")
     failures = []
-    for name, inputs in cases().items():
+    for name, inputs in (cases() | slice_two_cases()).items():
         if name in SERVER_FUNCTIONS:
             old_module = old_server
             new_module = importlib.import_module(f"ewr_analysis.core.calculations.{SERVER_FUNCTIONS[name]}")
+        elif name == "dr_approx":
+            old_module = old_build
+            new_module = importlib.import_module("ewr_analysis.core.calculations.duration_ratio")
         elif name in ("window_dates", "meta"):
             old_module, new_module = old_drought, new_drought
         else:
             old_module, new_module = old_regimes, new_regimes
         absolute = relative = 0.0
-        matched_errors = 0
+        matched_errors = relative_acceptances = 0
         for index, args in enumerate(inputs):
             try:
                 old_value, old_error, old_warnings = invoke(getattr(old_module, name), args)
                 new_value, new_error, new_warnings = invoke(getattr(new_module, name), args)
                 if old_error != new_error or old_warnings != new_warnings:
                     raise AssertionError(f"Exception/warning mismatch: {old_error}, {old_warnings} != {new_error}, {new_warnings}")
+                # These accepted pandas keywords read the wall clock. Per the
+                # explicit migration exception, compare acceptance, NEVER values.
+                if name == "_iso_date" and isinstance(args[0], str) and args[0] in ("now", "today"):
+                    if old_error is not None or new_error is not None:
+                        raise AssertionError("Relative date must be accepted by both implementations")
+                    relative_acceptances += 1
+                    continue
                 if old_error is not None:
                     matched_errors += 1
                 deviation = compare_values(old_value, new_value)
@@ -164,11 +340,14 @@ def main() -> int:
                     failures.append(f"{name} case {index}: abs={deviation[0]}, rel={deviation[1]}")
             except AssertionError as error:
                 failures.append(f"{name} case {index}: {error}")
-        print(f"{name}: cases={len(inputs)}, max_abs={absolute:g}, max_rel={relative:g}, matched_exceptions={matched_errors}")
+        print(
+            f"{name}: cases={len(inputs)}, max_abs={absolute:g}, max_rel={relative:g}, "
+            f"matched_exceptions={matched_errors}, clock_acceptance_only={relative_acceptances}"
+        )
     if failures:
         print("FAIL\n" + "\n".join(failures))
         return 1
-    print("PASS: all 12 moved functions match pre-refactor exactly")
+    print("PASS: all 28 moved functions match pre-refactor exactly for deterministic inputs; 2 relative-date cases check acceptance only")
     return 0
 
 

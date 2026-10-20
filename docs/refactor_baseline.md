@@ -439,3 +439,83 @@ with zero failures/skips.
 All 30 protected data/fixture files also retain their original Phase 0 SHA-256
 hashes. The existing builder prints 301 FR variant-conflict groups and retains
 its existing mean aggregation; this policy and the data remain unchanged.
+
+## Phase 1 slice 2 — comparison evidence
+
+Scope starts at `2801c86`; move/shim commit `e66093c` extracts 16 functions,
+including the explicitly authorized `_iso_date` helper. `_pair_years` stays in
+server because it mutates its caller's payload. No table values move or change
+in this slice; the existing recursive staleness scan covers the new module.
+
+Commands (existing `.venv`, repository root):
+
+```sh
+source .venv/bin/activate
+python scripts/compare_implementations.py
+```
+
+Exit 0. Exact comparisons include explicit date strings, timezone-aware dates,
+numeric nanosecond timestamps, and the None/NaT/blank error cases. The two
+`now`/`today` cases assert acceptance by both implementations only; their return
+values are never compared. DatetimeIndex Series/DataFrames cover leap years,
+empty/single-event records, NaN breaks, timing boundaries and paired missingness.
+
+```text
+DROUGHTS / flow_mappings: exact values and order match pre-refactor
+mcnemar_p: cases=84, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+exceed_pct: cases=24, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+nice_ceiling: cases=18, max_abs=0, max_rel=0, matched_exceptions=2, clock_acceptance_only=0
+_mrip_days: cases=9, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+record_days: cases=7, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_feb29: cases=8, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_water_year: cases=7, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_water_year_days: cases=8, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_window_days: cases=24, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+window_dates: cases=17, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+meta: cases=1, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+regimes_for: cases=63, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_iso_date: cases=12, max_abs=0, max_rel=0, matched_exceptions=4, clock_acceptance_only=2
+assessment_start: cases=16, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_timing_mask: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+complete_years: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+year_summary: cases=6, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+window_metrics: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+achievement_frequencies: cases=31, max_abs=0, max_rel=0, matched_exceptions=6, clock_acceptance_only=0
+ewr_gaps: cases=24, max_abs=0, max_rel=0, matched_exceptions=6, clock_acceptance_only=0
+gap_severity: cases=12, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_dateless_gap_stats: cases=18, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_runs_by_year: cases=18, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_has_any_event: cases=4, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+dr_years: cases=24, max_abs=0, max_rel=0, matched_exceptions=4, clock_acceptance_only=0
+vr_years: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+dr_approx: cases=21, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+_paired_achievement: cases=4, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+PASS: all 28 moved functions match pre-refactor exactly for deterministic inputs; 2 relative-date cases check acceptance only
+```
+
+Deliberate-mutation proof (process-local, no source/fixture/snapshot edits):
+
+```sh
+python - <<'PY'
+import runpy
+from ewr_analysis.core.calculations import duration_ratio
+module = runpy.run_path("scripts/compare_implementations.py")
+original = duration_ratio.dr_approx
+def changed(*args):
+    return [None if x is None else x + 0.01 for x in original(*args)]
+duration_ratio.dr_approx = changed
+raise SystemExit(module["main"]())
+PY
+```
+
+Exit **1**, as required. Relevant output:
+
+```text
+dr_approx: cases=21, max_abs=0.01, max_rel=inf, matched_exceptions=1, clock_acceptance_only=0
+FAIL
+dr_approx case 14: abs=0.010000000000000009, rel=inf
+dr_approx case 18: abs=0.010000000000000009, rel=inf
+```
+
+`lint-imports --no-cache`: 1 contract kept, 0 broken (65 files, 138
+dependencies at move time). The existing boundary needs no extension.
