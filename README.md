@@ -40,7 +40,7 @@ Prefer a command line? From the project folder, `python3 run.py` does the same t
 ```
 start.command, start.sh, start.bat   double-click launchers (Mac, Linux, Windows)
 run.py                           the launcher they call: sets up .venv, installs requirements, starts the server, opens the browser
-ewr_analysis_dashboard.html      the built dashboard page (served by the local server)
+ewr_analysis_dashboard.html      the dashboard page: generated on start-up (not committed), served by the local server
 src/
   embed_scenarios.py             runs py_ewr on your files and embeds the results in a copy of the page (used by the notebook)
   server.py                      local server: serves the page and runs py_ewr on your own model output (python3 src/server.py also works)
@@ -83,7 +83,7 @@ pip install pandas numpy shapely
 python3 src/build_dashboard.py
 ```
 
-The script prints a short summary (EWR rows, SDL units, planning units and gauges plotted) and overwrites `ewr_analysis_dashboard.html` in the repository root (about 3.7 MB). Run it again whenever you change the template or any file in `data/`. It finds its inputs relative to its own location, so keep the folder layout as it is.
+The script prints a short summary (EWR rows, SDL units, planning units and gauges plotted) and overwrites `ewr_analysis_dashboard.html` in the repository root. The file is not committed: the server (and pytest) builds it automatically on start-up when it is missing or older than the template, scripts or `data/`, so you only run this by hand to force a rebuild. It finds its inputs relative to its own location, so keep the folder layout as it is.
 
 ## Your data: run your own scenarios
 
@@ -369,4 +369,4 @@ mypy
 pre-commit run --all-files
 ```
 
-Rebuild with `python src/build_dashboard.py` before testing source changes. Finish that command before starting pytest: its byte-for-byte HTML check expects a fixed generated dashboard throughout the run.
+pytest builds the page itself when it is missing or stale; its byte-for-byte HTML check expects it not to change during the run.

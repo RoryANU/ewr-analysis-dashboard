@@ -2250,8 +2250,10 @@ def main(argv=None):
     open_browser = "--no-browser" not in args
     port_args = [a for a in args if a.isdigit()]
     host = next((a.split("=", 1)[1] for a in args if a.startswith("--host=")), "127.0.0.1")
+    import build_dashboard
     import custom_ewr
 
+    build_dashboard.ensure_built()  # the page is generated, not committed
     custom_ewr.sweep_sheets()
     srv = make_server(int(port_args[0]) if port_args else DEFAULT_PORT, host)
     port = srv.server_address[1]
