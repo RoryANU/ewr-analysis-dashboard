@@ -153,6 +153,80 @@ retains statement order, values, label conventions, sentinels and rounding.
   in server; a later slice must separate common-year computation from payload
   assignment. No partial extraction was attempted.
 
+### Phase 1 slice 3 — preserved observations
+
+- The read-only POLICIES/CLIMATES catalogue order defines policy-major scenario
+  positions (4 x 7 = 28). Lookup is case-sensitive and unknown policy/climate
+  raises ValueError. NS stays the same derived expression. No catalogue value
+  or ordering changed; TOML remains later work.
+- `_is_multigauge` accepts only a nonblank string, stripping whitespace solely
+  for that test; numeric IDs, None and NaN are false. `_dispatch_key` applies
+  string formatting without validating kind: None becomes "None", NaN "nan",
+  and unexpected kinds pass through. Both have exactly one definition in core
+  and the same-name server re-exports; four original callers were audited.
+- `detect_variant_conflicts` reports sorted distinct non-null metric values,
+  preserving group encounter order and including null grouping keys. Mixed
+  incomparable metric types can fail sorting; no type policy was added.
+- `fix_theme` changes exactly "Other species". Other spelling/case variants,
+  None and NaN are not normalized. `objective_themes` prefers FR over ETP,
+  picks the first (lexically sorted) mode on a tie, and only then uses string
+  reference metadata or Unclassified. An upstream Unclassified fill can make
+  reference fallback unreachable. `objectives_of` sorts string prefixes then
+  full codes, so A-10 precedes A-2 rather than numerical suffix order.
+- `build_row_table` keeps 13 fixed columns, several None placeholders, fixed
+  themes followed by sorted additions, and raw metric lists. Returned FR/ETP/
+  achieved lists alias the input row lists; no defensive copy was introduced.
+  Parameter kind is hidden from info, ny is taken from the row, and arbitrary
+  other parameter keys still pass through. Empty rows retain seven themes.
+- `ewr_params` uses the first duplicate gauge/code/planning-unit key, even if
+  later rows have valid values where the first is missing. Keys are stringified,
+  missing numeric columns become None, duration truncates via int, and MRIP
+  rounds to 4 decimals. Missing kind column defaults to F; present missing kind
+  is stringified. No range checks or numeric infinity guard were added.
+- `_group_by_ewr` uses pandas' default sorted/drop-null grouping, then stringifies
+  gauge keys. This can collapse distinct source groups such as numeric and
+  string representations of the same gauge; no key normalization was changed.
+  Empty/missing-Gauge tables return {}, while other missing required columns
+  can still raise.
+- `_json_safe` recognizes Python floats, recursively converts dict values and
+  list/tuple elements, and turns tuples into lists. Non-float NumPy scalars
+  (e.g. float32 NaN), dictionary keys, sets and other objects remain unchanged;
+  it is not a general JSON-type validator.
+- `_assessment_year_stats` retains numeric-to-int conversions and missing
+  achievement -> zero, conditional user day bounds, dispatch-based low-flow
+  choice, and all inherited ratio/window rounding. It assumes nonempty ordered
+  daily data (first/last indexing otherwise raises), and uses starting-year
+  labels plus the existing drought catalogue. No completeness/ratio policy changed.
+- `record_coverage` counts both NaN and absent dates between min/max, but trusts
+  the supplied complete flags independently of that count. Empty flow still
+  reports their sum/length. Duplicate or non-date indexes are not repaired;
+  date formatting stays in the existing timezone.
+- `normalise_results` is intentionally in-place and returns its argument;
+  `_fill_by_scenario` mutates a list and returns None. Both stay in the builder.
+  `aggregate_ewr_rows` itself edits only newly allocated structures but depends
+  on that excluded mutator, so it also stays. All-NaN FR/ETP group means become
+  NaN despite its docstring's broad “None where a scenario has no result”; a
+  wholly absent scenario remains None. No NaN/sentinel normalization was added.
+- `summarise_rows` retains cached handler discovery, file-backed py_ewr joins,
+  object assignments and report callbacks. `_successful_summary` can invoke an
+  arbitrary side-effecting fetch. `ewr_thresholds` retains its implicit sheet
+  load when None; `ewr_handlers` retains config reads and printing on failure.
+  Their pure portions need explicit data/config boundaries before extraction.
+
+**README comparison (definitions checked, no scientific change):** README's
+opening FR/ETP definitions and the server module docstring agree: raw FR is
+achieved/target frequency; ETP is excess days / record days, shown as a percent
+by the UI. Python's raw table averaging does NOT cap FR; the unchanged JavaScript
+caps each EWR for single-scenario display means and excludes “met in both” from
+differential means. This is a layer distinction, not a newly added Python cap.
+The builder module intro's plain-mean description omits the UI's hierarchy/cap.
+There are two details not stated in README's simplified change-band wording:
+JS always counts target crossings as gain/loss even below the band, and applies
+1e-9 numerical tolerance to threshold/band equality. Existing JS tests explicitly
+cover crossings; new tests cover exact 2-year, 1-year and 1.999-year below-target
+changes, “met in both”, and ETP's 1-year band. Preserve these exceptions and ask
+scientists to review the documentation discrepancy later.
+
 ## Phase 0 implementation
 
 The move-only commit uses `git mv` and reports 100% similarity for all 13 files:
