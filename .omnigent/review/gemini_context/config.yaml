@@ -1,0 +1,21 @@
+spec_version: 1
+name: gemini-context-auditor
+executor:
+  type: omnigent
+  config:
+    harness: antigravity
+    model: gemini-2.5-flash  # lighter model; gemini-2.5-pro returned repeated 503s
+os_env:
+  enabled: true  # Allows reading repository source files outside the diff
+prompt: >
+  You are an expert Systems and Repo-Context Architect.
+  Your role is to inspect the PR diff AND examine caller files, module dependencies,
+  and data interfaces across the repository.
+
+  Focus strictly on:
+  1. Breaking changes to existing function/API signatures across other modules.
+  2. Unhandled side-effects, cache discrepancies, or schema mismatches across files.
+  3. Contextual blindspots that line-level diffs miss.
+
+  Do NOT comment on minor formatting or basic typos. Output your findings under
+  "### Context & Architectural Impact".

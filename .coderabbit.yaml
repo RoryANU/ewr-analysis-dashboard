@@ -1,5 +1,5 @@
 # .coderabbit.yaml
-version: "2"
+version: 2
 
 language: "en-US"
 tone_instructions: >

@@ -1,0 +1,66 @@
+name: Omnigent Deep Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deep-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python & Node
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Omnigent
+        run: |
+          pip install "omnigent[antigravity,claude-sdk]"
+          # Alternatively: curl -fsSL https://raw.githubusercontent.com/omnigent-ai/omnigent/main/scripts/install_oss.sh | sh
+
+      - name: Generate PR Diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git diff "origin/${BASE_REF}...HEAD" > pr.diff
+
+      - name: Run Omnigent Multi-Agent Audit
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python scripts/run_omnigent_review.py
+
+      - name: Post or Update PR Comment
+        # The script writes no review_comment.md when the diff is empty.
+        if: hashFiles('review_comment.md') != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Check if an existing Omnigent comment is present
+          COMMENT_ID=$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | contains("## 🏛️ Deep Multi-Agent Review")) | .id' | head -n 1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Updating existing comment #$COMMENT_ID"
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              -f body="$(cat review_comment.md)"
+          else
+            echo "Creating new comment"
+            gh pr comment "${PR_NUMBER}" --body-file review_comment.md
+          fi
