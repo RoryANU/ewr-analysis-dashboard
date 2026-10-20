@@ -995,3 +995,250 @@ ewr_params case 4: mutated mutated its inputs: Values differ: 'g' != 'deliberate
 
 The calculation's original return values are unchanged in this control; it fails
 specifically because of the no-mutation assertion.
+
+## Phase 1 slice 3 — final verification and scientist review
+
+This slice stops at its audited candidate boundary; no slice 4 work is started.
+Commits (all through installed hooks, no bypass):
+
+```text
+e0023a7 Move slice 3 pure aggregation and parameter helpers with shims; no behaviour change
+a4ab056 Extend slice 3 comparisons and input mutation audit; no behaviour change
+5db4ab6 Add slice 3 known answers and mini payload equality test; no behaviour change
+0e1d347 Record slice 3 moves, mutations and README differences; no behaviour change
+2315b78 Document slice 3 calculations using plan template; no behaviour change
+```
+
+The moved set is **13 functions**, plus **4 read-only constants**. Seven of the
+original candidates remain at their old locations, with reasons and exact
+mutation/side-effect locations in MIGRATION_LEDGER.md. No speculative split or
+scientific behavior correction was introduced.
+
+Commands from repository root using the existing environment and baseline
+socket/network permissions:
+
+```sh
+source .venv/bin/activate
+pytest -q
+node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js tests/test_heatmap_selection.js
+pre-commit run --all-files
+lint-imports --no-cache
+python scripts/compare_implementations.py
+```
+
+```text
+943 passed in 143.30s (0:02:23)
+node: tests 205; pass 205; fail 0; skipped 0; cancelled 0; todo 0
+lint-imports: 1 kept, 0 broken; 67 files, 150 dependencies
+compare: exit 0; 41 functions / 660 cases; max_abs=0 and max_rel=0 per function
+inputs: unchanged in all 1320 old/new calls, including matched exception cases
+relative dates: 2 acceptance-only cases; returned values never compared
+```
+
+42 new Python cases add to the accepted **901**. They include 13-function known
+answers, existing raw Python aggregation boundary cases, unchanged JS display
+rules invoked through a Node VM, and the mini fixture payload regression. The
+payload test substitutes original pre-refactor calculation globals into the
+unchanged builder, builds the fixture payload, restores the core shims, and
+asserts identical dictionaries, strict JSON and complete rendered HTML.
+
+The complete suite includes both untouched golden snapshot checks:
+`tests/test_dashboard_html.py::TestBaseline::test_aggregates_match_the_stored_baseline`
+and `tests/test_pyewr_wrappers.py::TestRunScenario::test_matches_the_baseline_snapshot`.
+Snapshot JSON bytes and all 30 Phase 0 protected SHA-256 hashes remain unchanged.
+
+All-files hook output (exit 0):
+
+```text
+check python ast..........................................................Passed
+check yaml................................................................Passed
+check toml................................................................Passed
+check json................................................................Passed
+check for merge conflicts.................................................Passed
+check for broken symlinks.............................(no files to check)Skipped
+check that scripts with shebangs are executable...........................Passed
+detect private key........................................................Passed
+don't commit to branch....................................................Passed
+check for case conflicts..................................................Passed
+debug statements (python).................................................Passed
+mixed line ending.........................................................Passed
+fix end of files..........................................................Passed
+trim trailing whitespace..................................................Passed
+check for added large files...............................................Passed
+ruff check................................................................Passed
+ruff format...............................................................Passed
+mypy......................................................................Passed
+lint-imports (core dependency boundary)...................................Passed
+pytest (fast, not slow)...................................................Passed
+node --test (dashboard JavaScript)........................................Passed
+parameter sheet matches MDBA EWR_tool (when edited).......................Passed
+```
+
+Reproducible AST audit (run with Python from repository root):
+
+```python
+import ast, copy, subprocess
+from pathlib import Path
+
+START = "2340d29"
+MOVED = {
+    "frequency_ratio": {
+        "build_dashboard": ["detect_variant_conflicts", "scenario_index", "fix_theme", "objective_themes", "objectives_of", "build_row_table"],
+        "server": ["_group_by_ewr", "_json_safe", "_assessment_year_stats"],
+    },
+    "ewr_parameters": {"build_dashboard": ["ewr_params"], "server": ["_is_multigauge", "_dispatch_key"]},
+    "assessment_years": {"server": ["record_coverage"]},
+}
+CONSTANTS = {"frequency_ratio": {"build_dashboard": ["POLICIES", "CLIMATES", "NS"]}, "ewr_parameters": {"server": ["LOW_FLOW_HANDLERS"]}}
+
+
+def tree(ref, path):
+    return ast.parse(Path(path).read_text() if ref is None else subprocess.check_output(["git", "show", f"{ref}:{path}"], text=True))
+
+
+def f(t, name):
+    return copy.deepcopy(next(n for n in t.body if isinstance(n, ast.FunctionDef) and n.name == name))
+
+
+class NoDocs(ast.NodeTransformer):
+    def visit_FunctionDef(self, n):
+        self.generic_visit(n)
+        if ast.get_docstring(n, clean=False) is not None:
+            n.body.pop(0)
+        return n
+
+
+def dump(n):
+    return ast.dump(n, include_attributes=False)
+
+
+for mod, files in MOVED.items():
+    p = f"src/ewr_analysis/core/calculations/{mod}.py"
+    for file, names in files.items():
+        for name in names:
+            previous = f(tree(START, f"src/ewr_analysis/{file}.py"), name)
+            old = f(tree("pre-refactor", f"src/{file}.py"), name)
+            new = f(tree(None, p), name)
+            assert dump(NoDocs().visit(previous)) == dump(NoDocs().visit(new)), name
+            assert dump(NoDocs().visit(old)) == dump(NoDocs().visit(new)), f"pre-refactor: {name}"
+            print(f"{name}: AST identical to pre-refactor and pre-slice source (docstrings excluded)")
+for file in ("server", "build_dashboard"):
+    previous, current = tree(START, f"src/ewr_analysis/{file}.py"), tree(None, f"src/ewr_analysis/{file}.py")
+    names = {n for group in MOVED.values() for n in group.get(file, [])}
+    constants = {n for group in CONSTANTS.values() for n in group.get(file, [])}
+    previous.body = [
+        n
+        for n in previous.body
+        if not isinstance(n, (ast.Import, ast.ImportFrom))
+        and not (isinstance(n, ast.FunctionDef) and n.name in names)
+        and not (isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id in constants)
+    ]
+    current.body = [n for n in current.body if not isinstance(n, (ast.Import, ast.ImportFrom))]
+    assert dump(previous) == dump(current), file
+    print(f"{file}.py: only imports differ after extracted functions/constants removed")
+for mod, files in CONSTANTS.items():
+    for file, names in files.items():
+        for name in names:
+
+            def c(t):
+                return next(n for n in t.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+
+            assert dump(c(tree(START, f"src/ewr_analysis/{file}.py"))) == dump(c(tree(None, f"src/ewr_analysis/core/calculations/{mod}.py"))), name
+print("PASS: 13 moved functions, 4 unchanged constants, import-only shims")
+
+# The move commit includes the original docstrings/signatures too.
+for mod, files in MOVED.items():
+    for file, names in files.items():
+        for name in names:
+            original = f(tree("pre-refactor", f"src/{file}.py"), name)
+            moved = f(tree("e0023a7", f"src/ewr_analysis/core/calculations/{mod}.py"), name)
+            assert dump(original) == dump(moved), name
+    path = f"src/ewr_analysis/core/calculations/{mod}.py"
+    assert dump(NoDocs().visit(tree("2315b78^", path))) == dump(NoDocs().visit(tree("2315b78", path))), mod
+print("PASS: 13 full original ASTs; docstrings commit has no other AST changes")
+```
+
+Output (exit 0):
+
+```text
+detect_variant_conflicts: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+scenario_index: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+fix_theme: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+objective_themes: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+objectives_of: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+build_row_table: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+_group_by_ewr: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+_json_safe: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+_assessment_year_stats: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+ewr_params: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+_is_multigauge: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+_dispatch_key: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+record_coverage: AST identical to pre-refactor and pre-slice source (docstrings excluded)
+server.py: only imports differ after extracted functions/constants removed
+build_dashboard.py: only imports differ after extracted functions/constants removed
+PASS: 13 moved functions, 4 unchanged constants, import-only shims
+PASS: 13 full original ASTs; docstrings commit has no other AST changes
+```
+
+Thus every moved function is literally identical to its pre-refactor AST in the
+move commit, including signatures/docstrings. The final versions differ only in
+function docstrings. No new cast normalization is needed for these 13 functions.
+After extraction, every remaining non-import statement in the old modules is
+unchanged from `2340d29`; all four constant assignment expressions match too.
+
+Boundary/protection commands and output:
+
+```sh
+git grep -nE 'open\(|read_csv|read_excel|os\.environ|__file__|lru_cache|Lock\(' -- src/ewr_analysis/core
+git grep -n '__file__' -- src/ewr_analysis
+git diff --name-only 2340d29 -- data/ tests/fixtures/ .github/ .omnigent/ .coderabbit.yaml scripts/run_omnigent_review.py
+git diff --check 2340d29
+git grep -nE 'def (_is_multigauge|_dispatch_key)' -- src/
+```
+
+```text
+core forbidden-pattern grep: no matches (exit 1, expected)
+__file__: paths.py:5 only
+protected-path diff: no output; snapshot paths unchanged
+whitespace/error check: no output
+_is_multigauge / _dispatch_key: one definition each in core/ewr_parameters.py
+30/30 baseline protected hashes unchanged
+```
+
+No import-linter extension or py_ewr allow-list is needed. Core imports only
+stdlib, numpy/pandas, and other core modules; no shapely or application/I/O
+modules. No dependencies or staleness rules changed; the existing recursive
+scan covers these files. Only the two requested module files were added, with
+no new package folders. Pre-existing untracked `.claude/` and
+REORGANIZATION_PLAN.md remain untouched; no generated artifacts are committed.
+
+Scientist review checklist:
+
+- New preserved observations under **Observed issues / Phase 1 slice 3**:
+  catalogue order/unknown labels; multigauge string-only detection and unvalidated
+  kind formatting; conflict sorting/null policy; exact theme spelling and mode
+  ties/reference fallback; lexical objective order; compact-table alias/default
+  contracts; first-row parameter coercion/truncation; grouping null/string-key
+  collisions; non-float JSON edge cases; inherited annual/date rounding policies;
+  supplied completeness flags; in-place normalization/list filling and raw NaN
+  sentinels; callback/config/file dependencies. No item was fixed.
+- README/code review: raw Python FR and display-capped means are different layers;
+  ETP is a fraction displayed as percent. The builder intro omits hierarchical
+  UI weighting/capping; README's change-band summary omits target-crossing
+  exceptions and 1e-9 equality tolerance. The new tests preserve the existing
+  single-EWR cap, surplus/shortfall mean, met-in-both exclusion, exact 2-year,
+  1-year and 1.999-year cases, plus ETP's 1-year boundary.
+- **TBD, needs scientist review** docstrings: frequency_ratio
+  (`detect_variant_conflicts`, `scenario_index`, `fix_theme`, `objective_themes`,
+  `objectives_of`, `build_row_table`, `_group_by_ewr`, `_json_safe`,
+  `_assessment_year_stats`); ewr_parameters (`ewr_params`, `_is_multigauge`,
+  `_dispatch_key`); assessment_years (`record_coverage`). Rules transcribe code;
+  no equation or scientific reference was invented.
+- Left candidates: `normalise_results` (frame mutation/identity),
+  `_fill_by_scenario` (relied-on list mutation), `aggregate_ewr_rows` (excluded
+  mutator dependency), `ewr_thresholds` (implicit sheet read), `ewr_handlers`
+  (config read/print), `summarise_rows` (file-backed adapter/cache/reporting),
+  `_successful_summary` (arbitrary callback). The ledger lists needed splits
+  and destinations for these and every explicitly excluded builder/I/O endpoint.
+- POLICIES, CLIMATES, NS and LOW_FLOW_HANDLERS are defined once in core, imported
+  back at old locations, and still slated for config/*.toml in a later phase.
