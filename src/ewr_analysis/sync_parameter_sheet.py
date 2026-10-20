@@ -1,7 +1,7 @@
 """Keep data/reference/parameter_sheet.csv identical to the MDBA EWR tool's copy on GitHub.
 
-    python3 src/sync_parameter_sheet.py            check: exit 1 if the local copy differs from upstream (exit 0, with a warning, if offline)
-    python3 src/sync_parameter_sheet.py --update   overwrite the local copy with upstream, then rebuild the dashboard
+    python3 -m ewr_analysis.sync_parameter_sheet            check: exit 1 if the local copy differs from upstream (exit 0, with a warning, if offline)
+    python3 -m ewr_analysis.sync_parameter_sheet --update   overwrite the local copy with upstream, then rebuild the dashboard
 
 Used by the `parameter-sheet-sync` pre-push hook and tests/test_parameter_sheet_sync.py.
 """
@@ -14,8 +14,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ewr_analysis.paths import DATA_DIR
+
 UPSTREAM_URL = "https://raw.githubusercontent.com/MDBAuth/EWR_tool/main/py_ewr/parameter_metadata/parameter_sheet.csv"
-LOCAL = Path(__file__).resolve().parent.parent / "data" / "reference" / "parameter_sheet.csv"
+LOCAL = DATA_DIR / "reference" / "parameter_sheet.csv"
 
 
 def normalise(raw: bytes) -> bytes:
@@ -56,13 +58,13 @@ def main(argv: list[str]) -> int:
             print("parameter sheet: invalid upstream header; local copy unchanged", file=sys.stderr)
             return 1
         _replace_local(upstream)
-        print(f"parameter sheet updated ({digest(upstream)}); now run: python3 src/build_dashboard.py")
+        print(f"parameter sheet updated ({digest(upstream)}); now run: python3 -m ewr_analysis.build_dashboard")
         return 0
     if not LOCAL.exists() or local_copy() != upstream:
         print(
             f"parameter sheet is out of date with {UPSTREAM_URL}\n"
             f"  local {digest(local_copy()) if LOCAL.exists() else 'missing'}  upstream {digest(upstream)}\n"
-            "  fix: python3 src/sync_parameter_sheet.py --update && python3 src/build_dashboard.py",
+            "  fix: python3 -m ewr_analysis.sync_parameter_sheet --update && python3 -m ewr_analysis.build_dashboard",
             file=sys.stderr,
         )
         return 1

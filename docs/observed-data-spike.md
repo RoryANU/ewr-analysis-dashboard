@@ -18,7 +18,7 @@ Environment of the original spike: macOS arm64, Python 3.13.0; `mdba-gauge-gette
 
 ## Phase 2 adapter (2026-10-19)
 
-`gauge_pull` is the sole observed-data and metadata access path. `src/observed.py` calls it once per gauge and variable, always with `data_source="state"`, daily intervals and mean data. The getter owns request construction, parsing, routing and BOM fallback. The application has no second service client or record-start lookup. “All available” uses `server.EARLIEST_RECORD = date(1890, 1, 1)` through today.
+`gauge_pull` is the sole observed-data and metadata access path. `src/ewr_analysis/observed.py` calls it once per gauge and variable, always with `data_source="state"`, daily intervals and mean data. The getter owns request construction, parsing, routing and BOM fallback. The application has no second service client or record-start lookup. “All available” uses `server.EARLIEST_RECORD = date(1890, 1, 1)` through today.
 
 After the getter returns, `_normalise` converts `DATETIME` to pandas timestamps and `VALUE` with `pd.to_numeric(errors="coerce")`. It removes quality codes 255, 201 and 151, plus codes >= 999. Earlier observations recorded unavailable/lost days with these codes as zero values: 29,650 of 46,313 days for 412033 in the historical probe. These counts are historical evidence, not a fresh verification. Valid zero flows are retained. Empty results have the six standard columns. Cache version 3 invalidates earlier entries and omits `UNITS`, which the getter does not expose.
 

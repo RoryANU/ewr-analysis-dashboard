@@ -2,7 +2,7 @@
 
 No server and no command line are needed, so this works from a Databricks notebook (see notebooks/run_your_scenarios.ipynb).
 
-    from embed_scenarios import build_with_scenarios
+    from ewr_analysis.embed_scenarios import build_with_scenarios
     build_with_scenarios([{"name": "My option", "path": "/Volumes/.../run.csv", "format": "Standard time-series"}], "dashboard.html")
 
 The file is scanned for every gauge in the review, so one file can cover several SDL units. The output page opens in "Your data" mode
@@ -10,14 +10,13 @@ with the scenarios already loaded. The flow charts need a server, so they are no
 """
 
 import json
-import sys
 import tempfile
 from pathlib import Path
 
-HERE = Path(__file__).parent
-ROOT = HERE.parent
-sys.path.insert(0, str(HERE))
-from server import FORMATS, VAL_KEYS, run_scenario  # noqa: E402  (the same EWR run as the local server (server.py), imported without starting it)
+from ewr_analysis.paths import PACKAGE_DIR, ROOT
+from ewr_analysis.server import FORMATS, VAL_KEYS, run_scenario  # the same EWR run as the local server (server.py), imported without starting it
+
+HERE = PACKAGE_DIR
 
 PLACEHOLDER = "const PRELOADED=[];"
 REKEY = {"A4260527": "A4260524"}  # same re-keying as build_dashboard.py (not imported: importing it runs the build)
@@ -62,7 +61,7 @@ def build_with_scenarios(scenarios, out_path, template=None):
     template = Path(template or ROOT / "ewr_analysis_dashboard.html")
     html = template.read_text()
     if PLACEHOLDER not in html:
-        raise ValueError(f"{template} has no embedded-scenarios slot; rebuild it with src/build_dashboard.py")
+        raise ValueError(f"{template} has no embedded-scenarios slot; rebuild it with src/ewr_analysis/build_dashboard.py")
     gauges, preloaded, used_names = review_gauges(), [], set()
     for scenario in scenarios:
         name = (scenario.get("name") or resolve_path(scenario["path"]).stem)[:40]

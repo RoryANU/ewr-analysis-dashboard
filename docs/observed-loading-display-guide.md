@@ -6,11 +6,11 @@ Responds to UX feedback from a non-technical reader of the "Fetching gauges · N
 
 | Concern | Location |
 |---|---|
-| Panel markup, status rows, `failureLabel`, `stateIcon` | `observedPanel()` in `src/dashboard_template.html` (~L565-594) |
-| Panel CSS (`.obs-*`) | `src/dashboard_template.html` L115 |
-| Job polling, `S.obs.status`, `S.obs.progress`, retry/cancel handlers | `src/dashboard_template.html` ~L500-556 |
-| Per-variable result (`GaugeResult.status` / `.message`) and progress callback | `src/observed.py` (`_fetch_gauge_cached`, `fetch_many`) |
-| Generated dashboard | `ewr_analysis_dashboard.html` is build output. Edit `src/`, then rebuild with `src/build_dashboard.py`. |
+| Panel markup, status rows, `failureLabel`, `stateIcon` | `observedPanel()` in `src/ewr_analysis/dashboard_template.html` (~L565-594) |
+| Panel CSS (`.obs-*`) | `src/ewr_analysis/dashboard_template.html` L115 |
+| Job polling, `S.obs.status`, `S.obs.progress`, retry/cancel handlers | `src/ewr_analysis/dashboard_template.html` ~L500-556 |
+| Per-variable result (`GaugeResult.status` / `.message`) and progress callback | `src/ewr_analysis/observed.py` (`_fetch_gauge_cached`, `fetch_many`) |
+| Generated dashboard | `ewr_analysis_dashboard.html` is build output. Edit `src/`, then rebuild with `src/ewr_analysis/build_dashboard.py`. |
 
 Statuses already produced: `ok`, `empty`, `timeout`, `rate_limited`, `unsupported`, `error`. Variable keys are `f` (flow) and `l` (level).
 
@@ -88,7 +88,7 @@ Add an impact note when anything is not `complete`:
 
 > Gauges with missing data will show gaps in the observed results. EWRs that depend on the missing measurement can't be assessed for those gauges.
 
-**Verify before shipping:** which EWRs need flow vs level vs both. Do not publish impact copy until that mapping is checked in `src/observed.py` / the EWR evaluation code. If level-only gaps don't affect results, say so explicitly, since that makes "partial" much less alarming. Write the per-row impact line from the same mapping.
+**Verify before shipping:** which EWRs need flow vs level vs both. Do not publish impact copy until that mapping is checked in `src/ewr_analysis/observed.py` / the EWR evaluation code. If level-only gaps don't affect results, say so explicitly, since that makes "partial" much less alarming. Write the per-row impact line from the same mapping.
 
 Progress bar: keep `<progress>`, but pair it with the tally so 100% can't read as "all succeeded".
 

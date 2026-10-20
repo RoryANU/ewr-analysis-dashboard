@@ -3,10 +3,21 @@ import subprocess
 import sys
 import time
 
+# Build the CLI arguments inside the child process: Linux limits each exec argument
+# to about 128 KiB, so large diffs (and synthesis inputs) must travel over stdin.
+# Use the same entry point as the omnigent console script, installed by CI's pip.
+_OMNIGENT_LAUNCHER = """
+import sys
+from omnigent.cli import main
 
-def run_command(cmd: list[str]) -> tuple[int, str, str]:
+sys.argv = ["omnigent", "run", sys.argv[1], "-p", sys.stdin.read()]
+sys.exit(main())
+"""
+
+
+def run_command(cmd: list[str], *, input_text: str | None = None) -> tuple[int, str, str]:
     # An argument list with no shell: the diff is untrusted PR content and must never be interpreted by a shell.
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, input=input_text, capture_output=True, text=True, encoding="utf-8")
     return result.returncode, result.stdout.strip(), result.stderr
 
 
@@ -14,7 +25,7 @@ def run_agent(spec: str, prompt: str, attempts: int = 3) -> str:
     # Model providers return transient 503s, so retry with a growing pause. A run that still fails or returns
     # nothing aborts the review, so that no comment is posted with missing findings.
     for attempt in range(1, attempts + 1):
-        code, output, stderr = run_command(["omnigent", "run", spec, "-p", prompt])
+        code, output, stderr = run_command([sys.executable, "-c", _OMNIGENT_LAUNCHER, spec], input_text=prompt)
         if code == 0 and output:
             return output
         print(f"Agent {spec} failed (attempt {attempt}/{attempts}):\n{stderr}", file=sys.stderr)

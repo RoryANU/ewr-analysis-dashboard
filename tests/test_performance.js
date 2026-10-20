@@ -2,8 +2,8 @@
 const fs = require('node:fs'), vm = require('node:vm');
 const assert = require('node:assert/strict'), {test} = require('node:test');
 const html = fs.readFileSync('ewr_analysis_dashboard.html','utf8');
-const template = fs.readFileSync('src/dashboard_template.html','utf8');
-const source = fs.readFileSync('src/performance.js','utf8');
+const template = fs.readFileSync('src/ewr_analysis/dashboard_template.html','utf8');
+const source = fs.readFileSync('src/ewr_analysis/performance.js','utf8');
 const embedded = html.match(/const DATA=([\s\S]*?);\s*const /)[0].replace(/\s*const $/,'');
 const plain = value => JSON.parse(JSON.stringify(value));
 const row = (code,fr=[1],et=fr.map(()=>0)) => [0,0,0,code,[0],[],fr,et];

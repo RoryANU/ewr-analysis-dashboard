@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import server
+from ewr_analysis import server
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "data/example_scenarios/dummy_broken_scenario_A_level_salinity.csv"

@@ -1,6 +1,6 @@
 const fs = require('node:fs'), vm = require('node:vm');
 const assert = require('node:assert/strict'), {test} = require('node:test');
-const source = fs.readFileSync('src/dashboard_template.html', 'utf8');
+const source = fs.readFileSync('src/ewr_analysis/dashboard_template.html', 'utf8');
 const part = (a,b) => source.slice(source.indexOf(a), source.indexOf(b,source.indexOf(a)));
 const plain = x => JSON.parse(JSON.stringify(x));
 function harness(diff=false) {

@@ -16,11 +16,11 @@ import pandas as pd
 import pytest
 from snapshots import assert_snapshot
 
-import build_dashboard as bd
+from ewr_analysis import build_dashboard as bd
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML_PATH = ROOT / "ewr_analysis_dashboard.html"
-TEMPLATE_PATH = ROOT / "src/dashboard_template.html"
+TEMPLATE_PATH = ROOT / "src/ewr_analysis/dashboard_template.html"
 SLOTS = ["__DATA__", "__GAUGES__", "__ROWS__", "__RIVERS__", "__CONSTRAINTS__", "__META__", "__SCENARIOS__"]
 NS = 28
 # Australia: the bounds used by build_dashboard.build_gauges
@@ -94,7 +94,7 @@ class TestTemplateAndBuild:
     @pytest.mark.slow
     def test_rebuilding_from_data_reproduces_the_committed_page_byte_for_byte(self):
         built = bd.render_html(TEMPLATE_PATH.read_text(), bd.build_payload())
-        assert built == HTML_PATH.read_text(), "ewr_analysis_dashboard.html is stale: run `python3 src/build_dashboard.py`"
+        assert built == HTML_PATH.read_text(), "ewr_analysis_dashboard.html is stale: run `python3 -m ewr_analysis.build_dashboard`"
 
 
 # ---------------------------------------------------------------------------------------------------------------------

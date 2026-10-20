@@ -9,3 +9,5 @@ ewr_dashboard_with_scenarios.html
 .pytest_cache/
 node_modules/
 ewr_analysis_dashboard.html
+*.egg-info/
+.import_linter_cache/

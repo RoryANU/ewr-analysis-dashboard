@@ -1,6 +1,6 @@
 """Build ewr_analysis_dashboard.html: a stripped-back analysis view of the 2026 Basin Plan review EWR results.
 
-Run from anywhere:  python3 src/build_dashboard.py   (writes ewr_analysis_dashboard.html in the repository root)
+Run from anywhere:  python3 -m ewr_analysis.build_dashboard   (writes ewr_analysis_dashboard.html in the repository root)
 
 Only two raw metrics are carried, no ratings, scaling or scores:
   * FR  - frequency ratio per EWR (achieved / target frequency)        data/results/frequency_ratio.csv
@@ -17,11 +17,22 @@ from typing import Any
 import pandas as pd
 from shapely.geometry import mapping, shape
 
-from drought_windows import meta as drought_meta
-from flow_regime_mappings import regimes_for
-
-HERE = Path(__file__).parent  # src/
-ROOT = HERE.parent  # repository root; inputs are in data/, the page is written here
+from ewr_analysis.core.calculations.duration_ratio import dr_approx as dr_approx
+from ewr_analysis.core.calculations.ewr_parameters import ewr_params as ewr_params
+from ewr_analysis.core.calculations.frequency_ratio import CLIMATES as CLIMATES
+from ewr_analysis.core.calculations.frequency_ratio import NS as NS
+from ewr_analysis.core.calculations.frequency_ratio import POLICIES as POLICIES
+from ewr_analysis.core.calculations.frequency_ratio import build_row_table as build_row_table
+from ewr_analysis.core.calculations.frequency_ratio import detect_variant_conflicts as detect_variant_conflicts
+from ewr_analysis.core.calculations.frequency_ratio import fix_theme as fix_theme
+from ewr_analysis.core.calculations.frequency_ratio import objective_themes as objective_themes
+from ewr_analysis.core.calculations.frequency_ratio import objectives_of as objectives_of
+from ewr_analysis.core.calculations.frequency_ratio import scenario_index as scenario_index
+from ewr_analysis.drought_windows import meta as drought_meta
+from ewr_analysis.flow_regime_mappings import regimes_for
+from ewr_analysis.paths import DASHBOARD_HTML as OUTPUT
+from ewr_analysis.paths import PACKAGE_DIR as HERE
+from ewr_analysis.paths import ROOT
 
 
 def norm(s: str) -> str:
@@ -29,39 +40,12 @@ def norm(s: str) -> str:
     return "".join(c for c in s.lower() if c.isalnum())
 
 
-POLICIES = ["Without Development", "Pre Basin Plan", "Basin plan 2024", "Basin plan full implementation"]
-CLIMATES = [
-    "Historical Climate",
-    "Warmer and Wetter 1.5 C",
-    "Warmer and Drier 1.5 C",
-    "Warmer and Much Drier 1.5 C",
-    "Hotter and Wetter 2.0 C",
-    "Hotter and Drier 2.0 C",
-    "Hotter and Much Drier 2.0 C",
-]
-NS = len(POLICIES) * len(CLIMATES)
 # The model outputs report the lake-level EWRs under A4260527 (Tauwitchere); the parameter sheet puts them on A4260524 (Milang).
 REKEY = {"A4260527": "A4260524"}
 # Virtual gauge with no BoM station: plotted beside a real one
 PROXY_LOC = {"A4261002": ("A4260527", 0.012, -0.012)}
 PROXY_NAME = {"A4261002": "Barrages near the Murray Mouth (total barrage flow, virtual gauge; position approximate)"}
 KEY = ["PlanningUnitName", "SWSDLName", "Gauge", "EWR"]
-
-
-def detect_variant_conflicts(df: pd.DataFrame, key_columns: list[str], value_column: str) -> list[dict[str, Any]]:
-    """Return groups keyed by key_columns that contain multiple distinct non-null metric values."""
-    conflicts = []
-    for key, group in df.groupby(key_columns, dropna=False, sort=False):
-        values = sorted(group[value_column].dropna().unique().tolist())
-        if len(values) > 1:
-            key = key if isinstance(key, tuple) else (key,)
-            conflicts.append({**dict(zip(key_columns, key, strict=True)), "values": values})
-    return conflicts
-
-
-def scenario_index(policy: str, climate: str) -> int:
-    """Position of a policy x climate scenario in the per-row FR / ETP arrays (policy-major)."""
-    return POLICIES.index(policy) * len(CLIMATES) + CLIMATES.index(climate)
 
 
 def load_results(root: Path = ROOT) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -146,88 +130,6 @@ def _fill_by_scenario(values: list[float | None], means: pd.Series, places: int)
         values[int(scenario)] = round(float(mean), places)
 
 
-def dr_approx(ael: list[float | None], prm: dict[str, Any]) -> list[float | None]:
-    """The review results have no yearly event lengths, so the duration ratio is approximated per scenario as the mean event length ÷ the
-    required duration, capped at 2 (py_ewr's AverageEventLength averages every event, successful or not). Flow EWRs only."""
-    dur = prm.get("dur")
-    if prm.get("kind", "F") != "F" or not dur:
-        return [None] * len(ael)
-    return [None if a is None else round(min(a / dur, 2.0), 3) for a in ael]
-
-
-def fix_theme(t: str) -> str:
-    """One spelling for the "Other Species" theme (the sources use both cases)."""
-    return "Other Species" if t == "Other species" else t
-
-
-def objective_themes(fr: pd.DataFrame, et: pd.DataFrame, objs: list[str], ref: pd.DataFrame) -> dict[str, str]:
-    """objective -> theme: the model outputs' Target (most common), else the parameter metadata reference, else Unclassified."""
-    obj_theme: dict[str, str] = {}
-    for d in (fr, et):
-        for o, t in d.dropna(subset=["EcoObj", "Target"]).groupby("EcoObj").Target.agg(lambda x: x.mode().iat[0]).items():
-            obj_theme.setdefault(o, fix_theme(t))
-    for o in objs:
-        if o not in obj_theme:
-            obj_theme[o] = fix_theme(ref.at[o, "Target"]) if o in ref.index and isinstance(ref.at[o, "Target"], str) else "Unclassified"
-    return obj_theme
-
-
-def objectives_of(rows: dict[tuple[str, str, str, str], dict[str, Any]]) -> list[str]:
-    """Every ecological objective in the rows, ordered by its prefix then code."""
-    return sorted({o for r in rows.values() for o in r["ob"]}, key=lambda o: (o.split("-")[0], o))
-
-
-def build_row_table(
-    rows: dict[tuple[str, str, str, str], dict[str, Any]], obj_theme: dict[str, str], params: dict[tuple[str, str, str], dict[str, Any]] | None = None
-) -> tuple[list[list[Any]], dict[str, Any]]:
-    """The compact ROWS table the page reads, and the lookup lists (pus, sdls, gids, objs, themes, regimes, objTheme) its indices refer to.
-    Columns 0-7 are fixed (the page and performance.js index them); 8 = {T, ny, dur, mrip}: target % of years, record years, required days and
-    MRIP years (from `params`, keyed (gauge, code, planning unit); None when unknown); 9 = achieved years (EventYears) per scenario;
-    10 = gap severity per scenario: None here, as the results hold the MRIP parameter, not the observed gaps (uploads fill it in the page);
-    11 = duration ratio per scenario, approximated as mean event length ÷ required duration, capped at 2 (flow EWRs only; dr_approx);
-    12 = drought-window metrics: None here (no yearly results; uploads fill it)."""
-    params = params or {}
-    pus = sorted({k[0] for k in rows})
-    sdls = sorted({k[1] for k in rows})
-    gids = sorted({k[2] for k in rows})
-    objs = objectives_of(rows)
-    themes = ["Flows & Connectivity", "Ecosystem Functions", "Waterbirds", "Native Fish", "Native Vegetation", "Other Species", "Unclassified"]
-    themes += sorted(set(obj_theme.values()) - set(themes))
-    regimes = sorted({g for r in rows.values() for g in r["rg"]})
-
-    table = []
-    for (pu, sdl, gauge, code), r in sorted(rows.items()):
-        prm = params.get((gauge, code, pu), {})
-        info = {"T": None, "dur": None, "mrip": None, **{k: v for k, v in prm.items() if k != "kind"}, "ny": r.get("ny")}
-        table.append(
-            [
-                pus.index(pu),
-                sdls.index(sdl),
-                gids.index(gauge),
-                code,
-                sorted(objs.index(o) for o in r["ob"]),
-                sorted(regimes.index(g) for g in r["rg"]),
-                r["fr"],
-                r["et"],
-                info,
-                r.get("ey", [None] * NS),
-                None,
-                dr_approx(r.get("ael", [None] * NS), prm),
-                None,
-            ]
-        )
-    lookups = {
-        "pus": pus,
-        "sdls": sdls,
-        "gids": gids,
-        "objs": objs,
-        "themes": themes,
-        "regimes": regimes,
-        "objTheme": [themes.index(obj_theme[o]) for o in objs],
-    }
-    return table, lookups
-
-
 def load_gauge_stations(root: Path = ROOT) -> pd.DataFrame:
     """BoM gauge stations with a known latitude, one per station number (the index)."""
     bom = pd.read_csv(root / "data/map/bom_gauge_stations.csv", dtype=str)
@@ -293,29 +195,6 @@ def parameter_sheet() -> pd.DataFrame | None:
         return None
 
 
-def ewr_params(sheet: pd.DataFrame | None) -> dict[tuple[str, str, str], dict[str, Any]]:
-    """Per (gauge, code, planning unit): target frequency (% of years), required duration (days) and maximum inter-event period (years),
-    from the parameter sheet (the first row where a key repeats); empty without a sheet."""
-    if sheet is None:
-        return {}
-
-    def number(column: str) -> pd.Series:
-        return pd.to_numeric(sheet[column], errors="coerce") if column in sheet else pd.Series(float("nan"), index=sheet.index)
-
-    d = pd.DataFrame({"g": sheet.Gauge.astype(str), "c": sheet.Code.astype(str), "pu": sheet.PlanningUnitName.astype(str)})
-    d["T"], d["dur"], d["mrip"] = number("TargetFrequency"), number("Duration"), number("MaxInter-event")
-    d["kind"] = sheet.FlowLevelVolume.astype(str) if "FlowLevelVolume" in sheet else "F"
-    out: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for r in d.drop_duplicates(["g", "c", "pu"]).itertuples():
-        out[(r.g, r.c, r.pu)] = {
-            "T": None if pd.isna(r.T) else float(r.T),
-            "dur": None if pd.isna(r.dur) else int(r.dur),
-            "mrip": None if pd.isna(r.mrip) else round(float(r.mrip), 4),
-            "kind": r.kind,  # F / L / V (flow, level, volume); not carried into ROWS
-        }
-    return out
-
-
 def ewr_thresholds(lookups: dict[str, Any], table: list[list[Any]], sheet: pd.DataFrame | None = None) -> dict[str, float]:
     """Lowest flow threshold (ML/d) of each EWR at each gauge in the table, from py_ewr's parameter sheet, keyed "gauge|code".
     The page sorts EWRs by it (increasing flow regime). Empty when py_ewr is not installed; EWRs with no threshold sort last."""
@@ -374,7 +253,7 @@ def ewr_handlers(sheet: pd.DataFrame) -> list[str | None]:
 
 
 def ewr_index(root: Path = ROOT) -> dict[str, Any]:
-    """Every row of data/reference/parameter_sheet.csv (kept equal to the MDBA EWR tool's copy by src/sync_parameter_sheet.py), column-wise:
+    """Every row of data/reference/parameter_sheet.csv (kept equal to the MDBA EWR tool's copy by src/ewr_analysis/sync_parameter_sheet.py), column-wise:
     {"keys": [...], "cols": {key: [value per row]}}. Repeated strings are stored once in "strs" and referenced by index."""
     path = root / "data/reference/parameter_sheet.csv"
     if not path.exists():  # a test fixture tree has no copy of the sheet: use the repository's
@@ -470,15 +349,12 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
     }
 
 
-OUTPUT = ROOT / "ewr_analysis_dashboard.html"
-
-
 def is_stale() -> bool:
     """True when the generated page is missing or older than anything it is built from (the template, scripts and data/)."""
     if not OUTPUT.exists():
         return True
     built = OUTPUT.stat().st_mtime
-    inputs = [*HERE.glob("*.js"), *HERE.glob("*.py"), HERE / "dashboard_template.html", *(p for p in (ROOT / "data").rglob("*") if p.is_file())]
+    inputs = [*HERE.glob("*.js"), *HERE.rglob("*.py"), HERE / "dashboard_template.html", *(p for p in (ROOT / "data").rglob("*") if p.is_file())]
     return any(p.stat().st_mtime > built for p in inputs)
 
 

@@ -46,6 +46,12 @@ repos:
         language: system # uses the project environment so py_ewr / pandas are importable
         types: [python]
         pass_filenames: false # the file list comes from [tool.mypy] in pyproject.toml
+      - id: lint-imports
+        name: lint-imports (core dependency boundary)
+        entry: lint-imports --no-cache
+        language: system
+        pass_filenames: false
+        files: ^(src/|pyproject\.toml|requirements-dev\.txt)
       - id: pytest-fast
         name: pytest (fast, not slow)
         entry: pytest -m "not slow" -q -x -p no:cacheprovider
@@ -57,16 +63,16 @@ repos:
         entry: node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js tests/test_heatmap_selection.js
         language: system # node comes from nodejs-wheel in requirements-dev.txt (or any Node >= 22 on PATH)
         pass_filenames: false
-        files: ^(src/(dashboard_template\.html|performance\.js|ewr_guide\.js|custom_ewr\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
+        files: ^(src/ewr_analysis/(dashboard_template\.html|performance\.js|ewr_guide\.js|custom_ewr\.js)|tests/.*\.js|ewr_analysis_dashboard\.html)$
       - id: parameter-sheet-sync-edit
         name: parameter sheet matches MDBA EWR_tool (when edited)
-        entry: python3 src/sync_parameter_sheet.py
+        entry: python3 -m ewr_analysis.sync_parameter_sheet
         language: system # needs internet; passes with a warning when offline
         pass_filenames: false
         files: ^data/reference/parameter_sheet\.csv$
       - id: parameter-sheet-sync-push
         name: parameter sheet matches MDBA EWR_tool (on push)
-        entry: python3 src/sync_parameter_sheet.py
+        entry: python3 -m ewr_analysis.sync_parameter_sheet
         language: system # install with `pre-commit install --hook-type pre-push`
         pass_filenames: false
         always_run: true

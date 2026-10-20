@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import server
+from ewr_analysis import server
 
 G = "400001"
 
@@ -316,7 +316,7 @@ class TestDroughtWindows:
         assert out["et"] is None and out["sev"] is None  # every day of the window is inside a censored gap
 
     def test_window_dates_follow_the_assessment_year(self):
-        from drought_windows import DROUGHTS, window_dates
+        from ewr_analysis.drought_windows import DROUGHTS, window_dates
 
         assert DROUGHTS["mil"] == ("Millennium", 1996, 2009)
         assert [str(d) for d in window_dates("mil")] == ["1996-07-01", "2010-06-30"]

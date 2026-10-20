@@ -1,14 +1,12 @@
 """review_gauges (used by the notebook route) must request every gauge in the review: FR and ETP results."""
 
-import sys
 from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+from ewr_analysis import embed_scenarios
 
-import embed_scenarios  # noqa: E402
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def gauges_in(name):

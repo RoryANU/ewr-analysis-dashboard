@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from py_ewr import evaluate_EWRs
 
-import server
+from ewr_analysis import server
 
 
 @pytest.mark.parametrize("explicit", [False, True])

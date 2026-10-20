@@ -3,7 +3,7 @@
 // run from the template source against a small synthetic data set.
 const fs = require('node:fs'), vm = require('node:vm');
 const assert = require('node:assert/strict'), {test} = require('node:test');
-const template = fs.readFileSync('src/dashboard_template.html','utf8');
+const template = fs.readFileSync('src/ewr_analysis/dashboard_template.html','utf8');
 // the "values and averages" and "selection" sections; each marker must occur once so a template edit fails here, not silently
 function section(from,to) {
   for (const m of [from,to]) assert.equal(template.split(m).length,2,`marker ${JSON.stringify(m)} must occur exactly once in the template; update the marker in the test if the template section was renamed`);

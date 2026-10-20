@@ -14,20 +14,20 @@ gauge_pull(gauge_numbers, start_time_user, end_time_user, var="F", interval="day
 
 Nothing else in this repo may contact a state water service, read the getter's bundled catalog, or re-implement part of the getter's request or parse logic.
 
-`dc500c1` ("replace getter requests with a bounded state-service client") broke this rule. It added `src/observed_source.py`, a second client that builds its own Hydstra URLs, parses its own replies and calls `get_variable_list`. It also made `src/observed.py` read the getter's `data/bom_gauge_data.csv` directly to route gauges. This guide undoes that and keeps the useful parts around `gauge_pull`.
+`dc500c1` ("replace getter requests with a bounded state-service client") broke this rule. It added `src/observed_source.py`, a second client that builds its own Hydstra URLs, parses its own replies and calls `get_variable_list`. It also made `src/ewr_analysis/observed.py` read the getter's `data/bom_gauge_data.csv` directly to route gauges. This guide undoes that and keeps the useful parts around `gauge_pull`.
 
 ## Current violations
 
 | Where | What it does | Action |
 | --- | --- | --- |
 | `src/observed_source.py` (whole file) | Own HTTP client, endpoints, payloads, parsing, retry, `get_variable_list` record-start lookup | Delete |
-| `src/observed.py:35` `_CLIENT = observed_source.StateClient()` | Instantiates that client | Remove |
-| `src/observed.py` `_fetch_source` | Calls `_CLIENT.fetch(...)` per candidate state | Replace with one `gauge_pull` call |
-| `src/observed.py` `catalog_states`, `sheet_states`, `candidate_states`, `_ROUTES` | Route gauges using the getter's bundled CSV and `parameter_sheet.csv` | Remove from the fetch path. `gauge_pull` routes by itself |
+| `src/ewr_analysis/observed.py:35` `_CLIENT = observed_source.StateClient()` | Instantiates that client | Remove |
+| `src/ewr_analysis/observed.py` `_fetch_source` | Calls `_CLIENT.fetch(...)` per candidate state | Replace with one `gauge_pull` call |
+| `src/ewr_analysis/observed.py` `catalog_states`, `sheet_states`, `candidate_states`, `_ROUTES` | Route gauges using the getter's bundled CSV and `parameter_sheet.csv` | Remove from the fetch path. `gauge_pull` routes by itself |
 | `src/audit_observed_routing.py` | Reads `catalog_states` / `candidate_states` | Delete, with `docs/observed-routing-mismatches.csv` |
 | `tests/test_observed_source.py`, `tests/fixtures/observed/*` | Test the replacement client and its payloads | Delete or rewrite against a stubbed `gauge_pull` |
 
-`src/observed.py` imports `observed_source` at module level. `src/server.py:69` imports `observed`, so any leftover reference breaks the server on start.
+`src/ewr_analysis/observed.py` imports `observed_source` at module level. `src/ewr_analysis/server.py:69` imports `observed`, so any leftover reference breaks the server on start.
 
 ## What to keep
 
@@ -43,7 +43,7 @@ These are not access paths, so they stay:
 
 ### 1. One adapter function
 
-In `src/observed.py`, replace `_fetch_source` with a thin wrapper. It is the only place `gauge_pull` is called.
+In `src/ewr_analysis/observed.py`, replace `_fetch_source` with a thin wrapper. It is the only place `gauge_pull` is called.
 
 ```python
 def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, retries: int) -> pd.DataFrame:
@@ -92,7 +92,7 @@ Requests that long may still be slow (`dc500c1` measured 35 to 60 s before the f
 
 `gauge_pull` is the source of truth. These limits are accepted, not bugs to work around. They come from `docs/observed-data-spike.md` and the code in the installed package:
 
-- **BOM fallback needs a cache that ships in the repository.** When a state returns nothing, `gauge_pull` falls back to BOM, and `bomwater` 0.0.8 reads `~/bom_water/cache/stations.json`. Its first-run download of that file now fails (the service no longer returns the SOAP envelope it expects) and leaves a half-built cache, so every fallback raised `FileNotFoundError`. `src/observed.py` (`_use_repo_bom_cache`) now points the package at `data/reference/bom_water/cache` (see the README there), so nothing is read from or written to the home folder and nothing is downloaded. An out-of-record period returns an empty frame. A missing shipped file is still reported as `STATION_LIST_SETUP_REQUIRED`; restore the folder from the repository.
+- **BOM fallback needs a cache that ships in the repository.** When a state returns nothing, `gauge_pull` falls back to BOM, and `bomwater` 0.0.8 reads `~/bom_water/cache/stations.json`. Its first-run download of that file now fails (the service no longer returns the SOAP envelope it expects) and leaves a half-built cache, so every fallback raised `FileNotFoundError`. `src/ewr_analysis/observed.py` (`_use_repo_bom_cache`) now points the package at `data/reference/bom_water/cache` (see the README there), so nothing is read from or written to the home folder and nothing is downloaded. An out-of-record period returns an empty frame. A missing shipped file is still reported as `STATION_LIST_SETUP_REQUIRED`; restore the folder from the repository.
 - **Wrong zero flows** are fixed only by the post-filter in step 2.
 - **No per-state selection.** A gauge the catalog files under the wrong state (422016 is NSW in the catalog and NSW;QLD in the parameter sheet; 422030 is listed QLD in the sheet but served by WaterNSW) is routed by the catalog alone. The 21 known differences are in `docs/observed-routing-mismatches.csv`. Do not work around this in code. Document it where the observed feature is described.
 

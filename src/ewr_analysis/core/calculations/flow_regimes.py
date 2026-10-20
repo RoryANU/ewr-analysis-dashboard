@@ -102,7 +102,37 @@ flow_mappings: dict[str, dict[str, str | list[str]]] = {
 
 
 def regimes_for(code: str, state: str) -> list[str]:
-    """Pipeline flow regimes (list of names) for an EWR code in a state; [] when the pipeline gives none."""
+    """Look up flow-regime categories using the longest matching code key.
+
+    Equation / rule: EQ-REGIME-01; choose the longest case-sensitive substring
+    key in the state's catalog, keeping the first declared key on a length tie.
+
+    Parameters
+    ----------
+    code : str
+        EWR code [identifier]. Matching is by substring, not only by prefix.
+    state : str
+        State abbreviation [catalog key]. No index or timezone applies.
+
+    Returns
+    -------
+    list of str
+        Flow regimes [category labels] in catalog order, shape (n,). Unknown
+        states or unmatched codes produce an empty list. A string is wrapped in
+        a new list; a catalog list is copied before returning.
+
+    Assumptions
+    -----------
+    The flow_mappings constant is stable and read only. Codes/states are strings;
+    there is no case conversion, validation or NaN normalization. Matching keys
+    include all equal characters; equally long ties use declaration order.
+    Neither inputs nor the catalog are mutated. Later TOML migration is deferred.
+
+    References
+    ----------
+    pre-refactor:src/flow_regime_mappings.py attributes the table to MDBAuth's
+    EWR_analysis_pipeline notebooks and records the longest-match adaptation.
+    Upstream verification and scientific interpretation: TBD, needs scientist review."""
     matches = ((key, val) for key, val in flow_mappings.get(state, {}).items() if key in code)
     match = max(matches, key=lambda item: len(item[0]), default=None)
     if match is None:

@@ -1,9 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ewr-analysis-dashboard"
 version = "0.0.0"
 description = "EWR analysis dashboard"
 requires-python = ">=3.11"
-# runtime dependencies live in requirements.txt / requirements-dev.txt; this table only describes the project to tools
+dependencies = ["py_ewr>=2.4.11", "pandas", "numpy", "shapely", "openpyxl", "requests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ewr_analysis = ["*.js", "*.html"]
+
 [tool.ruff]
 # Target Python version
 target-version = "py311"
@@ -18,10 +29,6 @@ ignore = []
 
 # Allow fix behavior by default
 fixable = ["ALL"]
-
-[tool.ruff.lint.per-file-ignores]
-# the tests put src/ on sys.path before importing it
-"tests/*" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -43,6 +50,7 @@ no_implicit_optional = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
 minversion = "9.0"
@@ -52,4 +60,21 @@ markers = [
     "slow: runs py_ewr end to end or rebuilds the dashboard (excluded from the pre-commit hook; run with `pytest`, skip with `-m 'not slow'`)",
     "network: needs internet (skipped when GitHub is unreachable)",
     "observed: requires the optional mdba-gauge-getter dependency",
+]
+
+[tool.importlinter]
+root_package = "ewr_analysis"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core calculations have no application or infrastructure dependencies"
+type = "forbidden"
+source_modules = ["ewr_analysis.core"]
+# All siblings includes config, data_io, workflows, interfaces and visualization
+# when they are created, as well as the existing compatibility/server modules.
+# The overlapping core package is allowed to import its own descendants.
+forbidden_modules = [
+    "ewr_analysis.*",
+    "http", "socket", "requests", "subprocess", "threading", "concurrent",
+    "streamlit", "dash", "plotly", "matplotlib",
 ]

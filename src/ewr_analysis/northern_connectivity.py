@@ -6,14 +6,15 @@ exactly as py_ewr's own cleaners do. Site names are mapped to gauges with data/r
 
 import logging
 import re
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from py_ewr import data_inputs
 
+from ewr_analysis.paths import DATA_DIR
+
 log = logging.getLogger(__name__)
-STATIONS = Path(__file__).resolve().parent.parent / "data" / "reference" / "northern_connectivity_stations.csv"
+STATIONS = DATA_DIR / "reference" / "northern_connectivity_stations.csv"
 
 
 def get_northern_connectivity_codes() -> dict:

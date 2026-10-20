@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from flow_regime_mappings import flow_mappings, regimes_for
+from ewr_analysis.flow_regime_mappings import flow_mappings, regimes_for
 
 ROOT = Path(__file__).resolve().parents[1]
 

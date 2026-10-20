@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import embed_scenarios as em
+from ewr_analysis import embed_scenarios as em
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,7 +48,7 @@ class TestResolvePath:
 
 
 @pytest.fixture
-def template(tmp_path) -> Path:
+def template(tmp_path: Path) -> Path:
     t = tmp_path / "page.html"
     t.write_text(f"<html><script>{em.PLACEHOLDER}</script></html>")
     return t
@@ -175,8 +175,8 @@ def test_the_page_stores_upload_rows_in_the_servers_key_order():
     """The page's VALK (how it reads a scenario's vals) is server.VAL_KEYS: a new field has to be added to both."""
     import re
 
-    import server
+    from ewr_analysis import server
 
-    text = (Path(__file__).resolve().parents[1] / "src/dashboard_template.html").read_text()
+    text = (Path(__file__).resolve().parents[1] / "src/ewr_analysis/dashboard_template.html").read_text()
     valk = re.search(r"const VALK=(\[[^\]]*\])", text)
     assert valk and json.loads(valk.group(1)) == list(server.VAL_KEYS)
