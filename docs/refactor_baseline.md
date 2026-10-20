@@ -602,3 +602,221 @@ dr_approx case 18: abs=0.010000000000000009, rel=inf
 
 `lint-imports --no-cache`: 1 contract kept, 0 broken (65 files, 138
 dependencies at move time). The existing boundary needs no extension.
+
+## Phase 1 slice 2 — final verification and scientist review
+
+No slice 3 work was started. The five requested commits are:
+
+```text
+e66093c Move slice 2 assessment and gap calculations with shims; no behaviour change
+c5d49bf Extend slice 2 baseline comparison and record negative control; no behaviour change
+3c079d7 Add independent slice 2 known-answer tests; no behaviour change
+938b14b Record slice 2 moves, purity exception and preserved issues; no behaviour change
+7c5343d Document slice 2 calculations using the plan template; no behaviour change
+```
+
+Commands use the existing `.venv` from the repository root, with the same socket
+and network access as the accepted baseline. No expectations were changed:
+
+```sh
+source .venv/bin/activate
+pytest -q
+node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js tests/test_heatmap_selection.js
+pre-commit run --all-files
+lint-imports --no-cache
+python scripts/compare_implementations.py
+```
+
+```text
+901 passed in 140.25s (0:02:20)
+node: tests 205; pass 205; fail 0; skipped 0; cancelled 0; todo 0
+lint-imports: 1 kept, 0 broken (65 files, 138 dependencies)
+compare_implementations.py: exit 0; all 28 max_abs=0, max_rel=0
+  _iso_date: 12 cases; 4 matching exceptions; 2 clock-acceptance-only cases
+```
+
+901 = 866 accepted tests + 35 new known-answer cases; **zero skips**. The full
+suite includes both unchanged golden checks:
+`tests/test_dashboard_html.py::TestBaseline::test_aggregates_match_the_stored_baseline`
+and `tests/test_pyewr_wrappers.py::TestRunScenario::test_matches_the_baseline_snapshot`.
+Their JSON bytes and every protected baseline hash remain unchanged.
+
+All-files hook output (exit 0):
+
+```text
+check python ast..........................................................Passed
+check yaml................................................................Passed
+check toml................................................................Passed
+check json................................................................Passed
+check for merge conflicts.................................................Passed
+check for broken symlinks.............................(no files to check)Skipped
+check that scripts with shebangs are executable...........................Passed
+detect private key........................................................Passed
+don't commit to branch....................................................Passed
+check for case conflicts..................................................Passed
+debug statements (python).................................................Passed
+mixed line ending.........................................................Passed
+fix end of files..........................................................Passed
+trim trailing whitespace..................................................Passed
+check for added large files...............................................Passed
+ruff check................................................................Passed
+ruff format...............................................................Passed
+mypy......................................................................Passed
+lint-imports (core dependency boundary)...................................Passed
+pytest (fast, not slow)...................................................Passed
+node --test (dashboard JavaScript)........................................Passed
+parameter sheet matches MDBA EWR_tool (when edited).......................Passed
+```
+
+AST audit is reproducible with this script (run with `python` from repo root):
+
+```python
+import ast
+import copy
+import subprocess
+from pathlib import Path
+
+START = "2801c86"
+MOVE = "e66093c"
+DOC = "7c5343d"
+MOVED = {
+    "assessment_years": ["_iso_date", "assessment_start", "_timing_mask", "complete_years", "year_summary", "window_metrics", "achievement_frequencies"],
+    "event_gaps": ["ewr_gaps", "gap_severity", "_dateless_gap_stats", "_runs_by_year", "_has_any_event"],
+    "duration_ratio": ["dr_years", "vr_years", "dr_approx"],
+    "paired_comparison": ["_paired_achievement"],
+}
+
+
+def tree(ref, path):
+    return ast.parse(Path(path).read_text() if ref is None else subprocess.check_output(["git", "show", f"{ref}:{path}"], text=True))
+
+
+def function(module, name):
+    return copy.deepcopy(next(n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == name))
+
+
+class NoDocs(ast.NodeTransformer):
+    def visit_FunctionDef(self, node):
+        self.generic_visit(node)
+        if ast.get_docstring(node, clean=False) is not None:
+            node.body.pop(0)
+        return node
+
+
+def dump(node):
+    return ast.dump(node, include_attributes=False)
+
+
+for module, names in MOVED.items():
+    path = f"src/ewr_analysis/core/calculations/{module}.py"
+    for name in names:
+        old_file = "build_dashboard" if name == "dr_approx" else "server"
+        legacy = function(tree("pre-refactor", f"src/{old_file}.py"), name)
+        previous = function(tree(START, f"src/ewr_analysis/{old_file}.py"), name)
+        moved = function(tree(MOVE, path), name)
+        current = function(tree(None, path), name)
+        assert dump(previous) == dump(moved), name
+        if name == "_iso_date":
+            # Only the previously accepted Phase 0 identity cast differs.
+            call = moved.body[-1].value
+            assert isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "cast"
+            assert len(call.args) == 2 and isinstance(call.args[0], ast.Name) and call.args[0].id == "str"
+            moved.body[-1].value = call.args[1]
+            current.body[-1].value = current.body[-1].value.args[1]
+        assert dump(legacy) == dump(moved), name
+        assert dump(NoDocs().visit(legacy)) == dump(NoDocs().visit(current)), name
+        print(f"{name}: move AST exact; final AST exact excluding docs and prior _iso_date cast")
+    assert dump(NoDocs().visit(tree(f"{DOC}^", path))) == dump(NoDocs().visit(tree(DOC, path))), module
+
+for filename in ("server", "build_dashboard"):
+    path = f"src/ewr_analysis/{filename}.py"
+    previous, current = tree(START, path), tree(None, path)
+    names = {name for group in MOVED.values() for name in group if (name == "dr_approx") == (filename == "build_dashboard")}
+    previous.body = [n for n in previous.body if not isinstance(n, (ast.Import, ast.ImportFrom)) and not (isinstance(n, ast.FunctionDef) and n.name in names)]
+    current.body = [n for n in current.body if not isinstance(n, (ast.Import, ast.ImportFrom))]
+    assert dump(previous) == dump(current), filename
+    print(f"{filename}.py: all remaining non-import statements unchanged")
+print("PASS: 16 unchanged moves; docstring commit has no other AST changes; shims are import-only")
+```
+
+Output (exit 0):
+
+```text
+_iso_date: move AST exact; final AST exact excluding docs and prior _iso_date cast
+assessment_start: move AST exact; final AST exact excluding docs and prior _iso_date cast
+_timing_mask: move AST exact; final AST exact excluding docs and prior _iso_date cast
+complete_years: move AST exact; final AST exact excluding docs and prior _iso_date cast
+year_summary: move AST exact; final AST exact excluding docs and prior _iso_date cast
+window_metrics: move AST exact; final AST exact excluding docs and prior _iso_date cast
+achievement_frequencies: move AST exact; final AST exact excluding docs and prior _iso_date cast
+ewr_gaps: move AST exact; final AST exact excluding docs and prior _iso_date cast
+gap_severity: move AST exact; final AST exact excluding docs and prior _iso_date cast
+_dateless_gap_stats: move AST exact; final AST exact excluding docs and prior _iso_date cast
+_runs_by_year: move AST exact; final AST exact excluding docs and prior _iso_date cast
+_has_any_event: move AST exact; final AST exact excluding docs and prior _iso_date cast
+dr_years: move AST exact; final AST exact excluding docs and prior _iso_date cast
+vr_years: move AST exact; final AST exact excluding docs and prior _iso_date cast
+dr_approx: move AST exact; final AST exact excluding docs and prior _iso_date cast
+_paired_achievement: move AST exact; final AST exact excluding docs and prior _iso_date cast
+server.py: all remaining non-import statements unchanged
+build_dashboard.py: all remaining non-import statements unchanged
+PASS: 16 unchanged moves; docstring commit has no other AST changes; shims are import-only
+```
+
+The move commit preserves complete function ASTs against the accepted pre-slice
+source, including signatures, docstrings and casts. Fifteen are also literally
+equal to pre-refactor; `_iso_date` retains only its previously accepted Phase 0
+`typing.cast(str, ...)` difference. After the separate docstrings commit, only
+function docstrings and that prior cast are excluded from comparison. Every
+remaining non-import statement in server.py/build_dashboard.py is unchanged
+from `2801c86` after extracted definitions are removed. The docstrings-only
+commit was also checked as a whole-module AST equivalence with docs removed.
+
+Boundary and protected-path commands:
+
+```sh
+git grep -nE 'open\(|read_csv|read_excel|os\.environ|__file__|lru_cache|Lock\(' -- src/ewr_analysis/core
+git grep -n '__file__' -- src/ewr_analysis
+git diff --name-only 2801c86 -- data/ tests/fixtures/ .github/ .omnigent/ .coderabbit.yaml scripts/run_omnigent_review.py
+git diff --check 2801c86
+git grep -n 'def _iso_date' -- src/
+git grep -n 'import _iso_date as _iso_date' -- src/ewr_analysis/server.py
+```
+
+```text
+core forbidden-pattern grep: no matches (exit 1, as expected)
+__file__: src/ewr_analysis/paths.py:5 only
+protected-path diff: no output
+whitespace/error check: no output
+_iso_date definition: assessment_years.py only; server.py re-export shim present
+30/30 Phase 0 protected SHA-256 hashes unchanged
+```
+
+The static core import inventory contains calendar, datetime, math, typing,
+numpy, pandas and core-internal imports only. No import-linter extension was
+needed. No files under snapshots/data/fixtures or review-tooling paths changed;
+no new package folders, dependency changes, staleness changes, or generated
+artifacts were committed. Existing `.claude/` and REORGANIZATION_PLAN.md remain
+untracked and untouched.
+
+Scientist review checklist (all observations remain unchanged):
+
+- Review each of the 17 preserved observations in the slice 2 subsection
+  under **Observed issues**: relative-input wall clock; assessment-year labels;
+  timing-day sentinels; naive-calendar completeness; None versus NaN summary;
+  full-gap severity and uncapped window ET; frequency pairing/duration order;
+  whole-gap censoring and empty records; truthy excess episodes; dateless missing
+  severity; empty-event membership; row adjacency/year-split runs; k-event numeric
+  coercion; fractional volume accumulation; negative approximate duration;
+  duplicate/nonbinary pairing; and deferred payload mutation.
+- Review every new **TBD, needs scientist review** docstring: assessment_years
+  (`_iso_date`, `assessment_start`, `_timing_mask`, `complete_years`, `year_summary`,
+  `window_metrics`, `achievement_frequencies`); event_gaps (`ewr_gaps`,
+  `gap_severity`, `_dateless_gap_stats`, `_runs_by_year`, `_has_any_event`);
+  duration_ratio (`dr_years`, `vr_years`, `dr_approx`); paired_comparison
+  (`_paired_achievement`). Scientific provenance/suitability is not inferred
+  from matching legacy outputs; no reference was invented.
+- The one excluded candidate, `_pair_years`, stays in server because it mutates
+  the caller's response. Split pure common-year selection from interface
+  assignment first. `_iso_date` input validation also belongs at that later
+  interface boundary. The read-only tables remain slated for config/*.toml.
