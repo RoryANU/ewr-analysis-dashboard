@@ -1,5 +1,5 @@
 import math
-from typing import cast
+from typing import Any, cast
 
 
 def mcnemar_p(gained: int, lost: int) -> float | None:
@@ -36,3 +36,26 @@ def mcnemar_p(gained: int, lost: int) -> float | None:
     if n == 0:
         return None
     return cast(float, round(min(1.0, 2 * sum(math.comb(n, k) for k in range(min(gained, lost) + 1)) / 2**n), 4))
+
+
+def _paired_achievement(base: dict[str, Any], comp: dict[str, Any]) -> dict[str, Any]:
+    """Achievement in two scenarios over the water years complete in both, with the years gained and lost and McNemar's test."""
+    base_index = {w: i for i, w in enumerate(base["wy"]) if base["complete"][i]}
+    comp_index = {w: i for i, w in enumerate(comp["wy"]) if comp["complete"][i]}
+    common = sorted(set(base_index) & set(comp_index))
+    base_achieved = [base["achieved"][base_index[w]] for w in common]
+    comp_achieved = [comp["achieved"][comp_index[w]] for w in common]
+    n = len(common)
+    gained = sum(1 for b, c in zip(base_achieved, comp_achieved, strict=True) if not b and c)
+    lost = sum(1 for b, c in zip(base_achieved, comp_achieved, strict=True) if b and not c)
+    return {
+        "wy": common,
+        "n": n,
+        "base": int(sum(base_achieved)),
+        "comp": int(sum(comp_achieved)),
+        "gained": gained,
+        "lost": lost,
+        "pct_base": round(100 * sum(base_achieved) / n, 3) if n else None,
+        "pct_comp": round(100 * sum(comp_achieved) / n, 3) if n else None,
+        "p_mcnemar": mcnemar_p(gained, lost),
+    }

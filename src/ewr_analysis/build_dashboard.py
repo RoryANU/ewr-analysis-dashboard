@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 from shapely.geometry import mapping, shape
 
+from ewr_analysis.core.calculations.duration_ratio import dr_approx as dr_approx
 from ewr_analysis.drought_windows import meta as drought_meta
 from ewr_analysis.flow_regime_mappings import regimes_for
 from ewr_analysis.paths import DASHBOARD_HTML as OUTPUT
@@ -144,15 +145,6 @@ def _fill_by_scenario(values: list[float | None], means: pd.Series, places: int)
     """Write each scenario's mean (indexed by scenario number) into its slot of `values`, rounded to `places`."""
     for scenario, mean in means.items():
         values[int(scenario)] = round(float(mean), places)
-
-
-def dr_approx(ael: list[float | None], prm: dict[str, Any]) -> list[float | None]:
-    """The review results have no yearly event lengths, so the duration ratio is approximated per scenario as the mean event length ÷ the
-    required duration, capped at 2 (py_ewr's AverageEventLength averages every event, successful or not). Flow EWRs only."""
-    dur = prm.get("dur")
-    if prm.get("kind", "F") != "F" or not dur:
-        return [None] * len(ael)
-    return [None if a is None else round(min(a / dur, 2.0), 3) for a in ael]
 
 
 def fix_theme(t: str) -> str:

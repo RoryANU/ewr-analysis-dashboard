@@ -170,3 +170,144 @@ def _water_year_days(w: int) -> int:
     pre-refactor:src/server.py::_water_year_days and _feb29.
     Application of this calendar convention: TBD, needs scientist review."""
     return 366 if _feb29(w) else 365
+
+
+def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: Any, sm: int, em: int, consecutive: bool = False) -> tuple[Any, int]:
+    """% of water years in which each threshold is exceeded for at least `duration` days within the timing window.
+    flows: (days, scenarios). Same result as the numba reference (non-consecutive days): the d-th largest in-window flow of a year
+    is the highest threshold that is exceeded on d days of that year.  consecutive=True requires the d days to be consecutive (the
+    reference's calc_annual_max_threshold_consecutive: the largest, over windows of d days, of the window minimum).
+    returns (scenarios, thresholds, durations)."""
+    import numpy as np
+
+    months, calendar_years = index.month.to_numpy(), index.year.to_numpy()
+    wy = np.where(months >= 7, calendar_years + 1, calendar_years)  # labelled by the year the water year ends in
+    year_lookup = np.unique(wy, return_inverse=True)[1]
+    n_years = year_lookup.max() + 1
+    mask = (months >= sm) & (months <= em) if sm <= em else (months >= sm) | (months <= em)
+    window_flows = np.where(mask[:, None] & ~np.isnan(flows), flows, -np.inf)
+    bounds = np.searchsorted(year_lookup, np.arange(n_years + 1))  # each year's first row (the index is in date order)
+    # Denominator: only water years whose timing window is fully observed count. A water year is complete for a scenario when
+    # every calendar day of the window (Jul-Jun water year, as above) is in the index with a non-NaN flow. Partial first/last
+    # years and years with no (or incomplete) data are excluded rather than scored as failures; a complete year that simply
+    # stays below the threshold is still an unsuccessful year.
+    # All scenarios use the SAME years: the intersection of every scenario's complete years, so base/comparison rates (and
+    # their difference) are paired over one year set. That shared count is returned as the number of years. No shared complete
+    # year -> NaN. (No separate cap on the duration is needed: days outside the window are -inf, so a duration longer than
+    # the window's days in a year can never be met, in either mode.)
+    expected = np.array([_window_days(wl, sm, em) for wl in np.unique(wy)])
+    complete = np.stack(
+        [(np.bincount(year_lookup, weights=mask & ~np.isnan(flows[:, s]), minlength=n_years) == expected) & (expected > 0) for s in range(flows.shape[1])]
+    )
+    counted = complete.all(axis=0)
+    n_counted = int(counted.sum())
+    out = np.zeros((flows.shape[1], len(thresholds), len(durations)), dtype=np.float32)
+    for s in range(flows.shape[1]):
+        # annual[k, y]: the highest threshold that year y's flows exceed for durations[k] days
+        annual = np.full((len(durations), n_years), -np.inf)
+        for y in np.flatnonzero(counted):
+            year_flows = window_flows[bounds[y] : bounds[y + 1], s]
+            if consecutive:
+                # sliding-window minimum grown one day at a time: run_min[i] = min(year_flows[i : i + width])
+                run_min, width = year_flows.copy(), 1
+                for k, d in enumerate(durations):
+                    while width < d and len(run_min) > 1:
+                        run_min, width = np.minimum(run_min[:-1], year_flows[width:]), width + 1
+                    if d <= len(year_flows) and width == d and len(run_min):
+                        annual[k, y] = run_min.max()
+            else:
+                descending = np.sort(year_flows)[::-1]
+                for k, d in enumerate(durations):
+                    if d <= len(descending):
+                        annual[k, y] = descending[d - 1]
+        for k in range(len(durations)):
+            if not n_counted:
+                out[s, :, k] = np.nan
+                continue
+            n_unsuccessful = np.searchsorted(np.sort(annual[k][counted]), thresholds, side="left")
+            out[s, :, k] = (n_counted - n_unsuccessful) * 100.0 / n_counted
+    return out, n_counted
+
+
+def assessment_start(sm: int, em: int) -> int:
+    """py_ewr's assessment year starts on 1 July, except when the timing window runs from the first half of the year into the second
+    (StartMonth <= 6 and EndMonth >= 7, e.g. Jun-Nov): then on the 1st of StartMonth (evaluate_EWRs.wateryear_daily)."""
+    return sm if sm <= 6 and em >= 7 else 7
+
+
+def _timing_mask(index: Any, sm: int, em: int, sd: int | None = None, ed: int | None = None) -> Any:
+    """Calendar window mask; optional day boundaries are used by user EWRs, while stock summaries retain whole months."""
+    month, day = index.month, index.day
+    after = (month > sm) | ((month == sm) & (day >= (sd or 1)))
+    before = (month < em) | ((month == em) & (day <= (ed or 31)))
+    return after & before if sm <= em else after | before
+
+
+def complete_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, sd: int | None = None, ed: int | None = None) -> list[int]:
+    """1 for each assessment year (label w, starting on the 1st of month ys) in which every day of the timing window sm-em has a value;
+    the window's days come from the calendar, so a window cut off by the record's ends is incomplete."""
+    import pandas as pd
+
+    if not wys:
+        return []
+    full = pd.date_range(pd.Timestamp(min(wys), ys, 1), pd.Timestamp(max(wys) + 1, ys, 1) - pd.Timedelta(days=1))
+    m = full.month
+    win = _timing_mask(full, sm, em, sd, ed)
+    ok = pd.Series(flow.reindex(full).notna().to_numpy()[win], index=(full.year - (m < ys))[win])
+    done = ok.groupby(level=0).all()
+    return [int(bool(done.get(w, False))) for w in wys]
+
+
+def year_summary(dr: list[float | None], complete: list[int]) -> dict[str, Any]:
+    """Median duration ratio over the complete years, and the near misses: years with 0.5 <= DR < 1 and the years with DR < 1."""
+    import numpy as np
+
+    v = [x for x, c in zip(dr, complete, strict=True) if c and x is not None]
+    fail = [x for x in v if x < 1]
+    return {"dr": round(float(np.median(v)), 3) if v else None, "nm": [sum(1 for x in fail if x >= 0.5), len(fail)] if v else None}
+
+
+def window_metrics(
+    years: dict[str, Any], gaps: list[dict[str, Any]], mrip: int, target: Any, w0: Any, w1: Any, record: tuple[Any, Any] | None = None
+) -> dict[str, Any]:
+    """An EWR's metrics inside one drought window, the days w0..w1 (dates, inclusive; drought_windows.window_dates), from its yearly results
+    (`years`: wy labels, achieved, complete, dr, ystart) and its gaps (ewr_gaps):
+      n   complete assessment years inside the window;  fr = (achieved / n) / (target / 100)
+      et  days of the window beyond MRIP in an uncensored gap (a gap is beyond MRIP from its start + MRIP days, so a gap that began before
+          the window counts: antecedent dryness) ÷ the window's days within the record, less days inside censored gaps
+      sev longest uncensored gap overlapping the window, from its true start to its end, ÷ MRIP
+      dr  median duration ratio over the window's complete years.
+    `record`: the first and last day of the record (default: the span of the gaps)."""
+    import numpy as np
+    import pandas as pd
+
+    w0, w1, ys = pd.Timestamp(w0), pd.Timestamp(w1), years.get("ystart", 7)
+    inside = [i for i, w in enumerate(years["wy"]) if pd.Timestamp(w, ys, 1) >= w0 and pd.Timestamp(w + 1, ys, 1) - pd.Timedelta(days=1) <= w1]
+    done = [i for i in inside if years["complete"][i]]
+    n, ach, tgt = len(done), sum(years["achieved"][i] for i in done), pd.to_numeric(target, errors="coerce")
+    drs = [years["dr"][i] for i in done if years.get("dr") and years["dr"][i] is not None]
+    out: dict[str, Any] = {
+        "n": n,
+        "fr": round(ach / n / (tgt / 100), 4) if n and tgt > 0 else None,
+        "et": None,
+        "sev": None,
+        "dr": round(float(np.median(drs)), 3) if drs else None,
+    }
+    span = [(pd.Timestamp(g["start"]), pd.Timestamp(g["end"]), g) for g in gaps]
+    if mrip and span:
+        first, last = (pd.Timestamp(record[0]), pd.Timestamp(record[1])) if record else (min(a for a, _, _ in span), max(b for _, b, _ in span))
+        lo, hi = max(w0, first), min(w1, last)  # the window within the record
+        overlap = lambda a, b: max(0, (min(b, hi) - max(a, lo)).days + 1)  # noqa: E731  (days of a..b inside lo..hi)
+        days = overlap(lo, hi) - sum(overlap(a, b) for a, b, g in span if g["censored"])
+        if days > 0:
+            beyond = sum(overlap(a + pd.Timedelta(days=mrip), b) for a, b, g in span if not g["censored"] and g["days"] > mrip)
+            out["et"] = round(beyond / days, 4)
+        hit = [g["days"] for a, b, g in span if not g["censored"] and a <= w1 and b >= w0]
+        out["sev"] = round(max(hit) / mrip, 2) if hit else None
+    return out
+
+
+def _iso_date(value: Any) -> str:
+    import pandas as pd
+
+    return cast(str, pd.Timestamp(value).strftime("%Y-%m-%d"))
