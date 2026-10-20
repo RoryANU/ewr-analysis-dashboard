@@ -1,6 +1,6 @@
 """Build ewr_analysis_dashboard.html: a stripped-back analysis view of the 2026 Basin Plan review EWR results.
 
-Run from anywhere:  python3 src/build_dashboard.py   (writes ewr_analysis_dashboard.html in the repository root)
+Run from anywhere:  python3 -m ewr_analysis.build_dashboard   (writes ewr_analysis_dashboard.html in the repository root)
 
 Only two raw metrics are carried, no ratings, scaling or scores:
   * FR  - frequency ratio per EWR (achieved / target frequency)        data/results/frequency_ratio.csv
@@ -374,7 +374,7 @@ def ewr_handlers(sheet: pd.DataFrame) -> list[str | None]:
 
 
 def ewr_index(root: Path = ROOT) -> dict[str, Any]:
-    """Every row of data/reference/parameter_sheet.csv (kept equal to the MDBA EWR tool's copy by src/sync_parameter_sheet.py), column-wise:
+    """Every row of data/reference/parameter_sheet.csv (kept equal to the MDBA EWR tool's copy by src/ewr_analysis/sync_parameter_sheet.py), column-wise:
     {"keys": [...], "cols": {key: [value per row]}}. Repeated strings are stored once in "strs" and referenced by index."""
     path = root / "data/reference/parameter_sheet.csv"
     if not path.exists():  # a test fixture tree has no copy of the sheet: use the repository's

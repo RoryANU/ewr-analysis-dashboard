@@ -109,7 +109,7 @@ def main(argv=None):
         print(f"\nCannot start the EWR tool:\n{e}", file=sys.stderr)
         return 1
     try:
-        return subprocess.call([str(py), str(ROOT / "src" / "server.py"), *args])
+        return subprocess.call([str(py), "-m", "ewr_analysis.server", *args], cwd=ROOT / "src")
     except KeyboardInterrupt:
         return 0
     except OSError as e:

@@ -7,7 +7,7 @@ An interactive page for exploring environmental water requirement (EWR) results 
 
 It can show a single scenario or the difference between a base and a comparison scenario, with an objective × EWR matrix for each SDL unit, planning unit and gauge. In Differential mode an EWR that meets its target in both scenarios is counted apart ("met in both") and left out of the means; an EWR counts as changed when it gains or loses at least the change band (default 2 achieved years; 1 year of record beyond MRIP for ETP).
 
-The **More** menu adds the share of EWRs meeting the frequency threshold, failing badly or achieving their MRIP, the **duration ratio** (event length ÷ required duration, capped at 2; for the review results an approximation from the mean event length) and, for your own scenarios, the **worst gap** between successful events ÷ MRIP (the worst EWR sets each cell). Your own scenarios can also be viewed over the **drought windows** (Federation 1895–96 to 1902–03, WWII 1937–38 to 1945–46, Millennium 1996–97 to 2009–10, Tinderbox 2017–18 to 2019–20; defined in `src/drought_windows.py`).
+The **More** menu adds the share of EWRs meeting the frequency threshold, failing badly or achieving their MRIP, the **duration ratio** (event length ÷ required duration, capped at 2; for the review results an approximation from the mean event length) and, for your own scenarios, the **worst gap** between successful events ÷ MRIP (the worst EWR sets each cell). Your own scenarios can also be viewed over the **drought windows** (Federation 1895–96 to 1902–03, WWII 1937–38 to 1945–46, Millennium 1996–97 to 2009–10, Tinderbox 2017–18 to 2019–20; defined in `src/ewr_analysis/drought_windows.py`).
 
 ## EWR guide and hideable panels
 
@@ -15,7 +15,7 @@ The **📘 EWR guide** button in the bar opens a panel on the left that mirrors 
 
 The left panel, the results panel and the title/options bar can each be hidden completely with the small handles (◂ ▸ on the dividers, ▴ in the bar) so the map fills the window; a tab at the edge brings each back.
 
-The guide reads `data/reference/parameter_sheet.csv`, a copy of [`parameter_sheet.csv` in MDBAuth/EWR_tool](https://github.com/MDBAuth/EWR_tool/blob/main/py_ewr/parameter_metadata/parameter_sheet.csv). `python3 src/sync_parameter_sheet.py` checks the copy against GitHub (exit 1 when it differs; a warning only when offline) and `python3 src/sync_parameter_sheet.py --update` refreshes it; follow with `python3 src/build_dashboard.py`. The same check runs as a pre-commit hook when the file is edited, as a **pre-push hook** (`pre-commit install --hook-type pre-push`) and as the `network` test `tests/test_parameter_sheet_sync.py`.
+The guide reads `data/reference/parameter_sheet.csv`, a copy of [`parameter_sheet.csv` in MDBAuth/EWR_tool](https://github.com/MDBAuth/EWR_tool/blob/main/py_ewr/parameter_metadata/parameter_sheet.csv). `python3 -m ewr_analysis.sync_parameter_sheet` checks the copy against GitHub (exit 1 when it differs; a warning only when offline) and `python3 -m ewr_analysis.sync_parameter_sheet --update` refreshes it; follow with `python3 -m ewr_analysis.build_dashboard`. The same check runs as a pre-commit hook when the file is edited, as a **pre-push hook** (`pre-commit install --hook-type pre-push`) and as the `network` test `tests/test_parameter_sheet_sync.py`.
 
 ## Quick start (no technical knowledge needed)
 
@@ -41,9 +41,9 @@ Prefer a command line? From the project folder, `python3 run.py` does the same t
 start.command, start.sh, start.bat   double-click launchers (Mac, Linux, Windows)
 run.py                           the launcher they call: sets up .venv, installs requirements, starts the server, opens the browser
 ewr_analysis_dashboard.html      the dashboard page: generated on start-up (not committed), served by the local server
-src/
+src/ewr_analysis/
   embed_scenarios.py             runs py_ewr on your files and embeds the results in a copy of the page (used by the notebook)
-  server.py                      local server: serves the page and runs py_ewr on your own model output (python3 src/server.py also works)
+  server.py                      local server: serves the page and runs py_ewr on your own model output (python3 -m ewr_analysis.server also works)
   build_dashboard.py             build script: reads data/, fills the template, writes the HTML
   ewr_guide.js                   the EWR guide panel: search, selection and the tutorial animations (inlined into the page)
   custom_ewr.js                  user EWR registry, four-section form, JSON sharing, animated guidance and unsaved tests
@@ -79,8 +79,8 @@ You need Python 3.10 or later.
 ```bash
 git clone https://github.com/RoryANU/ewr-analysis-dashboard.git
 cd ewr-analysis-dashboard
-pip install pandas numpy shapely
-python3 src/build_dashboard.py
+pip install -e .
+python3 -m ewr_analysis.build_dashboard
 ```
 
 The script prints a short summary (EWR rows, SDL units, planning units and gauges plotted) and overwrites `ewr_analysis_dashboard.html` in the repository root. The file is not committed: the server (and pytest) builds it automatically on start-up when it is missing or older than the template, scripts or `data/`, so you only run this by hand to force a rebuild. It finds its inputs relative to its own location, so keep the folder layout as it is.
@@ -143,7 +143,7 @@ The server registry is `.user_scenarios/uewr.json`. The browser mirrors definiti
 
 ### Browser acceptance check
 
-1. Start the dashboard with a launcher, `python run.py`, or `python src/server.py`. Use the printed HTTP URL rather than opening the HTML as a file.
+1. Start the dashboard with a launcher, `python run.py`, or `python -m ewr_analysis.server`. Use the printed HTTP URL rather than opening the HTML as a file.
 2. Choose **Your data → Add scenario → Standard time-series** and upload `data/example_scenarios/dummy_broken_scenario_A_level_salinity.csv`.
 3. Open **EWR guide → Add EWR**. Choose gauge **404216**, its offered planning unit, Flow / Continuous spell, code `U_TRIAL`, a name, lower limit **200**, Duration **5**, MinSpell **5**, TargetFrequency **50**, MRIP **2** and a July–June window. Leave other parameters at their displayed defaults.
 4. Try the tutorial controls and **Test on one scenario**. Verify the test table appears while the rule is still absent from Your EWRs. Then choose **Save & run**.
@@ -194,7 +194,7 @@ If you can only run code in Databricks notebooks, use the notebook `notebooks/ru
 
 Limits of this route: the flow charts (heat map, hydrograph, flow duration curves) need the local server, so they are not in the page; the page itself cannot add a new scenario, so to add or change a scenario edit `SCENARIOS` and run the notebook again. The file is not committed (it is in `.gitignore`).
 
-To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install pandas numpy shapely`, then `!python src/build_dashboard.py` from the repository folder. The `ewr_analysis_dashboard.html` file is not committed: the server and pytest generate it automatically when it is missing or stale.
+To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install -e .`, then `!python -m ewr_analysis.build_dashboard` from the repository folder. The `ewr_analysis_dashboard.html` file is not committed: the server and pytest generate it automatically when it is missing or stale.
 
 If you can run a terminal somewhere (for example a laptop or a Databricks web terminal), the "Your data" section above (`python3 run.py`) lets you add scenarios inside the page and use the flow charts.
 
@@ -233,7 +233,7 @@ The checks guard the numbers the page shows: the build from `data/` to the embed
 ### Set up
 
 ```bash
-pip install -r requirements-dev.txt   # runtime packages plus pytest, ruff, mypy, pre-commit
+pip install -e . -r requirements-dev.txt   # runtime packages plus pytest, ruff, mypy, pre-commit
 pre-commit install                    # run the checks on every `git commit`
 ```
 
@@ -249,17 +249,17 @@ node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_per
 
 | File | What it checks |
 |---|---|
-| `test_build_pipeline.py` | each stage of `src/build_dashboard.py` (loading, scenario index, per-EWR means, themes, ROWS table, gauges, polygons, META, HTML slots) against hand-computed values on the small data set in `tests/fixtures/mini/` |
+| `test_build_pipeline.py` | each stage of `src/ewr_analysis/build_dashboard.py` (loading, scenario index, per-EWR means, themes, ROWS table, gauges, polygons, META, HTML slots) against hand-computed values on the small data set in `tests/fixtures/mini/` |
 | `test_dashboard_html.py` | the data embedded in `ewr_analysis_dashboard.html`: index bounds, ordering, units, map geometry, every FR / ETP cell recomputed independently from the CSVs, a stored baseline of the aggregates, and (slow) that rebuilding reproduces the committed page byte for byte |
 | `test_source_data.py` | arithmetic promised by `data/results/*.csv` (FR = Frequency ÷ Target, ETP = L ÷ record days, ...) |
-| `test_server_numerics.py` | exact values for the heat map, duration curves, hydrograph, spells, gaps and runs in `src/server.py`, plus strict-JSON output |
+| `test_server_numerics.py` | exact values for the heat map, duration curves, hydrograph, spells, gaps and runs in `src/ewr_analysis/server.py`, plus strict-JSON output |
 | `test_pyewr_wrappers.py` | `ewr_list`, `load_frames`, `run_scenario` and `ewr_eval` against py_ewr's parameter table and an independent recomputation; a baseline of the example scenario's results |
 | `test_ewr_index.py`, `test_ewr_guide.js` | the EWR index embedded in the page (against the CSV, including month.day windows) and the EWR guide: search, the 5-EWR cap, and for every row of the sheet that the illustrative met years meet the rule, the missed years do not, and every tutorial step renders |
 | `test_custom_ewr.py`, `test_series_storage.py`, `test_custom_ewr.js` | stored flow/level/salinity series, handler equivalence, validation parity, strict JSON sharing, versioned registry, HTTP jobs, dynamic indices and deletion/race protections |
 | `test_parameter_sheet_sync.py` | the local parameter sheet equals the one on GitHub (`network` test, skipped offline) |
 | `test_flow_regime_rules.py`, `test_northern_connectivity.py`, `test_embed_scenarios.py` | the flow-regime rule, the workbook reader and the notebook helper |
 
-Baselines live in `tests/fixtures/snapshots/`. After an *intended* change, regenerate them with `UPDATE_SNAPSHOTS=1 pytest -m "slow or not slow"` and review the diff before committing. If the HTML test says the page is stale, run `python3 src/build_dashboard.py`. Do not commit `ewr_analysis_dashboard.html`: the server and pytest generate it automatically when it is missing or stale.
+Baselines live in `tests/fixtures/snapshots/`. After an *intended* change, regenerate them with `UPDATE_SNAPSHOTS=1 pytest -m "slow or not slow"` and review the diff before committing. If the HTML test says the page is stale, run `python3 -m ewr_analysis.build_dashboard`. Do not commit `ewr_analysis_dashboard.html`: the server and pytest generate it automatically when it is missing or stale.
 
 A few tests are marked `xfail(strict=True)`: they record known discrepancies (see the pull request that added them). Fixing one makes its test fail until the marker is removed.
 
@@ -294,7 +294,7 @@ proportion, so any ETP above 1 (in the source results or a computed upload) is
 treated as 1, i.e. exceeded for the whole record. Matrix colours
 always use a fixed 0–100% joint-score scale.
 
-`src/performance.js` contains the reusable views and is embedded by the builder.
+`src/ewr_analysis/performance.js` contains the reusable views and is embedded by the builder.
 The existing `(planning unit, SDL unit, gauge, EWR)` pairing of FR and ETP remains
 unchanged, including the documented averaging of source variants. Only EWRs with
 both finite, nonnegative metrics (ETP capped at 1) enter joint denominators. Raw EWR mean,
@@ -347,7 +347,7 @@ signs, hierarchical averages and selections. Both run in the pre-commit hook; `n
 from `nodejs-wheel` in requirements-dev.txt.
 `pytest tests/test_performance_backend.py` uses controlled parameter/annual fixtures
 and real HTTP handlers for schema, coverage, caching and safe JSON embedding tests.
-Rebuild with `python src/build_dashboard.py`.
+Rebuild with `python -m ewr_analysis.build_dashboard`.
 
 An optional real-browser check is available as
 `node tests/test_performance_browser.cjs` with Playwright installed. It uses an

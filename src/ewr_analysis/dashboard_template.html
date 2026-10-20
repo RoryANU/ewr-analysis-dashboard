@@ -1180,7 +1180,7 @@ function flowCtx(){
   if(any(comp)&&(!isDiff()||any(base))) return {ok:true,gauge:g,base:isDiff()?base.id:comp.id,comp:isDiff()?comp.id:null,bn:isDiff()?base.name:comp.name,cn:comp.name,flowAvailable:has(comp,"flowGauges")&&(!isDiff()||has(base,"flowGauges"))};
   return {ok:false,msg:"Charts need uploaded daily series for this gauge. "+need};
 }
-const DROUGHTS=META.droughts.map(d=>[d.name,`${d.w0}-07-01`,`${d.w1+1}-06-30`]);   // drought quick filters: the drought windows' water years (src/drought_windows.py)
+const DROUGHTS=META.droughts.map(d=>[d.name,`${d.w0}-07-01`,`${d.w1+1}-06-30`]);   // drought quick filters: the drought windows' water years (src/ewr_analysis/drought_windows.py)
 // every chart of the flow analysis panel, in one dropdown grouped by what it is about (D: differential mode)
 const CHARTS={joint:"Joint frequency & inter-event performance",heat:"Heat map (threshold × duration)",hydro:"Hydrograph and annual volumes",fdc:"Flow duration curve",dfdc:"Differential flow duration curve",mdfdc:"Monthly differential flow duration",
   "ev-year":"EWR achievement by year","ev-events":"EWR events","ev-timing":"EWR event timing","ev-gaps":"Gaps between events vs MRIP",regimes:"Flow regime components",spells:"Low-flow spells"};
@@ -1767,7 +1767,7 @@ function setStatus(t,cls){ const s=$("scnStatus"); s.textContent=t; s.className=
 async function serverUp(){ try{ const r=await fetch("/api/ping",{cache:"no-store"}); return r.ok; }catch(e){ return false; } }
 $("addScn").onclick=async()=>{
   renderCustomList(); setStatus(""); $("scnRun").disabled=false; $("scnDlg").showModal();
-  if(!(await serverUp())) setStatus("The analysis server is not running, so scenarios can't be run. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
+  if(!(await serverUp())) setStatus("The analysis server is not running, so scenarios can't be run. Start the local server (see the README: python3 -m ewr_analysis.server) and open this page from http://localhost:8792/.","err");
 };
 $("scnClose").onclick=()=>$("scnDlg").close();
 $("scnList").onclick=e=>{ const b=e.target.closest("[data-rm]"); if(b) removeCustom(+b.dataset.rm); };
@@ -1781,7 +1781,7 @@ $("scnRun").onclick=async()=>{
   if(!name) return setStatus("Give the scenario a name.","err");
   if(!into&&CUSTOM.some(c=>!c.removed&&c.name===name)) return setStatus("A scenario with that name already exists; choose another name.","err");
   if(!file) return setStatus("Choose a "+fmt+" file.","err");
-  if(!(await serverUp())) return setStatus("The analysis server is not running. Start the local server (see the README: python3 src/server.py) and open this page from http://localhost:8792/.","err");
+  if(!(await serverUp())) return setStatus("The analysis server is not running. Start the local server (see the README: python3 -m ewr_analysis.server) and open this page from http://localhost:8792/.","err");
   $("scnRun").disabled=true; $("scnBar").value=0; $("scnBar").hidden=true; setStatus(""); showSteps("Uploading");
   try{
     const scnId=into&&into.id?into.id:"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"text/csv",...(into?{"X-Merge":"1"}:{}),"X-Gauges":allGauges.join(","),"X-Scn-Id":scnId,"X-Format":$("scnFmt").value,"X-Subscenario":$("scnSub").value.trim(),"X-Filename":file.name},body:file}), j=await r.json();

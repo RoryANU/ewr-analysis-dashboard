@@ -1,12 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ewr-analysis-dashboard"
 version = "0.0.0"
 description = "EWR analysis dashboard"
-requires-python = ">=3.11"
-# runtime dependencies live in requirements.txt / requirements-dev.txt; this table only describes the project to tools
+requires-python = ">=3.10"
+dependencies = ["py_ewr>=2.4.11", "pandas", "numpy", "shapely", "openpyxl", "requests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ewr_analysis = ["*.js", "*.html"]
+
 [tool.ruff]
 # Target Python version
-target-version = "py311"
+target-version = "py310"
 # The code base writes long, dense lines (data-pipeline one-liners with trailing comments); 160 keeps the formatter from
 # exploding them while still bounding line length.
 line-length = 160
@@ -19,16 +30,12 @@ ignore = []
 # Allow fix behavior by default
 fixable = ["ALL"]
 
-[tool.ruff.lint.per-file-ignores]
-# the tests put src/ on sys.path before importing it
-"tests/*" = ["E402"]
-
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 files = ["src", "tests"]
 mypy_path = "src"
 warn_unused_ignores = true
@@ -43,6 +50,7 @@ no_implicit_optional = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
 minversion = "9.0"

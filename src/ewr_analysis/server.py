@@ -1,6 +1,6 @@
 """Local server for the EWR analysis dashboard: serves the page and runs py_ewr on an uploaded scenario.
 
-    python3 src/server.py [port] [--no-browser] [--host=0.0.0.0]   (default 8792, localhost only; if that port is busy the next free one is used,
+    python3 -m ewr_analysis.server [port] [--no-browser] [--host=0.0.0.0]   (default 8792, localhost only; if that port is busy the next free one is used,
                                                    and the dashboard opens in your default browser). Easiest start: python3 run.py
 
 Endpoints (used by ewr_analysis_dashboard.html):

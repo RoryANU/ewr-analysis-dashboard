@@ -60,7 +60,7 @@ def build_with_scenarios(scenarios, out_path, template=None):
     template = Path(template or ROOT / "ewr_analysis_dashboard.html")
     html = template.read_text()
     if PLACEHOLDER not in html:
-        raise ValueError(f"{template} has no embedded-scenarios slot; rebuild it with src/build_dashboard.py")
+        raise ValueError(f"{template} has no embedded-scenarios slot; rebuild it with src/ewr_analysis/build_dashboard.py")
     gauges, preloaded, used_names = review_gauges(), [], set()
     for scenario in scenarios:
         name = (scenario.get("name") or resolve_path(scenario["path"]).stem)[:40]
