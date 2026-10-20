@@ -503,7 +503,7 @@ const diffEtTxt=v=>{ const n=Math.round(Math.abs(v)*100); return v==null?"":v===
 function persistObserved(){ try{ localStorage.setItem("ewrObservedSelection",JSON.stringify({sdl:S.obs.sdl,gauges:[...S.obs.gauges],filter:S.obs.filter,start:S.obs.start,end:S.obs.end,refresh:S.obs.refresh,ranges:S.obs.ranges})); }catch(e){} }
 function observedSdlIndex(){ return META.sdls.indexOf(S.obs.sdl); }
 function observedScenario(){ return CUSTOM.find(c=>!c.removed&&c.source==="observed"&&c.observedSdl===S.obs.sdl); }
-function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; observedWatch++; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.job=null; S.obs.runIds=[]; S.obs.displayIds=[]; S.obs.completed=false; S.obs.progress=null; S.obs.status={}; S.obs.ranges={}; persistObserved(); }
+function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; observedWatch++; S.obs.sdl=sdl; const unit=OBSERVED_UNITS.find(x=>x.sdl===sdl); S.obs.gauges=new Set((unit?.gauges||[]).map(g=>g.id)); S.obs.job=null; S.obs.runIds=[]; S.obs.displayIds=[]; S.obs.completed=false; S.obs.progress=null; S.obs.status={}; S.obs.ranges={}; S.obs.copyFallback=new Map(); persistObserved(); }
 let observedWatch=0;
 async function copyObservedDetails(id,button){
   const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauge=unit?.gauges.find(g=>g.id===id);
@@ -512,8 +512,10 @@ async function copyObservedDetails(id,button){
     if(typeof navigator==="undefined"||!navigator.clipboard?.writeText)throw Error("Clipboard unavailable");
     await navigator.clipboard.writeText(text); button.textContent="Copied";
   }catch{
-    const fallback=button.closest("details").querySelector("[data-obs-copy-fallback]"), field=fallback.querySelector("textarea");
-    fallback.hidden=false; field.value=text; field.focus(); field.select(); button.textContent="Select details to copy";
+    (S.obs.copyFallback||=new Map()).set(id,text);
+    render();
+    const field=$("obsCopy-"+id);
+    field?.focus(); field?.select();
   }
 }
 let observedTick=null;
@@ -553,9 +555,9 @@ async function runObserved(gauges,merge=false){
   const token=++observedWatch;
   const previousIds=S.obs.displayIds?.length?S.obs.displayIds:Object.keys(S.obs.status||{});
   S.obs.displayIds=merge?[...new Set([...previousIds,...gauges])]:[...gauges]; S.obs.completed=false;
-  S.obs.completeOpen=false; if(!merge)S.obs.detailsOpen=new Set();
+  S.obs.completeOpen=false; if(!merge){S.obs.detailsOpen=new Set();S.obs.copyFallback=new Map();}
   S.obs.notice=""; S.obs.progress=null; S.obs.status=merge?{...S.obs.status}:{}; S.obs.ranges=merge?{...S.obs.ranges}:{};
-  S.obs.cooldown||={};for(const id of gauges){delete S.obs.status[id];delete S.obs.ranges[id];for(const v of Object.keys(VAR_NAME))delete S.obs.cooldown[cooldownKey(id,v)];}
+  S.obs.cooldown||={};for(const id of gauges){S.obs.copyFallback?.delete(id);delete S.obs.status[id];delete S.obs.ranges[id];for(const v of Object.keys(VAR_NAME))delete S.obs.cooldown[cooldownKey(id,v)];}
   S.obs.runIds=[...gauges]; S.obs.job="starting"; render();
   try{
     const response=await fetch("/api/observed/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdl:S.obs.sdl,gauges,filter_period:S.obs.filter,start:S.obs.filter?S.obs.start:null,end:S.obs.filter?S.obs.end:null,refresh:S.obs.refresh,merge})});
@@ -581,7 +583,7 @@ async function runObserved(gauges,merge=false){
         reindexRows(); performanceRevision++;
         for(const value of old.vals) for(const row of PUKEY.get(value[0]+"|"+value[1]+"|"+value[2])||[]) putVals(row,old.P,[]);
         const matched=[], sdls=new Set();
-        const retried=new Set(gauges), updated=merge?[...old.vals.filter(value=>!retried.has(value[1])),...vals]:vals;
+        const retried=new Set([...gauges,...vals.map(value=>value[1])]), updated=merge?[...old.vals.filter(value=>!retried.has(value[1])),...vals]:vals;
         for(const value of updated){const rs=PUKEY.get(value[0]+"|"+value[1]+"|"+value[2]);if(!rs)continue;rs.forEach(row=>{putVals(row,old.P,value);sdls.add(META.sdls[row[1]]);});matched.push(value);}
         old.vals=matched; old.sdls=[...sdls]; old.id=id; old.flowGauges=stats.flow_gauges||[]; old.levelGauges=stats.level_gauges||[]; old.salinityGauges=stats.salinity_gauges||[]; old.source="observed"; old.observedSdl=S.obs.sdl; persistCustom(); scenario=old;
       }
@@ -854,8 +856,9 @@ function observedPanel(){
     const raw=Object.entries(VAR_NAME).map(([v,name])=>`<dt>${esc(name)}</dt><dd>Status: ${esc(states[v]?.status||"not reported")}${states[v]?.error?`<br>Code: ${esc(states[v].error.code||"unknown")} · Attempts: ${esc(attemptsOf(states[v]))} of ${esc(maxAttemptsOf(states[v]))}${states[v].error.diagnostic_id?` · Diagnostic ID: ${esc(states[v].error.diagnostic_id)}`:""}`:""}${(states[v]?.error?.detail??states[v]?.message)?`<pre>${esc(states[v]?.error?.detail??states[v].message)}</pre>`:""}</dd>`).join("");
     const range=S.obs.ranges[id];
     const coverageDetails=Object.entries(VAR_NAME).map(([v,name])=>coverageDetailText(name,states[v],10)).filter(Boolean).map(text=>`<pre>${esc(text)}</pre>`).join("");
-    const copyable=Object.keys(VAR_NAME).some(v=>states[v]?.status!=="ok"||coverageOf(states[v]));
-    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span>${rollupText(states)?`<span class="obs-rollup">${esc(rollupText(states))}</span>`:""}</div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${coverageDetails?`<div class="obs-technical"><b>Coverage</b>${coverageDetails}</div>`:""}${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">Copy details</button><div data-obs-copy-fallback hidden><p>Clipboard unavailable. Select and copy these technical details.</p><textarea readonly aria-label="Technical details to copy"></textarea></div>`:""}</details></article>`;
+    const copyFallback=S.obs.copyFallback?.get(id);
+    const copyable=copyFallback!==undefined||Object.keys(VAR_NAME).some(v=>states[v]?.status!=="ok"||coverageOf(states[v]));
+    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span>${rollupText(states)?`<span class="obs-rollup">${esc(rollupText(states))}</span>`:""}</div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${coverageDetails?`<div class="obs-technical"><b>Coverage</b>${coverageDetails}</div>`:""}${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">${copyFallback===undefined?"Copy details":"Select details to copy"}</button><div data-obs-copy-fallback${copyFallback===undefined?" hidden":""}><p>Clipboard unavailable. Select and copy these technical details.</p><textarea id="obsCopy-${esc(id)}" readonly aria-label="Technical details to copy">${esc(copyFallback??"")}</textarea></div>`:""}</details></article>`;
   };
   const finished=!!S.obs.completed&&!S.obs.job, rank={failed:0,nodata:1,noflow:2,nolevel:3,running:4,waiting:5,complete:6};
   const rankOf=id=>{const c=classifyGauge(S.obs.status[id]);return rank[c.outcome==="partial"?c.partialKind:c.outcome];};

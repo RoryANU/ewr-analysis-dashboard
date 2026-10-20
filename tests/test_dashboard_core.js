@@ -324,14 +324,28 @@ for(const mode of ['clipboard','unavailable','denied'])test(`Copy details: ${mod
   const h=observedRunHarness(),copied=[];
   h.run(`OBSERVED_UNITS[0].gauges[0].name='Gauge <one>';S.obs.status.G1={f:{status:'ok'},l:{status:'error',message:'raw <error>'}};`);
   h.ctx.navigator=mode==='unavailable'?{}:{clipboard:{writeText:async text=>{if(mode==='denied')throw Error('denied');copied.push(text);}}};
-  const field={value:'',focused:false,selected:false,focus(){this.focused=true;},select(){this.selected=true;}};
-  const fallback={hidden:true,querySelector:()=>field};
-  const button={dataset:{obs:'copyDetails',obsGaugeId:'G1'},textContent:'Copy details',closest:()=>({querySelector:()=>fallback})};
+  h.run(`const META={},OBSERVED_AVAILABLE=true,esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    var renderedHtml='';render=()=>{renderedHtml=observedPanel();};`);
+  vm.runInContext(section('function observedPanel(){','function render(){'),h.ctx);
+  const field={focused:false,selected:false,focus(){this.focused=true;},select(){this.selected=true;}};
+  h.ctx.$=id=>{assert.equal(id,'obsCopy-G1');assert.match(h.run('renderedHtml'),/<textarea id="obsCopy-G1"[^>]*>Gauge: G1/);return field;};
+  const button={dataset:{obs:'copyDetails',obsGaugeId:'G1'},textContent:'Copy details'};
   await h.listeners.click({target:{closest:()=>button}});
   const zone=Intl.DateTimeFormat().resolvedOptions().timeZone; // the copied text names the period and the viewer's time zone
   const expected=`Gauge: G1\nName: Gauge <one>\nPeriod: all available data\nTime zone: ${zone}\n\nWater level\nStatus: error\nMessage: raw <error>`;
-  if(mode==='clipboard'){assert.deepEqual(copied,[expected]);assert.equal(button.textContent,'Copied');assert.equal(fallback.hidden,true);}
-  else{assert.equal(field.value,expected);assert.equal(fallback.hidden,false);assert.equal(field.focused,true);assert.equal(field.selected,true);assert.equal(button.textContent,'Select details to copy');}
+  if(mode==='clipboard'){assert.deepEqual(copied,[expected]);assert.equal(button.textContent,'Copied');assert.equal(h.run('S.obs.copyFallback?.has("G1")')??false,false);}
+  else{
+    assert.equal(h.run('S.obs.copyFallback.get("G1")'),expected);assert.equal(field.focused,true);assert.equal(field.selected,true);
+    for(let poll=0;poll<2;poll++){
+      h.run(`S.obs.job='polling';updateObservedStatus({G2:{f:{status:'running'}}});render();`);
+      if(poll)h.run(`updateObservedStatus({G1:{f:{status:'ok'},l:{status:'ok'}}});render();`);
+      const html=h.run('renderedHtml');
+      assert.match(html,/>Select details to copy<\/button><div data-obs-copy-fallback><p>/);
+      const textarea=html.match(/<textarea id="obsCopy-G1"[^>]*>([\s\S]*?)<\/textarea>/)[1];
+      assert.equal(textarea,expected.replaceAll('<','&lt;').replaceAll('>','&gt;'));
+    }
+    assert.match(h.run('renderedHtml'),/data-obs-gauge-id="G2">Copy details<\/button><div data-obs-copy-fallback hidden>/);
+  }
 });
 for(const merge of [false,true])test(`runObserved: requested ids are copied and cleared on completion (merge=${merge})`,async()=>{
   const h=observedRunHarness(),requests=[];let start;
@@ -405,6 +419,17 @@ test('runObserved: retry preserves scenario results for gauges outside the retry
   h.ctx.fetch=async url=>url==='/api/observed/run'?observedResponse({job:'retry'}):observedResponse({status:'done',rows:[{pu:'PU',gauge:'G2',ewr:'F1',fr:.9}],stats:{gauge_status:{G2:{f:{status:'ok'},l:{status:'empty'}}}}});
   await h.run('runObserved(["G2"],true)');
   assert.deepEqual(plain(h.run('CUSTOM[0].vals')),[['PU','G1','F1',.8],['PU','G2','F1',.9]]);
+  assert.equal(h.run('S.obs.completed'),true);
+});
+test('runObserved: merged response replaces returned gauges and drops requested gauges with no rows',async()=>{
+  const h=observedRunHarness();
+  h.run(`const META={sdls:['Test']},PUKEY=new Map(['G1','G2','G3','G4'].flatMap(g=>['F1','F2'].map(e=>['PU|'+g+'|'+e,[[0,0]]])));
+    let performanceRevision=0;function reindexRows(){}function putVals(){}function persistCustom(){}
+    VALK.push('pu','gauge','ewr','fr');
+    CUSTOM.push({P:1,source:'observed',observedSdl:'Test',vals:[['PU','G1','F1',.8],['PU','G1','F2',.7],['PU','G2','F1',.2],['PU','G3','F1',.3],['PU','G4','F1',.4]]});`);
+  h.ctx.fetch=async url=>url==='/api/observed/run'?observedResponse({job:'retry'}):observedResponse({status:'done',rows:[{pu:'PU',gauge:'G1',ewr:'F1',fr:.6},{pu:'PU',gauge:'G2',ewr:'F1',fr:.9}],stats:{}});
+  await h.run('runObserved(["G2","G3"],true)');
+  assert.deepEqual(plain(h.run('CUSTOM[0].vals')),[['PU','G4','F1',.4],['PU','G1','F1',.6],['PU','G2','F1',.9]]);
   assert.equal(h.run('S.obs.completed'),true);
 });
 test('runObserved: cancel keeps checked and waiting gauges and ignores late poll results',async()=>{
