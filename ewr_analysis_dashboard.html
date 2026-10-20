@@ -739,7 +739,7 @@ function coverageLines(v,x){
   const c=coverageOf(x);if(!c)return [];
   const name=VAR_NAME[v]||v, last=formatDay(c.last_reading?.timestamp), pct=pctText(c.coverage_pct), tail=last?` · last usable reading ${last}`:"";
   const lines=[];
-  if(c.coverage_complete===true)lines.push({text:`${name} ✓ ${pct}${tail}`,warn:false});
+  if(measurementComplete(v,x))lines.push({text:`${name} ✓ ${pct}${tail}`,warn:false});
   else if(pct)lines.push({text:`${name} · ${pct} of days have a usable reading${c.coverage_status==="unassessed_quality_policy"?" · quality policy pending":""}${tail}`,warn:false});
   else lines.push({text:`${name} · coverage not assessed${c.coverage_status==="unassessed_open_period"?" for all available data":c.coverage_status==="unassessed_units"?" (units not recognised)":""}${tail}`,warn:false});
   if(c.quality_table_selection==="ambiguous")lines.push({text:"⚠ Quality table could not be settled; disputed readings were kept",warn:true});

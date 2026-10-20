@@ -453,6 +453,8 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
                 raise _SourceFailure(final_exc, var=var, attempts=attempts_used, last_delay=last_delay) from exc
             waiting = _error_result(_SourceFailure(exc, var=var, attempts=attempts_used, last_delay=delay), var=var)
             waiting.status = "retry_wait"
+            if waiting.error is not None:
+                waiting.error["retry_after_s"] = delay
             _emit_inflight(waiting)
             time.sleep(delay)
             last_delay = delay

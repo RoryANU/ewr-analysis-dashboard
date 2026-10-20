@@ -841,6 +841,21 @@ test('phase 3: coverage lines state facts only; 98 % and an unapproved 100 % are
   assert.deepEqual([99.6,100,0,null,NaN,'98'].map(p=>run(`pctText(${JSON.stringify(p)===undefined?'undefined':p===null?'null':Number.isNaN(p)?'NaN':JSON.stringify(p)})`)),['99%','100%','0%','','','']);
   assert.equal(run("formatDay('2024-02-19')"),'19 Feb 2024');assert.equal(run("formatDay('2024-1-9')"),'');assert.equal(run("dayBefore('2024-03-01')"),'2024-02-29');
 });
+test('phase 3: coverage ticks require consistent measurement coverage and preserve warnings',()=>{
+  const run=observedHarness();
+  for(const v of ['f','l']){
+    const complete=completeFor(v);
+    assert.match(run(`coverageLines('${v}',${JSON.stringify(complete)})`)[0].text,/✓ 100%/);
+    for(const over of [{coverage_status:'unassessed_quality_policy'},{policy_version:''},{units:'unknown'},
+      {expected_count:0},{valid_count:49},{coverage_pct:99.9},{gaps:null},
+      {gaps:[{start:'2024-01-25',end_exclusive:'2024-01-26',missing_count:1}]}]){
+      const lines=run(`coverageLines('${v}',${JSON.stringify({...complete,coverage:{...complete.coverage,...over}})})`);
+      assert.doesNotMatch(lines[0].text,/✓/,JSON.stringify(over));
+      if(over.gaps?.length)assert.deepEqual(lines[1],{text:'⚠ 1 gap (1 day missing)',warn:true});
+    }
+    assert.doesNotMatch(run(`coverageLines('${v}',${JSON.stringify({...complete,status:'empty'})})`)[0].text,/✓/);
+  }
+});
 test('phase 3: Complete needs BOTH measurements fully backed by coverage; folding additionally needs no warnings',()=>{
   const run=observedHarness(), call=(fn,states)=>run(`${fn}(${JSON.stringify(states)})`), f=completeFor('f'), l=completeFor('l');
   assert.equal(call('gaugeComplete',{f,l}),true);assert.equal(call('gaugeFoldable',{f,l}),true);

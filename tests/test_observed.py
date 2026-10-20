@@ -497,7 +497,9 @@ def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypa
     """Verify the service retry delay overrides the last sleep in the error envelope."""
     calls, answer = getter_stub
     sleeps = []
+    inflight: list[observed.GaugeResult] = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
+    monkeypatch.setattr(observed, "_emit_inflight", inflight.append)
 
     def fail(*args):
         """Simulate a busy service requesting the parametrized retry delay."""
@@ -507,6 +509,7 @@ def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypa
     result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
     assert len(calls) == 3
     assert sleeps == [max(10.0, seconds), max(30.0, seconds)]
+    assert [result.error["retry_after_s"] for result in inflight if result.status == "retry_wait" and result.error is not None] == sleeps
     assert result.error["retry_after_s"] == seconds and result.attempts == 3
 
 
