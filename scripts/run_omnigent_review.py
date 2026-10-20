@@ -1,22 +1,26 @@
 import os
 import subprocess
 import sys
+import time
 
 
-def run_command(cmd: list[str]) -> str:
+def run_command(cmd: list[str]) -> tuple[int, str, str]:
     # An argument list with no shell: the diff is untrusted PR content and must never be interpreted by a shell.
     result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        sys.exit(f"Error running: {' '.join(cmd[:3])}\n{result.stderr}")
-    return result.stdout.strip()
+    return result.returncode, result.stdout.strip(), result.stderr
 
 
-def run_agent(spec: str, prompt: str) -> str:
-    # A failed or empty agent run aborts the review so that no comment is posted with missing findings.
-    output = run_command(["omnigent", "run", spec, "-p", prompt])
-    if not output:
-        sys.exit(f"Agent {spec} returned no output")
-    return output
+def run_agent(spec: str, prompt: str, attempts: int = 3) -> str:
+    # Model providers return transient 503s, so retry with a growing pause. A run that still fails or returns
+    # nothing aborts the review, so that no comment is posted with missing findings.
+    for attempt in range(1, attempts + 1):
+        code, output, stderr = run_command(["omnigent", "run", spec, "-p", prompt])
+        if code == 0 and output:
+            return output
+        print(f"Agent {spec} failed (attempt {attempt}/{attempts}):\n{stderr}", file=sys.stderr)
+        if attempt < attempts:
+            time.sleep(30 * attempt)
+    sys.exit(f"Agent {spec} failed after {attempts} attempts")
 
 
 def main() -> None:
