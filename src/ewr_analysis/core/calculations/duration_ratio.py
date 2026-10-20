@@ -4,9 +4,42 @@ from ewr_analysis.core.calculations.assessment_years import _timing_mask
 
 
 def dr_years(yr: Any, code: str, dur: Any, low: bool, per_year: Any, events: dict[Any, list[Any]] | None = None) -> list[float | None]:
-    """Duration ratio of each assessment year (py_ewr's yearly results `yr`, columns [<code>_]maxEventDays / totalEventDays): the longest
-    event in the year ÷ the required duration, capped at 2. Low-flow (any-days) EWRs use the days at or above the threshold in the year;
-    an EWR needing k > 1 events a year uses its k-th longest event (from `events`, py_ewr's events by year; 0 when fewer than k)."""
+    """Calculate annual duration ratios from event lengths or total hit days.
+
+    Equation / rule: round(min(days/duration, 2), 3); low flow uses total days,
+    otherwise longest event, or k-th longest nonempty event when k > 1 and supplied.
+
+    Parameters
+    ----------
+    yr : DataFrame
+        Rows are assessment-year labels, columns [<code>_]maxEventDays/totalEventDays
+        [days]. No datetime index or timezone is required for these year aggregates.
+    code : str
+        Optional column prefix [label].
+    dur, per_year : scalar
+        Required duration [days] and events per year [count]; coercion follows pandas
+        and int. Invalid/nonpositive duration gives None per row.
+    low : bool
+        Use annual total days instead of event length when true.
+    events : dict or None
+        Year -> list of event sequences, lengths [days]; empty events are ignored.
+
+    Returns
+    -------
+    list[float or None]
+        Ratios [dimensionless] in row order, capped at 2 and rounded to 3 places.
+        Missing length is None; fewer than k events gives 0. No completeness filter.
+
+    Assumptions
+    -----------
+    Positive fractional per_year is truncated; a numeric string such as '2.0' can
+    pass numeric coercion but raise during int conversion. Negative lengths are not
+    clipped to zero. No calendar boundaries are evaluated and no input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::dr_years. Duration/low-flow/k-event conventions:
+    TBD, needs scientist review."""
     import pandas as pd
 
     dur = pd.to_numeric(dur, errors="coerce")
@@ -27,8 +60,41 @@ def dr_years(yr: Any, code: str, dur: Any, low: bool, per_year: Any, events: dic
 
 
 def vr_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, acc: Any, vol: Any, sd: int | None = None, ed: int | None = None) -> list[float | None]:
-    """Volume ratio of each assessment year for a volume EWR: the largest sum of daily flow over AccumulationPeriod consecutive days within
-    the timing window ÷ VolumeThreshold, capped at 2."""
+    """Calculate annual volume ratios from maximum rolling sums within timing bounds.
+
+    Equation / rule: round(min(best rolling sum / volume threshold, 2), 3), with
+    integer accumulation width and all rows required nonmissing.
+
+    Parameters
+    ----------
+    flow : Series
+        Daily flow [ML/d] on an ordered DatetimeIndex, one row per calendar day.
+    wys : list[int]
+        Requested starting-year labels [calendar year], returned in this order.
+    ys, sm, em : int
+        Assessment-year start and inclusive timing months [calendar month].
+    acc, vol : scalar
+        Accumulation width [days] and volume threshold [ML]; numeric coercion applies.
+    sd, ed : int or None
+        Inclusive timing endpoint days [day of month].
+
+    Returns
+    -------
+    list[float or None]
+        Best volume/threshold [dimensionless], capped at 2, rounded to 3 places.
+        None for invalid acc/vol or absent complete rolling windows.
+
+    Assumptions
+    -----------
+    Uses local index fields; no timezone conversion or daily reindexing. Outside
+    window observations become NaN; NaN breaks a rolling sum, which cannot cross
+    assessment years. Fractional acc >= 1 truncates via int. Rows are assumed daily;
+    missing calendar dates are not inserted. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::vr_years. Daily-to-volume interpretation and rolling
+    policy: TBD, needs scientist review."""
     import pandas as pd
 
     acc, vol = pd.to_numeric(acc, errors="coerce"), pd.to_numeric(vol, errors="coerce")
@@ -42,8 +108,34 @@ def vr_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, acc: Any, vol
 
 
 def dr_approx(ael: list[float | None], prm: dict[str, Any]) -> list[float | None]:
-    """The review results have no yearly event lengths, so the duration ratio is approximated per scenario as the mean event length ÷ the
-    required duration, capped at 2 (py_ewr's AverageEventLength averages every event, successful or not). Flow EWRs only."""
+    """Approximate duration ratio from mean event length for review scenarios.
+
+    Equation / rule: round(min(mean event length / required duration, 2), 3).
+
+    Parameters
+    ----------
+    ael : list[float or None]
+        Scenario mean event lengths [days], including successful and unsuccessful
+        events. No calendar index or timezone applies.
+    prm : dict
+        dur [days] and kind [label], defaulting kind to F (flow).
+
+    Returns
+    -------
+    list[float or None]
+        Ratios [dimensionless] aligned to scenarios; None lengths stay None. Nonflow
+        kind or falsy duration gives all None. Values are capped at 2, not at zero.
+
+    Assumptions
+    -----------
+    NaN is not filtered. Unlike dr_years, a truthy negative duration is accepted,
+    while a numeric string can raise in division. No annual completeness or date
+    boundary evaluation is performed. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::dr_approx, whose comment identifies
+    py_ewr AverageEventLength. Approximation suitability: TBD, needs scientist review."""
     dur = prm.get("dur")
     if prm.get("kind", "F") != "F" or not dur:
         return [None] * len(ael)

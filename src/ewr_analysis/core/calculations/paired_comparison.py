@@ -39,7 +39,34 @@ def mcnemar_p(gained: int, lost: int) -> float | None:
 
 
 def _paired_achievement(base: dict[str, Any], comp: dict[str, Any]) -> dict[str, Any]:
-    """Achievement in two scenarios over the water years complete in both, with the years gained and lost and McNemar's test."""
+    """Compare achievement over years complete in both scenarios.
+
+    Equation / rule: intersect complete labels, count gains/losses, calculate
+    100 * sum(achievement)/n (3 decimals), and apply the existing exact McNemar test.
+
+    Parameters
+    ----------
+    base, comp : dict
+        Parallel wy/complete/achieved lists [year labels, flags, achievement values].
+        Labels must use the same assessment convention; no date index/timezone applies.
+
+    Returns
+    -------
+    dict
+        Sorted wy [labels], n/base/comp/gained/lost [years], pct_base/pct_comp [% or
+        None], p_mcnemar [dimensionless or None]. No common year gives zero counts
+        and None percentages/p-value. P-value rounding follows mcnemar_p (4 places).
+
+    Assumptions
+    -----------
+    Achievement is expected binary, but sums retain actual values while gain/loss
+    counts use truthiness. Duplicate labels retain the last complete row's value.
+    No NaN filtering or shape validation is performed. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_paired_achievement and core mcnemar_p.
+    Scientific pairing and independence assumptions: TBD, needs scientist review."""
     base_index = {w: i for i, w in enumerate(base["wy"]) if base["complete"][i]}
     comp_index = {w: i for i, w in enumerate(comp["wy"]) if comp["complete"][i]}
     common = sorted(set(base_index) & set(comp_index))

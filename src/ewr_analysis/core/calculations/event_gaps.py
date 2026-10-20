@@ -36,13 +36,66 @@ def _mrip_days(max_inter_event_years: Any) -> int:
 
 
 def _has_any_event(events: dict) -> bool:
-    """True when any EWR at any gauge has at least one threshold event (events: gauge -> pu -> code -> year -> event list)."""
+    """Test whether a nested event inventory contains a nonempty yearly list.
+
+    Equation / rule: any(len(year_event_list) > 0) across gauge/PU/EWR/year entries.
+
+    Parameters
+    ----------
+    events : dict
+        Gauge -> planning unit -> code -> year -> list of events [labels/counts].
+        No calendar index or timezone is consulted; event contents are not inspected.
+
+    Returns
+    -------
+    bool
+        Presence flag [dimensionless]. Empty mappings/lists return False, but a list
+        containing an empty event is still nonempty and returns True.
+
+    Assumptions
+    -----------
+    The nested mapping/list shape is valid. No NaN filtering, date-boundary test,
+    success test or threshold test is performed. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_has_any_event. Empty-event interpretation:
+    TBD, needs scientist review."""
     return any(len(lst) > 0 for by_pu in events.values() for by_code in by_pu.values() for by_year in by_code.values() for lst in by_year.values())
 
 
 def _dateless_gap_stats(key: tuple[str, str, str], record_days_total: Any, mrip: int, inter_by_ewr: dict, succ_by_ewr: dict) -> dict[str, Any]:
-    """ETP and gap severity for a run with no dates (ten-thousand-year runs): py_ewr's gap lengths, or the whole record as one
-    gap when nothing succeeded."""
+    """Summarize excess gap days for a record without calendar dates.
+
+    Equation / rule: ET = min(1, sum(max(0, length-MRIP))/record_days_total), rounded
+    to 4 places. When no event succeeded, the whole record is one boundary gap.
+
+    Parameters
+    ----------
+    key : tuple[str, str, str]
+        Gauge, planning unit and EWR identifiers [labels].
+    record_days_total, mrip : scalar
+        Record length and maximum inter-event period [days].
+    inter_by_ewr, succ_by_ewr : dict
+        Keyed in-memory summaries; interEventLength [days] is coerced to numeric and
+        NaN dropped. Success is key membership, even for an empty DataFrame value.
+
+    Returns
+    -------
+    dict
+        et/sev/sev_b [dimensionless or None], eps [episodes or None]. No date index
+        or timezone applies. ET needs positive record length and truthy MRIP.
+
+    Assumptions
+    -----------
+    Successful records supply no dated gap objects here, so severity/episodes remain
+    None even if ET is positive. No-success record supplies severity through
+    gap_severity. Threshold equality has zero excess. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_dateless_gap_stats. Dateless record and missing
+    severity policy: TBD, needs scientist review."""
     import pandas as pd
 
     succeeded = key in succ_by_ewr
@@ -60,9 +113,34 @@ def _dateless_gap_stats(key: tuple[str, str, str], record_days_total: Any, mrip:
 
 
 def gap_severity(gaps: list[dict[str, Any]], mrip: int) -> dict[str, Any]:
-    """How far the gaps between successful events overshoot the maximum inter-event period, from the uncensored gaps:
-    sev = longest interior gap / MRIP (all gaps when none is interior), sev_b = longest gap including those from the start or to the end of
-    the record / MRIP, eps = gaps longer than MRIP (episodes). All None without a maximum or an uncensored gap."""
+    """Scale uncensored gap lengths by MRIP and count supplied excess episodes.
+
+    Equation / rule: sev = max interior days/MRIP (fall back to all known gaps);
+    sev_b = max all known days/MRIP; round both to 2 places. eps counts truthy excess.
+
+    Parameters
+    ----------
+    gaps : list[dict]
+        days/excess [days], boundary/censored [flags]; dates and timezone are unused.
+    mrip : int
+        Maximum inter-event period [days], assumed positive when nonzero.
+
+    Returns
+    -------
+    dict
+        sev/sev_b [dimensionless], eps [episodes]; all None when MRIP is falsy or
+        every gap is censored/absent.
+
+    Assumptions
+    -----------
+    Censored gaps are excluded. Equality to MRIP only gives no episode when the
+    supplied excess is zero; excess is not recomputed. No NaN filtering is performed
+    on supplied lengths/excess. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::gap_severity. Severity and episode interpretation:
+    TBD, needs scientist review."""
     known = [g for g in gaps if not g["censored"]]
     if not mrip or not known:
         return {"sev": None, "sev_b": None, "eps": None}
@@ -71,14 +149,37 @@ def gap_severity(gaps: list[dict[str, Any]], mrip: int) -> dict[str, Any]:
 
 
 def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
-    """py_ewr's gaps between successful events (including the gaps from the start of the record to the first event and from the
-    last event to the end, as py_ewr counts them), each with the days beyond the maximum inter-event period. Two corrections to
-    what py_ewr returns:
-    - an EWR with no successful event in the whole record gets one gap covering the record (py_ewr returns none, which would read
-      as "never longer than the maximum");
-    - a gap containing a missing day has an unknown length: it is kept but marked `censored` and counts nowhere.
-    Returns (gaps, etp): etp = days beyond the maximum in the uncensored gaps / days of record outside the censored gaps (the same
-    spans in both), or None when the EWR has no maximum or nothing is left to count."""
+    """Describe inclusive gaps between successful events and their excess fraction.
+
+    Equation / rule: excess = max(0, gap_days-MRIP); ETP = sum uncensored excess /
+    (record row count - full censored gap days), capped at 1 and rounded to 4 places.
+
+    Parameters
+    ----------
+    ev : dict
+        flow: nonempty daily Series [caller-supplied observation unit], DatetimeIndex;
+        mrip_days [days]; inter: DataFrame with startDate/endDate; succ: DataFrame
+        whose emptiness indicates no successful event. Dates must be timezone-compatible.
+
+    Returns
+    -------
+    (list[dict], float or None)
+        Gaps contain ISO start/end [local calendar dates], inclusive days/excess
+        [days], censored/boundary/no_success flags. ETP [dimensionless] is None for
+        falsy MRIP or no countable denominator. With no success, use one whole-record gap.
+
+    Assumptions
+    -----------
+    NaN anywhere in a gap censors its whole span; absent dates are not inserted.
+    Boundary includes equality to first/last date. Spans are expected nonoverlapping;
+    row count must represent calendar days. Empty flow raises IndexError. _iso_date
+    retains its authorized relative-string clock dependency; normal inputs are dates.
+    No input is mutated or timezone converted.
+
+    References
+    ----------
+    pre-refactor:src/server.py::ewr_gaps. Scientific censoring, boundary and ETP
+    conventions: TBD, needs scientist review."""
     import pandas as pd
 
     flow, mrip, inter = ev["flow"], ev["mrip_days"], ev["inter"]
@@ -111,11 +212,38 @@ def ewr_gaps(ev: dict[str, Any]) -> tuple[list[dict[str, Any]], float | None]:
 
 
 def _runs_by_year(s: Any, hit: Any) -> tuple[dict[str, list[Any]], list[dict[str, Any]]]:
-    """Runs of consecutive days where `hit` is true in the daily series `s` (missing days are never hits and break a run; a run
-    beside a missing day or the record's ends is `censored`: its true length is unknown). Per water year (1 Jul - 30 Jun,
-    labelled by its first calendar year as in py_ewr): the days that are hits, the longest run inside that year (a run crossing
-    30 June is split at the year boundary for this) and the number of runs starting in it; numbers only for complete water years
-    (every day observed). Returns (years, runs)."""
+    """Find hit runs and summarize complete July-start water years.
+
+    Equation / rule: contiguous true rows form runs; NaN breaks them. A run's
+    starting year receives its count; hit days/longest runs split at July 1.
+
+    Parameters
+    ----------
+    s : Series
+        Daily observations [caller-supplied unit], ordered DatetimeIndex; missing
+        observations are NaN. Local calendar dates are retained without conversion.
+    hit : boolean ndarray
+        Shape (len(s),), threshold predicate [dimensionless]; NaN entries are cleared.
+
+    Returns
+    -------
+    (dict, list[dict])
+        Parallel wy/complete/days/longest/n lists [starting-year labels, flags, days,
+        days, runs]. Incomplete years have None metrics. Runs contain inclusive ISO
+        start/end [dates], days [days], censored [flag], wy [starting-year label].
+
+    Assumptions
+    -----------
+    Caller supplies one row per calendar day. Adjacency and completeness check row
+    counts, not uniqueness or calendar continuity. Runs touching a record edge or
+    neighboring NaN are censored. Empty input returns empty lists. _iso_date retains
+    its authorized relative-string clock dependency; normal inputs are dates.
+    No input is mutated; leap water years require 366 observed rows.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_runs_by_year. Run/censoring and annual assignment
+    policy: TBD, needs scientist review."""
     import numpy as np
 
     values = s.to_numpy(dtype=float)

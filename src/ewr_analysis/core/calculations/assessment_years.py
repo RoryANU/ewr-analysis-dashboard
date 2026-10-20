@@ -173,11 +173,44 @@ def _water_year_days(w: int) -> int:
 
 
 def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: Any, sm: int, em: int, consecutive: bool = False) -> tuple[Any, int]:
-    """% of water years in which each threshold is exceeded for at least `duration` days within the timing window.
-    flows: (days, scenarios). Same result as the numba reference (non-consecutive days): the d-th largest in-window flow of a year
-    is the highest threshold that is exceeded on d days of that year.  consecutive=True requires the d days to be consecutive (the
-    reference's calc_annual_max_threshold_consecutive: the largest, over windows of d days, of the window minimum).
-    returns (scenarios, thresholds, durations)."""
+    """Calculate threshold-duration achievement rates over shared complete years.
+
+    Equation / rule: nonconsecutive annual threshold is the d-th largest selected
+    flow; consecutive annual threshold is the maximum rolling minimum of width d.
+    Report 100 * successful shared years / shared complete years.
+
+    Parameters
+    ----------
+    flows : ndarray
+        Shape (days, scenarios), values [same units as thresholds], with NaN missing.
+    index : DatetimeIndex
+        Sorted daily dates aligned to rows; local month/year fields are used without
+        timezone conversion. Water-year labels use the ENDING calendar year (Jul-Jun).
+    thresholds, durations : one-dimensional arrays
+        Thresholds [flow-series units] and positive ascending integer durations [days].
+    sm, em : int
+        Inclusive endpoint months [calendar month], whole months only.
+    consecutive : bool
+        Require adjacent selected rows to meet duration when true.
+
+    Returns
+    -------
+    (ndarray, int)
+        Rates [%], float32 shape (scenarios, thresholds, durations), and shared-year
+        count [years]. Zero shared complete years gives NaN rates; empty index raises.
+
+    Assumptions
+    -----------
+    Equality meets the threshold. Partial/missing years are excluded in ALL scenarios
+    if incomplete in any one. Completeness counts rows; duplicate dates and missing
+    calendar dates are assumed resolved upstream. Consecutive mode grows widths in
+    provided order and assumes increasing durations; it does not shrink for an
+    unsorted duration. Zero/negative durations are not validated. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::achievement_frequencies; its numba-reference comment
+    has no bibliographic citation. Scientific provenance: TBD, needs scientist review."""
     import numpy as np
 
     months, calendar_years = index.month.to_numpy(), index.year.to_numpy()
@@ -230,13 +263,65 @@ def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: 
 
 
 def assessment_start(sm: int, em: int) -> int:
-    """py_ewr's assessment year starts on 1 July, except when the timing window runs from the first half of the year into the second
-    (StartMonth <= 6 and EndMonth >= 7, e.g. Jun-Nov): then on the 1st of StartMonth (evaluate_EWRs.wateryear_daily)."""
+    """Choose the first month of an assessment year.
+
+    Equation / rule: return sm if sm <= 6 and em >= 7, otherwise 7.
+
+    Parameters
+    ----------
+    sm, em : int
+        First and last included timing-window months [calendar month], scalars.
+        No index or timezone applies; values are assumed to be in 1..12.
+
+    Returns
+    -------
+    int
+        Assessment-year starting month [calendar month]; the year is labeled by
+        its starting calendar year, unlike achievement_frequencies' ending label.
+
+    Assumptions
+    -----------
+    Month endpoints are inclusive. NaN/invalid months are not validated; Python
+    comparison semantics apply. No input is mutated. The July-crossing condition
+    is retained exactly, including January-December windows starting in January.
+
+    References
+    ----------
+    pre-refactor:src/server.py::assessment_start, whose comment attributes this
+    convention to py_ewr wateryear_daily. Scientific suitability: TBD, needs scientist review."""
     return sm if sm <= 6 and em >= 7 else 7
 
 
 def _timing_mask(index: Any, sm: int, em: int, sd: int | None = None, ed: int | None = None) -> Any:
-    """Calendar window mask; optional day boundaries are used by user EWRs, while stock summaries retain whole months."""
+    """Select calendar dates inside an inclusive timing window.
+
+    Equation / rule: intersect the lower/upper month-day bounds when sm <= em;
+    otherwise union them across New Year. Day zero uses the unspecified default.
+
+    Parameters
+    ----------
+    index : DatetimeIndex
+        One-dimensional dates [calendar days], in their existing timezone.
+    sm, em : int
+        Inclusive endpoint months [calendar month].
+    sd, ed : int or None
+        Inclusive endpoint days [day of month]; falsy values use 1 and 31.
+
+    Returns
+    -------
+    array-like of bool
+        One flag [dimensionless] per index entry. No date is inserted or converted.
+
+    Assumptions
+    -----------
+    Uses local month/day fields. NaT comparisons are false. Reversed day bounds
+    inside the same month produce an empty intersection, not a wrap. Invalid
+    bounds are not validated. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_timing_mask. Scientific timing-window policy:
+    TBD, needs scientist review."""
     month, day = index.month, index.day
     after = (month > sm) | ((month == sm) & (day >= (sd or 1)))
     before = (month < em) | ((month == em) & (day <= (ed or 31)))
@@ -244,8 +329,38 @@ def _timing_mask(index: Any, sm: int, em: int, sd: int | None = None, ed: int | 
 
 
 def complete_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, sd: int | None = None, ed: int | None = None) -> list[int]:
-    """1 for each assessment year (label w, starting on the 1st of month ys) in which every day of the timing window sm-em has a value;
-    the window's days come from the calendar, so a window cut off by the record's ends is incomplete."""
+    """Flag assessment years whose timing-window dates are all observed.
+
+    Equation / rule: reindex to the full calendar span, select timing-window dates,
+    and require every selected value in each assessment year to be nonmissing.
+
+    Parameters
+    ----------
+    flow : Series
+        One daily observation [caller-supplied unit] per DatetimeIndex entry.
+    wys : list[int]
+        Requested starting-year labels [calendar year], output order retained.
+    ys, sm, em : int
+        Assessment start and inclusive timing endpoint months [calendar month].
+    sd, ed : int or None
+        Inclusive timing endpoint days [day of month].
+
+    Returns
+    -------
+    list[int]
+        One completeness flag [dimensionless] per requested year; empty wys gives
+        []. Missing calendar dates or NaN in the window yield 0; outside NaN is ignored.
+
+    Assumptions
+    -----------
+    The constructed daily calendar is timezone-naive; no timezone conversion is
+    performed, so timezone-aware inputs can fail alignment. A year with no selected
+    dates returns 0. Reindexing assumes unique dates. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::complete_years. Completeness policy and timezone
+    contract: TBD, needs scientist review."""
     import pandas as pd
 
     if not wys:
@@ -259,7 +374,34 @@ def complete_years(flow: Any, wys: list[int], ys: int, sm: int, em: int, sd: int
 
 
 def year_summary(dr: list[float | None], complete: list[int]) -> dict[str, Any]:
-    """Median duration ratio over the complete years, and the near misses: years with 0.5 <= DR < 1 and the years with DR < 1."""
+    """Summarize duration ratios over complete assessment years.
+
+    Equation / rule: median retained DR, rounded to 3 decimals; near misses count
+    0.5 <= DR < 1, with all DR < 1 as their denominator count.
+
+    Parameters
+    ----------
+    dr : list[float or None]
+        Duration ratios [dimensionless], one per assessment year.
+    complete : list[int]
+        Aligned completeness flags [dimensionless], same length as dr.
+
+    Returns
+    -------
+    dict
+        dr: median [dimensionless]; nm: [near misses, failures] [year counts].
+        Both are None if no complete non-None ratio remains. No index/timezone applies.
+
+    Assumptions
+    -----------
+    None is excluded; NaN is retained in the median but compares false to failure
+    bounds. Exactly 0.5 is near; exactly 1 is successful. Mismatched lengths raise
+    through strict zip. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::year_summary. Rationale for near-miss bounds and
+    median summary: TBD, needs scientist review."""
     import numpy as np
 
     v = [x for x, c in zip(dr, complete, strict=True) if c and x is not None]
@@ -270,14 +412,47 @@ def year_summary(dr: list[float | None], complete: list[int]) -> dict[str, Any]:
 def window_metrics(
     years: dict[str, Any], gaps: list[dict[str, Any]], mrip: int, target: Any, w0: Any, w1: Any, record: tuple[Any, Any] | None = None
 ) -> dict[str, Any]:
-    """An EWR's metrics inside one drought window, the days w0..w1 (dates, inclusive; drought_windows.window_dates), from its yearly results
-    (`years`: wy labels, achieved, complete, dr, ystart) and its gaps (ewr_gaps):
-      n   complete assessment years inside the window;  fr = (achieved / n) / (target / 100)
-      et  days of the window beyond MRIP in an uncensored gap (a gap is beyond MRIP from its start + MRIP days, so a gap that began before
-          the window counts: antecedent dryness) ÷ the window's days within the record, less days inside censored gaps
-      sev longest uncensored gap overlapping the window, from its true start to its end, ÷ MRIP
-      dr  median duration ratio over the window's complete years.
-    `record`: the first and last day of the record (default: the span of the gaps)."""
+    """Compute achievement and gap metrics within an inclusive date window.
+
+    Equation / rule: FR = (achieved/n)/(target/100); ET = in-window days beyond
+    MRIP / observed uncensored window days; severity = longest overlapping full
+    gap/MRIP. DR is the median over included complete years. FR/ET round to 4
+    places, severity to 2, DR to 3.
+
+    Parameters
+    ----------
+    years : dict
+        Parallel wy, complete, achieved and dr lists [year labels, flags, flags,
+        dimensionless ratios]; ystart is the starting month (default 7).
+    gaps : list[dict]
+        start/end date scalars, inclusive days [days], and censored flags.
+    mrip : int
+        Maximum inter-event period [days].
+    target : scalar
+        Target achievement frequency [%]; numeric coercion is retained.
+    w0, w1 : date-like scalars
+        Inclusive window endpoints [calendar dates], timezone-compatible with gaps.
+    record : pair of date-like scalars or None
+        Inclusive record bounds [calendar dates]; otherwise use the gap span.
+
+    Returns
+    -------
+    dict
+        n [years], fr/et/sev/dr [dimensionless or None]. Only whole assessment years
+        within the window enter n/FR/DR. Absent gaps leave ET/severity None.
+
+    Assumptions
+    -----------
+    No timezone normalization is performed. None DR is excluded, NaN is retained.
+    Gap lists are nonoverlapping and day counts consistent; overlaps can double
+    count and ET is not capped. A gap contributes excess from start+MRIP through
+    end, inclusive. Severity uses its entire length and original window overlap,
+    including when explicit record bounds clip the ET denominator. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::window_metrics. Scientific aggregation and clipping
+    policy: TBD, needs scientist review."""
     import numpy as np
     import pandas as pd
 
@@ -308,6 +483,33 @@ def window_metrics(
 
 
 def _iso_date(value: Any) -> str:
+    """Format one pandas-compatible timestamp as a local calendar date.
+
+    Equation / rule: pd.Timestamp(value).strftime("%Y-%m-%d").
+
+    Parameters
+    ----------
+    value : scalar
+        Date-like value [calendar date], or numeric timestamp [ns since Unix epoch].
+        No array/index is accepted by this scalar contract. A timezone-aware input
+        keeps its local date; no timezone conversion or normalization is requested.
+
+    Returns
+    -------
+    str
+        YYYY-MM-DD [calendar date]. Time of day is discarded. None, NaT and blank
+        strings raise ValueError during formatting; invalid date strings also raise.
+
+    Assumptions
+    -----------
+    accepts pandas relative strings; output depends on wall time for 'now'/'today'
+    Explicit dates/numeric timestamps are deterministic. No input is mutated.
+    Boundaries are the input timezone's calendar date, not UTC day boundaries.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_iso_date. Input-validation policy and suitability
+    of relative strings: TBD, needs scientist review."""
     import pandas as pd
 
     return cast(str, pd.Timestamp(value).strftime("%Y-%m-%d"))
