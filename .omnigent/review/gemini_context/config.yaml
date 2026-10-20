@@ -3,6 +3,7 @@ name: gemini-context-auditor
 executor:
   type: omnigent
   config:
+    harness: antigravity
     model: gemini-2.5-pro  # or your preferred Gemini model
 os_env:
   enabled: true  # Allows reading repository source files outside the diff

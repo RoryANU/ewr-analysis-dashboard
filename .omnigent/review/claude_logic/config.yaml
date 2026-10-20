@@ -3,7 +3,8 @@ name: claude-logic-auditor
 executor:
   type: omnigent
   config:
-    model: claude-3-7-sonnet  # or claude-3-5-sonnet
+    harness: claude-sdk
+    model: claude-sonnet-5-5
 os_env:
   enabled: true
 prompt: >

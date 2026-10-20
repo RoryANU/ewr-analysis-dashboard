@@ -28,7 +28,7 @@ jobs:
 
       - name: Install Omnigent
         run: |
-          pip install omnigent
+          pip install "omnigent[antigravity,claude-sdk]"
           # Alternatively: curl -fsSL https://raw.githubusercontent.com/omnigent-ai/omnigent/main/scripts/install_oss.sh | sh
 
       - name: Generate PR Diff
