@@ -820,3 +820,104 @@ Scientist review checklist (all observations remain unchanged):
   the caller's response. Split pure common-year selection from interface
   assignment first. `_iso_date` input validation also belongs at that later
   interface boundary. The read-only tables remain slated for config/*.toml.
+
+## Phase 1 slice 3 — comparison evidence
+
+Accepted starting point: `2340d29`. Move/shim commit: `e0023a7`.
+Read every candidate before moving: 13 functions (including the two explicitly
+authorized dispatch helpers) and POLICIES, CLIMATES, NS, LOW_FLOW_HANDLERS.
+No py_ewr or shapely import is added to core. No import contract change is needed.
+
+```sh
+source .venv/bin/activate
+python scripts/compare_implementations.py
+```
+
+Exit 0; per-function output:
+
+```text
+DROUGHTS / flow_mappings: exact values and order match pre-refactor
+POLICIES / CLIMATES / NS / LOW_FLOW_HANDLERS: exact values and order match pre-refactor
+mcnemar_p: cases=84, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+exceed_pct: cases=24, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+nice_ceiling: cases=18, max_abs=0, max_rel=0, matched_exceptions=2, clock_acceptance_only=0
+_mrip_days: cases=9, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+record_days: cases=7, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_feb29: cases=8, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_water_year: cases=7, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_water_year_days: cases=8, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_window_days: cases=24, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+window_dates: cases=17, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+meta: cases=1, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+regimes_for: cases=63, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_iso_date: cases=12, max_abs=0, max_rel=0, matched_exceptions=4, clock_acceptance_only=2
+assessment_start: cases=16, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_timing_mask: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+complete_years: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+year_summary: cases=6, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+window_metrics: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+achievement_frequencies: cases=31, max_abs=0, max_rel=0, matched_exceptions=6, clock_acceptance_only=0
+ewr_gaps: cases=24, max_abs=0, max_rel=0, matched_exceptions=6, clock_acceptance_only=0
+gap_severity: cases=12, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_dateless_gap_stats: cases=18, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_runs_by_year: cases=18, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_has_any_event: cases=4, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+dr_years: cases=24, max_abs=0, max_rel=0, matched_exceptions=4, clock_acceptance_only=0
+vr_years: cases=20, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+dr_approx: cases=21, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+_paired_achievement: cases=4, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+detect_variant_conflicts: cases=12, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+scenario_index: cases=12, max_abs=0, max_rel=0, matched_exceptions=8, clock_acceptance_only=0
+fix_theme: cases=6, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+objective_themes: cases=6, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+objectives_of: cases=3, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+build_row_table: cases=8, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+ewr_params: cases=6, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+_is_multigauge: cases=9, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_dispatch_key: cases=16, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_group_by_ewr: cases=4, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_json_safe: cases=9, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+record_coverage: cases=12, max_abs=0, max_rel=0, matched_exceptions=0, clock_acceptance_only=0
+_assessment_year_stats: cases=17, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+PASS: all 41 moved functions match pre-refactor exactly for deterministic inputs; 2 relative-date cases check acceptance only; all inputs unchanged
+```
+
+The script snapshots every old/new invocation's inputs, including exception
+cases, and checks contents, dictionary order, Series/DataFrame indexes, dtypes,
+and numeric values afterward. Relative date keywords retain acceptance-only
+output checks from slice 2, but their inputs are still checked for mutation.
+Parameter-sheet rows in `_assessment_year_stats` cases use namedtuples just as
+pandas itertuples() does. No production source/fixture/data is changed by these
+checks. Constants are compared against original AST-loaded assignments.
+
+Deliberate-mutation control (changes only an argument in a temporary process,
+after computing the original return value):
+
+```sh
+python - <<'PY'
+import runpy
+from ewr_analysis.core.calculations import ewr_parameters
+module = runpy.run_path("scripts/compare_implementations.py")
+original = ewr_parameters.ewr_params
+def mutated(sheet):
+    result = original(sheet)
+    if sheet is not None and not sheet.empty:
+        sheet.iloc[0, 0] = "deliberate mutation"
+    return result
+ewr_parameters.ewr_params = mutated
+raise SystemExit(module["main"]())
+PY
+```
+
+Exit **1**, as required. Relevant output:
+
+```text
+ewr_params: cases=6, max_abs=0, max_rel=0, matched_exceptions=1, clock_acceptance_only=0
+FAIL
+ewr_params case 1: mutated mutated its inputs: Values differ: 'g' != 'deliberate mutation'
+ewr_params case 3: mutated mutated its inputs: Values differ: 'g' != 'deliberate mutation'
+ewr_params case 4: mutated mutated its inputs: Values differ: 'g' != 'deliberate mutation'
+```
+
+The calculation's original return values are unchanged in this control; it fails
+specifically because of the no-mutation assertion.

@@ -1,4 +1,4 @@
-"""Compare slice 1 and slice 2 calculations with untouched definitions from the pre-refactor tag."""
+"""Compare slices 1–3 calculations with untouched definitions from the pre-refactor tag."""
 
 import ast
 import copy
@@ -15,7 +15,25 @@ import pandas as pd
 
 from ewr_analysis.paths import ROOT
 
+BUILD_FUNCTIONS = {
+    "dr_approx": "duration_ratio",
+    "detect_variant_conflicts": "frequency_ratio",
+    "scenario_index": "frequency_ratio",
+    "fix_theme": "frequency_ratio",
+    "objective_themes": "frequency_ratio",
+    "objectives_of": "frequency_ratio",
+    "build_row_table": "frequency_ratio",
+    "ewr_params": "ewr_parameters",
+}
+BUILD_CONSTANTS = {"POLICIES", "CLIMATES", "NS"}
+
 SERVER_FUNCTIONS = {
+    "_is_multigauge": "ewr_parameters",
+    "_dispatch_key": "ewr_parameters",
+    "_group_by_ewr": "frequency_ratio",
+    "_json_safe": "frequency_ratio",
+    "_assessment_year_stats": "frequency_ratio",
+    "record_coverage": "assessment_years",
     "_iso_date": "assessment_years",
     "assessment_start": "assessment_years",
     "_timing_mask": "assessment_years",
@@ -43,7 +61,7 @@ SERVER_FUNCTIONS = {
 }
 
 
-def load_old(path: str, names: set[str] | None = None) -> types.ModuleType:
+def load_old(path: str, names: set[str] | None = None, constants: set[str] | None = None) -> types.ModuleType:
     """Execute a temporary module; server extraction avoids unrelated HTTP/I/O imports."""
     source = subprocess.check_output(["git", "show", f"pre-refactor:{path}"], cwd=ROOT, text=True)
     tree = ast.parse(source, filename=f"pre-refactor:{path}")
@@ -51,9 +69,14 @@ def load_old(path: str, names: set[str] | None = None) -> types.ModuleType:
         definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
         if {node.name for node in definitions} != names:
             raise RuntimeError(f"Missing baseline functions in {path}")
-        # Original bodies, signatures and operation order are retained; only their
-        # stdlib module namespace is supplied, without importing the old server.
-        tree.body = [*ast.parse("import math\nfrom typing import Any\n").body, *definitions]
+        assignments = [
+            node for node in tree.body if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id in (constants or set())
+        ]
+        if {node.targets[0].id for node in assignments if isinstance(node.targets[0], ast.Name)} != (constants or set()):
+            raise RuntimeError(f"Missing baseline constants in {path}")
+        # Bodies and constant expressions remain untouched; supply their import
+        # namespace without importing the old I/O/HTTP modules.
+        tree.body = [*ast.parse("import math\nfrom typing import Any\nimport pandas as pd\n").body, *assignments, *definitions]
     module = types.ModuleType(f"_pre_refactor_{path.replace('/', '_').replace('.', '_')}")
     exec(compile(tree, f"pre-refactor:{path}", "exec"), module.__dict__)
     return module
@@ -61,6 +84,10 @@ def load_old(path: str, names: set[str] | None = None) -> types.ModuleType:
 
 def compare_values(old: Any, new: Any) -> tuple[float, float]:
     """Require exact structure, metadata and values; also accumulate numeric deviations."""
+    if old is pd.NaT or old is pd.NA:
+        if old is not new:
+            raise AssertionError("Missing-value sentinels differ")
+        return 0.0, 0.0
     if isinstance(old, pd.DataFrame):
         pd.testing.assert_index_equal(old.index, new.index, exact=True)
         pd.testing.assert_index_equal(old.columns, new.columns, exact=True)
@@ -109,13 +136,20 @@ def compare_values(old: Any, new: Any) -> tuple[float, float]:
 
 
 def invoke(function: Any, args: tuple) -> tuple[Any, Any, list]:
+    arguments = copy.deepcopy(args)
+    before = copy.deepcopy(arguments)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
-            result = function(*copy.deepcopy(args))
+            result = function(*arguments)
             error = None
         except Exception as exc:
             result, error = None, (type(exc), str(exc))
+    try:
+        if compare_values(before, arguments) != (0.0, 0.0):
+            raise AssertionError("numeric values changed")
+    except AssertionError as exc:
+        raise AssertionError(f"{function.__name__} mutated its inputs: {exc}") from exc
     return result, error, [(item.category, str(item.message)) for item in caught]
 
 
@@ -293,10 +327,138 @@ def slice_two_cases() -> dict[str, list[tuple]]:
     return out
 
 
+def slice_three_cases() -> dict[str, list[tuple]]:
+    """Project-column frames and read-only inputs for aggregation/parameter helpers."""
+    index = pd.date_range("2000-01-01", periods=4)
+    frame = pd.DataFrame(
+        {
+            "PlanningUnitName": ["p", "p", "p", "q"],
+            "SWSDLName": ["s"] * 4,
+            "Gauge": ["g"] * 4,
+            "EWR": ["BF1"] * 4,
+            "FR": [0.5, 0.5, 0.75, np.nan],
+            "ETP": [0.1, 0.2, np.nan, np.nan],
+            "EcoObj": ["O-1", "O-1", "O-2", None],
+            "Target": ["Native Fish", "Other species", "Other species", None],
+        },
+        index=index,
+    )
+    rows = {
+        ("p", "s", "g", "BF1"): {
+            "ob": {"O-1", "O-2"},
+            "rg": {"Baseflow"},
+            "fr": [0.5, 2.0] + [None] * 26,
+            "et": [0.1, 0.0] + [None] * 26,
+            "ey": [25, 50] + [None] * 26,
+            "ael": [3.0, 9.0] + [None] * 26,
+            "ny": 100.0,
+        }
+    }
+    theme = {"O-1": "Native Fish", "O-2": "Other Species"}
+    ref = pd.DataFrame({"Target": ["Waterbirds", "Native Fish"]}, index=["O-1", "O-3"])
+    sheet = pd.DataFrame(
+        {
+            "Gauge": ["g", "g", "g", None],
+            "Code": ["BF1", "BF1", "BF1", "X"],
+            "PlanningUnitName": ["p", "p", "q", "p"],
+            "TargetFrequency": [50, 90, "bad", None],
+            "Duration": [3, 9, 2.9, None],
+            "MaxInter-event": [1.23456, 9, None, None],
+            "FlowLevelVolume": ["F", "V", None, "unexpected"],
+        },
+        index=index,
+    )
+    events = pd.DataFrame(
+        {
+            "Gauge": [123, 123, "g", None],
+            "PlanningUnit": ["p", "p", "q", "p"],
+            "Code": ["BF1", "BF1", "X", "X"],
+            "startDate": pd.date_range("2000-01-01", periods=4),
+            "interEventLength": [3, np.nan, 5, 0],
+        },
+        index=index,
+    )
+    daily = pd.Series(10.0, index=pd.date_range("1999-07-01", "2000-06-30"))
+    yearly = pd.DataFrame({"BF1_eventYears": [1], "BF1_maxEventDays": [3], "BF1_totalEventDays": [366]}, index=[1999])
+    params = {
+        "StartMonth": 7,
+        "EndMonth": 6,
+        "StartDay": 1,
+        "EndDay": 30,
+        "FlowLevelVolume": "F",
+        "Multigauge": None,
+        "Duration": 3,
+        "EventsPerYear": 1,
+        "AccumulationPeriod": 2,
+        "VolumeThreshold": 20,
+    }
+    gaps = [{"start": "1999-07-01", "end": "1999-07-05", "days": 5, "censored": False}]
+    stats: list[tuple[Any, ...]] = []
+    for kind in ("F", "V", "L", None):
+        for low in (False, True):
+            for use_days in (False, True):
+                prm = types.SimpleNamespace(**(params | {"FlowLevelVolume": kind}))
+                stats.append(
+                    ("BF1", prm, yearly, {1999: [[1] * 3]}, daily, gaps, 3, 50, {f"BF1-single-{kind}": "lowflow_handle" if low else "flow_handle"}, use_days)
+                )
+    stats.append(("BF1", types.SimpleNamespace(**params), yearly, {}, daily.iloc[:0], [], 0, None, {}, False))
+    # Plain namespaces have identity equality, so use namedtuple rows as real
+    # parameter-sheet itertuples() does; structural input checks can compare them.
+    stats = [(a, next(pd.DataFrame([vars(b)]).itertuples(index=False)), *rest) for a, b, *rest in stats]
+    json_inputs: list[Any] = [None, np.nan, np.inf, -np.inf, (1, np.nan), {"fr": np.nan, "et": [0, np.inf, None]}, np.float32(np.nan), {"ewrs": []}, frame]
+    return {
+        "detect_variant_conflicts": [
+            (f, keys, value)
+            for f in (frame, frame.iloc[:0], frame.assign(FR=np.nan))
+            for keys in (["PlanningUnitName", "SWSDLName", "Gauge", "EWR"], ["Gauge"])
+            for value in ("FR", "ETP")
+        ],
+        "scenario_index": [
+            (policy, climate)
+            for policy in ("Without Development", "Basin plan full implementation", None, "unknown")
+            for climate in ("Historical Climate", "Hotter and Much Drier 2.0 C", "unknown")
+        ],
+        "fix_theme": [(value,) for value in ("Other species", "Other Species", "Native Fish", "", None, np.nan)],
+        "objective_themes": [
+            (a, b, objs, ref)
+            for a, b in ((frame, frame.iloc[:0]), (frame.iloc[:0], frame), (frame.iloc[:0], frame.iloc[:0]))
+            for objs in (["O-1", "O-2", "O-3", "unknown"], [])
+        ],
+        "objectives_of": [(rows,), ({},), ({("p", "s", "g", "X"): {"ob": {"V-2", "A-9", "A-1"}}},)],
+        "build_row_table": [
+            (r, themes, p)
+            for r, themes in ((rows, theme), ({}, {}))
+            for p in (None, {}, {("g", "BF1", "p"): {"T": 50, "dur": 3, "mrip": 1, "kind": "F"}}, {("g", "BF1", "p"): {"dur": 3, "kind": "V"}})
+        ],
+        "ewr_params": [
+            (f,)
+            for f in (
+                None,
+                sheet,
+                sheet.iloc[:0],
+                sheet.drop(columns=["FlowLevelVolume", "Duration"]),
+                sheet[["Gauge", "Code", "PlanningUnitName"]],
+                pd.DataFrame(),
+            )
+        ],
+        "_is_multigauge": [(value,) for value in ("g", "  g  ", " ", "", None, np.nan, 0, 123, ["g"])],
+        "_dispatch_key": [("BF1", multi, kind) for multi in (False, True) for kind in ("F", "L", "V", None, np.nan, "unexpected", 0, {"kind": "F"})],
+        "_group_by_ewr": [(f,) for f in (events, events.iloc[:0], pd.DataFrame(), events.assign(Gauge=np.nan))],
+        "_json_safe": [(value,) for value in json_inputs],
+        "record_coverage": [
+            (s, complete)
+            for s in (daily, daily.iloc[:0], daily.drop(pd.Timestamp("2000-02-29")), daily * np.nan, daily.iloc[:1], daily.tz_localize("UTC"))
+            for complete in ([1, 0], [])
+        ],
+        "_assessment_year_stats": stats,
+    }
+
+
 def main() -> int:
-    old_server = load_old("src/server.py", set(SERVER_FUNCTIONS))
-    old_build = load_old("src/build_dashboard.py", {"dr_approx"})
+    old_server = load_old("src/server.py", set(SERVER_FUNCTIONS), {"LOW_FLOW_HANDLERS"})
+    old_build = load_old("src/build_dashboard.py", set(BUILD_FUNCTIONS), BUILD_CONSTANTS)
     old_drought = load_old("src/drought_windows.py")
+    old_server.__dict__.update(DROUGHTS=old_drought.DROUGHTS, window_dates=old_drought.window_dates)
     old_regimes = load_old("src/flow_regime_mappings.py")
     new_drought = importlib.import_module("ewr_analysis.core.calculations.drought_windows")
     new_regimes = importlib.import_module("ewr_analysis.core.calculations.flow_regimes")
@@ -305,14 +467,24 @@ def main() -> int:
     if compare_values(old_regimes.flow_mappings, new_regimes.flow_mappings) != (0.0, 0.0):
         raise AssertionError("flow_mappings differ")
     print("DROUGHTS / flow_mappings: exact values and order match pre-refactor")
+    for name in BUILD_CONSTANTS:
+        assert compare_values(getattr(old_build, name), getattr(importlib.import_module("ewr_analysis.core.calculations.frequency_ratio"), name)) == (
+            0.0,
+            0.0,
+        ), name
+    assert compare_values(old_server.LOW_FLOW_HANDLERS, importlib.import_module("ewr_analysis.core.calculations.ewr_parameters").LOW_FLOW_HANDLERS) == (
+        0.0,
+        0.0,
+    )
+    print("POLICIES / CLIMATES / NS / LOW_FLOW_HANDLERS: exact values and order match pre-refactor")
     failures = []
-    for name, inputs in (cases() | slice_two_cases()).items():
+    for name, inputs in (cases() | slice_two_cases() | slice_three_cases()).items():
         if name in SERVER_FUNCTIONS:
             old_module = old_server
             new_module = importlib.import_module(f"ewr_analysis.core.calculations.{SERVER_FUNCTIONS[name]}")
-        elif name == "dr_approx":
+        elif name in BUILD_FUNCTIONS:
             old_module = old_build
-            new_module = importlib.import_module("ewr_analysis.core.calculations.duration_ratio")
+            new_module = importlib.import_module(f"ewr_analysis.core.calculations.{BUILD_FUNCTIONS[name]}")
         elif name in ("window_dates", "meta"):
             old_module, new_module = old_drought, new_drought
         else:
@@ -347,7 +519,7 @@ def main() -> int:
     if failures:
         print("FAIL\n" + "\n".join(failures))
         return 1
-    print("PASS: all 28 moved functions match pre-refactor exactly for deterministic inputs; 2 relative-date cases check acceptance only")
+    print("PASS: all 41 moved functions match pre-refactor exactly for deterministic inputs; 2 relative-date cases check acceptance only; all inputs unchanged")
     return 0
 
 
