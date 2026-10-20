@@ -7,13 +7,16 @@ def run_command(cmd: list[str]) -> str:
     # An argument list with no shell: the diff is untrusted PR content and must never be interpreted by a shell.
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"Error running: {' '.join(cmd[:3])}\n{result.stderr}", file=sys.stderr)
-        return ""
+        sys.exit(f"Error running: {' '.join(cmd[:3])}\n{result.stderr}")
     return result.stdout.strip()
 
 
 def run_agent(spec: str, prompt: str) -> str:
-    return run_command(["omnigent", "run", spec, "-p", prompt])
+    # A failed or empty agent run aborts the review so that no comment is posted with missing findings.
+    output = run_command(["omnigent", "run", spec, "-p", prompt])
+    if not output:
+        sys.exit(f"Agent {spec} returned no output")
+    return output
 
 
 def main() -> None:
@@ -27,11 +30,11 @@ def main() -> None:
 
     print("Running Gemini Context Audit...")
     gemini_prompt = f"Examine this PR diff and related repo files for system-wide breaking changes:\n\n{diff_text}"
-    gemini_out = run_agent(".omnigent/review/gemini_context.yaml", gemini_prompt)
+    gemini_out = run_agent(".omnigent/review/gemini_context", gemini_prompt)
 
     print("Running Claude Logic Audit...")
     claude_prompt = f"Examine this PR diff for critical bugs, race conditions, and logic errors:\n\n{diff_text}"
-    claude_out = run_agent(".omnigent/review/claude_logic.yaml", claude_prompt)
+    claude_out = run_agent(".omnigent/review/claude_logic", claude_prompt)
 
     # Synthesize findings to prevent redundant comment spam
     print("Synthesizing multi-agent consensus...")
@@ -55,7 +58,7 @@ def main() -> None:
     """
 
     # Run synthesis through Claude or Gemini
-    summary = run_agent(".omnigent/review/claude_logic.yaml", synthesis_input)
+    summary = run_agent(".omnigent/review/claude_logic", synthesis_input)
 
     with open("review_comment.md", "w") as f:
         f.write("## 🏛️ Deep Multi-Agent Review (Gemini + Claude via Omnigent)\n\n")
