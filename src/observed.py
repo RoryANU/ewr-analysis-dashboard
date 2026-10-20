@@ -30,6 +30,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = ROOT / ".observed_cache"
+NORMALISATION = "2"  # cache metadata: entries from an older normalisation (which also dropped 151 and >=999 before grading) are refetched on access
 CACHE_VERSION = "3"  # gauge_pull output only; no trace-metadata units or alternate routing
 RAW_COLUMNS = ["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME", "VALUE", "QUALITYCODE"]
 PARAMETER_SHEET = ROOT / "data/reference/parameter_sheet.csv"
@@ -158,12 +159,15 @@ def default_quality_policy() -> QualityPolicy | None:
 
 
 def clean_frame(frame: pd.DataFrame, policy: QualityPolicy | None) -> pd.DataFrame:
-    """Remove rows the policy grades outside its allowed grades, so the readings used downstream match the readings counted."""
-    if policy is None or frame.empty or "QUALITYCODE" not in frame.columns:
+    """Remove rows that must not be used: no-record sentinels always; then, with a policy, rows its matched table grades outside the
+    allowed grades (so the readings used downstream are the readings counted); without one, the older 151 / >=999 rule."""
+    if frame.empty or "QUALITYCODE" not in frame.columns:
         return frame
     codes = [_coverage_code(q) for q in frame["QUALITYCODE"].tolist()]
-    selection = policy.select_table([c for c in codes if c is not None and not _is_placeholder_code(c)])
-    drop = [policy.removes(code, selection["candidates"]) for code in codes]
+    candidates: list[str] = []
+    if policy is not None:
+        candidates = policy.select_table([c for c in codes if c is not None and not _is_sentinel(c, policy)])["candidates"]
+    drop = [code is not None and (_is_sentinel(code, policy) or (policy is not None and policy.removes(code, candidates))) for code in codes]
     return frame.loc[[not d for d in drop]].reset_index(drop=True) if any(drop) else frame
 
 
@@ -199,8 +203,11 @@ def _emit_inflight(result: GaugeResult) -> None:
         logging.getLogger(__name__).warning("Gauge progress callback failed (%s)", type(exc).__name__)
 
 
-def _is_placeholder_code(code: int) -> bool:
-    return code in {255, 201, 151} or code >= 999  # the same rule _normalise applies
+def _is_sentinel(code: int, policy: QualityPolicy | None) -> bool:
+    """No-record codes. 255 and 201 are grade F in every Bureau table that lists them, so they go whatever the policy says.
+    With no policy the older rule also applies (151 and anything >= 999); with a policy those are graded by the matched table
+    like any other code (151 is grade E in NSW Water, and 999 is in no table, so it is kept as a mismatch)."""
+    return code in {255, 201} or (policy is None and (code == 151 or code >= 999))
 
 
 def _use_repo_bom_cache() -> None:
@@ -442,14 +449,14 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
 
 
 def _normalise(raw: pd.DataFrame) -> pd.DataFrame:
-    """Normalise getter columns and discard quality-coded placeholder days."""
+    """Normalise getter columns and discard the no-record rows (codes 255 and 201: grade F in every Bureau table that lists them)."""
     if raw.empty:
         return pd.DataFrame(columns=RAW_COLUMNS)
     frame = raw.loc[:, RAW_COLUMNS].copy()
     frame["VALUE"] = pd.to_numeric(frame["VALUE"], errors="coerce")
     frame["DATETIME"] = pd.to_datetime(frame["DATETIME"])
     quality = pd.to_numeric(frame["QUALITYCODE"], errors="coerce")
-    return frame.loc[~(quality.isin({255, 201, 151}) | (quality >= 999))].reset_index(drop=True)
+    return frame.loc[~quality.isin({255, 201})].reset_index(drop=True)
 
 
 def _cache_paths(gauge: str, var: str) -> tuple[Path, Path]:
@@ -476,7 +483,9 @@ def _write_cache(gauge: str, var: str, frame: pd.DataFrame, start: date, end: da
     tmp_data = data_path.with_suffix(".csv.tmp")
     tmp_meta = meta_path.with_suffix(".json.tmp")
     frame.to_csv(tmp_data, index=False)
-    tmp_meta.write_text(json.dumps({"start": start.isoformat(), "end": end.isoformat(), "fetched_at": time.time()}), encoding="utf-8")
+    tmp_meta.write_text(
+        json.dumps({"start": start.isoformat(), "end": end.isoformat(), "fetched_at": time.time(), "normalisation": NORMALISATION}), encoding="utf-8"
+    )
     os.replace(tmp_data, data_path)
     os.replace(tmp_meta, meta_path)
 
@@ -518,7 +527,7 @@ def _fetch_gauge_cached(
     if cached:
         frame, meta = cached
         lo, hi = date.fromisoformat(meta["start"]), date.fromisoformat(meta["end"])
-        fresh = time.time() - float(meta["fetched_at"]) < ttl
+        fresh = time.time() - float(meta["fetched_at"]) < ttl and meta.get("normalisation") == NORMALISATION
         if fresh and start <= hi + timedelta(days=1) and end >= lo - timedelta(days=1):
             cached_frame, covered_start, covered_end = frame, min(start, lo), max(end, hi)
             needed = [(start, lo - timedelta(days=1)), (hi + timedelta(days=1), end)]
@@ -548,6 +557,15 @@ def _fetch_gauge_cached(
         return _error_result(exc, var=var)
 
 
+def _clean_result(result: GaugeResult, policy: QualityPolicy | None) -> GaugeResult:
+    cleaned = clean_frame(result.frame, policy)
+    if len(cleaned) != len(result.frame):
+        result.frame = cleaned
+        if cleaned.empty and result.status == "ok":
+            result.status, result.message = "empty", "No usable readings once missing data was removed"
+    return result
+
+
 def fetch_gauge(
     gauge: str,
     start: date,
@@ -558,6 +576,8 @@ def fetch_gauge(
     timeout: float = DEFAULT_TIMEOUT,
     ttl: float = DEFAULT_TTL,
     retries: int = DEFAULT_RETRIES,
+    policy: QualityPolicy | None = None,
+    apply_policy: bool = True,
 ) -> GaugeResult:
     """Deduplicate concurrent fetches for the same gauge/variable cache entry."""
     state = _FETCH_STATE.get()
@@ -572,7 +592,9 @@ def fetch_gauge(
         with lock:
             result = _fetch_gauge_cached(gauge, start, end, var, refresh=refresh, timeout=timeout, ttl=ttl, retries=retries)
         if result.status in {"ok", "empty"}:
-            result.attempts = state.max_attempts_used  # worst source range, not the sum of head/tail requests
+            result.attempts = state.max_attempts_used
+            if apply_policy:  # the cache keeps everything graded later; cleaning happens here, per request
+                result = _clean_result(result, policy)  # worst source range, not the sum of head/tail requests
         return result
     finally:
         if token is not None:
@@ -718,7 +740,7 @@ def assess_coverage(
     codes = {day: _coverage_code(quality) for day, (_, quality) in slots.items()}
     candidates: list[str] = []
     if policy is not None:
-        sel = policy.select_table([code for code in codes.values() if code is not None and not _is_placeholder_code(code)])
+        sel = policy.select_table([code for code in codes.values() if code is not None and not _is_sentinel(code, policy)])
         candidates = sel["candidates"]
         coverage.update(
             quality_table=sel["table"],
@@ -732,7 +754,7 @@ def assess_coverage(
         )
     for day, (raw_value, _) in slots.items():
         code = codes[day]
-        if code is not None and _is_placeholder_code(code):
+        if code is not None and _is_sentinel(code, policy):
             excluded += 1  # no-record sentinels (255/201 are grade F in every table that lists them), dropped upstream too
             continue
         kept_unmatched = False
@@ -832,7 +854,7 @@ def fetch_many(
         callback = (lambda result: notify(inflight_progress, gauge, var, result)) if inflight_progress is not None else None
         token = _FETCH_STATE.set(_MeasurementState(var, callback))
         try:
-            return fetch_gauge(gauge, start, end, var, refresh=refresh, timeout=timeout, retries=retries)
+            return fetch_gauge(gauge, start, end, var, refresh=refresh, timeout=timeout, retries=retries, apply_policy=False)
         finally:
             _FETCH_STATE.reset(token)
 
@@ -848,12 +870,8 @@ def fetch_many(
                 result = _error_result(exc, var=var)
             # Attach once, before the callback, so streamed and final payloads carry the same assessment.
             _attach_coverage(result, start, end, var=var, policy=policy, filter_period=filter_period, reporting_cutoff=reporting_cutoff)
-            if policy is not None and result.status in {"ok", "empty"}:
-                cleaned = clean_frame(result.frame, policy)
-                if len(cleaned) != len(result.frame):
-                    result.frame = cleaned
-                    if cleaned.empty and result.status == "ok":
-                        result.status, result.message = "empty", "No usable readings once missing data was removed"
+            if result.status in {"ok", "empty"}:
+                result = _clean_result(result, policy)  # after coverage was recorded from the raw frame
             statuses[(gauge, var)] = result
             notify(status_progress, gauge, var, result)
             if result.status == "ok":

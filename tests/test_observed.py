@@ -903,3 +903,98 @@ def test_bomwater_cache_lives_in_the_repo_and_needs_no_download(monkeypatch):
 def test_a_missing_shipped_station_file_is_still_reported_as_a_setup_error():
     result = observed._error_result(FileNotFoundError(f"[Errno 2] No such file or directory: '{observed.BOM_WATER_HOME}/bom_water/cache/stations.json'"))
     assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
+
+
+def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
+    err = observed._attach_coverage(
+        observed.GaugeResult(pd.DataFrame(), "error", "x", True, {"code": "UNEXPECTED_ERROR"}, 2), D(2024, 1, 1), D(2024, 1, 3), var="F", policy=POLICY
+    )
+    assert err.attempts == 2 and err.coverage["coverage_status"] == "unavailable_error" and err.coverage["units"] == "ML/d"
+    assert all(
+        err.coverage[k] is None
+        for k in ("coverage_pct", "coverage_complete", "expected_count", "valid_count", "last_reading", "gaps", "zero_count", "all_zero")
+    )
+    for status in ("running", "retry_wait"):
+        assert observed._attach_coverage(observed.GaugeResult(pd.DataFrame(), status), D(2024, 1, 1), D(2024, 1, 3), var="F").coverage is None
+
+
+def test_fetch_many_attaches_coverage_before_terminal_callbacks_and_passes_period_flags(monkeypatch):
+    def fake_fetch_gauge(gauge, start, end, var, **kwargs):
+        if var == "F":
+            return observed.GaugeResult(pd.DataFrame(), "empty")
+        return observed.GaugeResult(pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01"]), "VALUE": [1.2], "QUALITYCODE": [10]}), "ok")
+
+    monkeypatch.setattr(observed, "fetch_gauge", fake_fetch_gauge)
+    seen = []
+    _, statuses = observed.fetch_many(
+        ["g"],
+        D(2024, 1, 1),
+        D(2024, 1, 2),
+        status_progress=lambda g, v, r: seen.append((g, v, r.coverage is not None)),
+        policy=POLICY,
+        reporting_cutoff=D(2024, 1, 1),
+    )
+    assert sorted(seen) == [("g", "F", True), ("g", "L", True)]
+    assert statuses[("g", "F")].coverage["coverage_complete"] is False and statuses[("g", "L")].coverage["coverage_complete"] is True
+    _, open_period = observed.fetch_many(["g"], D(1890, 1, 1), D(2024, 1, 1), filter_period=False)
+    assert all(r.coverage["coverage_status"] == "unassessed_open_period" for r in open_period.values())
+
+
+def test_coverage_ignores_rows_outside_the_window():
+    inside = _cov(["2024-01-02", "2024-01-03"], [1, 0], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
+    noisy = _cov(["2023-12-31", "2024-01-02", "2024-01-03", "2024-01-04"], [0, 1, 0, 9], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
+    assert noisy == inside  # zeros, later timestamps or placeholders outside [start, end] change nothing
+
+
+def test_stale_cache_placeholder_rows_never_come_back_as_zero_readings(getter_stub, tmp_path):
+    """Cache entries written before the placeholder filter hold 'No Record' (255/201) rows with VALUE 0."""
+    calls, _ = getter_stub
+    frame = raw_frame("412033", pd.date_range("2000-01-01", periods=4))
+    frame["QUALITYCODE"] = [140, 255, 201, 151]  # 151 is dropped by the no-policy rule at request time, not stored as removed
+    frame["VALUE"] = ["5.0", "0", "0", "0"]
+    data_path, meta_path = observed._cache_paths("412033", "F")
+    observed.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(data_path, index=False)
+    meta_path.write_text(
+        json.dumps({"start": "2000-01-01", "end": "2000-01-04", "fetched_at": time.time(), "normalisation": observed.NORMALISATION}), encoding="utf-8"
+    )
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 4))
+    assert calls == []  # served from cache
+    assert result.status == "ok" and list(result.frame["VALUE"]) == [5.0]  # the three placeholder zeros are gone
+
+
+def test_151_and_999_are_graded_by_the_matched_table_not_dropped_before_grading(getter_stub):
+    """With a policy 151 follows its table's grade (E in one agency, F in others) and 999, listed nowhere, is kept as a mismatch;
+    with no policy the older 151 / >=999 rule still applies. 255 and 201 are grade F in every table that lists them and always go."""
+    _, answer = getter_stub
+    raw = raw_frame("412033", pd.date_range("2000-01-01", periods=6), ["1.0"] * 6)
+    raw["QUALITYCODE"] = [10, 151, 999, 255, 201, 10]
+    answer["fetch"] = lambda *args: raw
+    grades = frozenset("ABCE")
+    e_table = observed.QualityPolicy(grades, {"WaterLike": {10: "A", 151: "E"}, "Other": {151: "F", 77: "A"}}, "v")
+    f_table = observed.QualityPolicy(grades, {"Other": {10: "A", 151: "F"}}, "v")
+    legacy = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 6))
+    assert legacy.frame["QUALITYCODE"].tolist() == [10, 10]  # no policy: 151, 999, 255 and 201 all go (the earlier rule)
+    for policy, expected in ((e_table, [10, 151, 999, 10]), (f_table, [10, 999, 10])):
+        answer["fetch"] = lambda *args: raw
+        result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 6), policy=policy, refresh=True)
+        assert result.frame["QUALITYCODE"].tolist() == expected
+    # WaterLike matches 3 of 4 eligible codes and Other 1, so 151 is E (kept); when two tables tie and disagree it is kept rather than guessed
+    tie = observed.QualityPolicy(grades, {"A1": {10: "A", 151: "E"}, "B1": {10: "A", 151: "F"}}, "v")
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 6), policy=tie, refresh=True)
+    assert result.frame["QUALITYCODE"].tolist() == [10, 151, 999, 10]
+
+
+def test_cache_entries_from_an_older_normalisation_are_refetched_on_access(getter_stub):
+    calls, _ = getter_stub
+    observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert len(calls) == 1
+    observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert len(calls) == 1  # current entry served from cache
+    _, meta_path = observed._cache_paths("412033", "F")
+    meta = json.loads(meta_path.read_text())
+    assert meta["normalisation"] == observed.NORMALISATION
+    meta.pop("normalisation")  # an entry written before 151 and >=999 stopped being dropped upstream
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert len(calls) == 2  # refreshed lazily, only when accessed
