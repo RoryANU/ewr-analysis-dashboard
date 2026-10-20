@@ -160,15 +160,15 @@ def default_quality_policy() -> QualityPolicy | None:
     return _DEFAULT_POLICY
 
 
-def clean_frame(frame: pd.DataFrame, policy: QualityPolicy | None) -> pd.DataFrame:
+def clean_frame(frame: pd.DataFrame, policy: QualityPolicy | None, candidates: list[str] | None = None) -> pd.DataFrame:
     """Remove rows that must not be used: no-record sentinels always; then, with a policy, rows its matched table grades outside the
-    allowed grades (so the readings used downstream are the readings counted); without one, the older 151 / >=999 rule."""
+    allowed grades (so the readings used downstream are the readings counted); without one, the older 151 / >=999 rule.
+    `candidates` reuses a table selection already made (assess_coverage records it); when None the table is selected here."""
     if frame.empty or "QUALITYCODE" not in frame.columns:
         return frame
     codes = [_coverage_code(q) for q in frame["QUALITYCODE"].tolist()]
-    candidates: list[str] = []
-    if policy is not None:
-        candidates = policy.select_table([c for c in codes if c is not None and not _is_sentinel(c, policy)])["candidates"]
+    if candidates is None:
+        candidates = [] if policy is None else policy.select_table([c for c in codes if c is not None and not _is_sentinel(c, policy)])["candidates"]
     drop = [code is not None and (_is_sentinel(code, policy) or (policy is not None and policy.removes(code, candidates))) for code in codes]
     return frame.loc[[not d for d in drop]].reset_index(drop=True) if any(drop) else frame
 
@@ -575,7 +575,9 @@ def _fetch_gauge_cached(
 
 def _clean_result(result: GaugeResult, policy: QualityPolicy | None) -> GaugeResult:
     """Apply quality filtering in place and mark an exhausted successful result empty."""
-    cleaned = clean_frame(result.frame, policy)
+    recorded = result.coverage or {}
+    candidates = recorded.get("quality_table_candidates") if recorded.get("quality_table_selection") is not None else None  # None: no selection was made
+    cleaned = clean_frame(result.frame, policy, candidates)
     if len(cleaned) != len(result.frame):
         result.frame = cleaned
         if cleaned.empty and result.status == "ok":
