@@ -664,6 +664,7 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
         measurement_lock = threading.RLock()  # in-flight retry callbacks arrive from worker threads
 
         def _measurement_payload(result: observed.GaugeResult) -> dict:
+            """Serialize a measurement result for streamed and final job responses."""
             # Legacy keys (status, message, retryable) stay; `error` is the additive envelope.
             return {
                 "status": result.status,
@@ -677,6 +678,7 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
             }
 
         def report_gauge(gauge: str, var: str, result: observed.GaugeResult) -> None:
+            """Update one measurement in job progress under the shared measurement lock."""
             with measurement_lock:
                 progress = dict(job.get("progress", {}))
                 gauge_progress = dict(progress.get("gauges", {}))
@@ -689,6 +691,7 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
         report_stage = _progress_reporter(job, stage_code="gauges")
 
         def report_progress(*args) -> None:
+            """Record gauge-stage counts under the shared measurement lock."""
             with measurement_lock:
                 report_stage(*args)
 
@@ -786,6 +789,7 @@ def _progress_reporter(job: dict[str, Any], stage_code: str | None = None) -> Ca
     """A progress(stage, done, total) callback that records the job's current stage and work counts for /api/job."""
 
     def progress(stage: str, done: int, total: int) -> None:
+        """Replace stage counts while preserving any recorded measurement progress."""
         current = job.get("progress", {})
         job["progress"] = {
             "stage": stage,

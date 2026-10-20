@@ -68,9 +68,11 @@ START, END = date(2000, 1, 1), date(2000, 1, 2)
     ],
 )
 def test_fetch_failure_retryability(monkeypatch, tmp_path, error, retryable):
+    """Verify source failures retain their error status and expected retryability."""
     calls = []
 
     def pull(*args, **kwargs):
+        """Record the source request and raise the parametrized failure."""
         calls.append((args, kwargs))
         raise error
 
@@ -92,6 +94,7 @@ def test_fetch_failure_retryability(monkeypatch, tmp_path, error, retryable):
 
 @pytest.mark.parametrize("code", [400, 401, 403, 404, 408, 425, 429, 500, 502, 503, 504, 599])
 def test_http_response_status_overrides_message(code):
+    """Verify response status overrides message text while local setup errors remain permanent."""
     response = Response()
     response.status_code = code
     # A 4xx Response is falsey, so checking `if exc.response` would lose the code.
@@ -112,6 +115,7 @@ def test_http_response_status_overrides_message(code):
     ],
 )
 def test_error_handler_works_without_requests(monkeypatch, tmp_path, error, retryable):
+    """Verify error classification and streamed failures work without requests exceptions."""
     monkeypatch.setitem(sys.modules, "requests.exceptions", None)
     result = observed._error_result(error)
     assert result.status == "error" and result.retryable is retryable
@@ -124,6 +128,7 @@ def test_error_handler_works_without_requests(monkeypatch, tmp_path, error, retr
 
 
 def test_message_rules_map_to_codes_and_javascript_only_reads_codes():
+    """Verify backend codes map to frontend copy without parsing legacy exception messages."""
     root = Path(__file__).resolve().parents[1]
     template = (root / "src/dashboard_template.html").read_text()
     cases = json.loads((root / "tests/fixtures/observed_message_cases.json").read_text())
@@ -152,9 +157,11 @@ process.stdout.write(JSON.stringify(vm.runInContext(`cases.map(c=>[
 
 
 def test_empty_records_and_invalid_requests_are_not_retryable(monkeypatch, tmp_path):
+    """Verify empty results and invalid request parameters never advertise retries."""
     calls = []
 
     def pull(*args, **kwargs):
+        """Record the request and return an empty source result."""
         calls.append((args, kwargs))
         return pd.DataFrame()
 
@@ -175,7 +182,10 @@ def test_empty_records_and_invalid_requests_are_not_retryable(monkeypatch, tmp_p
 
 @pytest.mark.parametrize("error,retryable", [(FileNotFoundError("~/bom_water/cache/stations.json"), False), (TimeoutError("timeout"), True)])
 def test_fetch_many_preserves_retryability_on_unhandled_worker_failures(monkeypatch, error, retryable):
+    """Verify unhandled worker failures retain retryability in streamed and final results."""
+
     def fail(*args, **kwargs):
+        """Raise the parametrized failure directly from the fetch worker."""
         raise error
 
     monkeypatch.setattr(observed, "fetch_gauge", fail)
@@ -192,12 +202,14 @@ def test_fetch_many_preserves_retryability_on_unhandled_worker_failures(monkeypa
 
 @pytest.mark.parametrize("error,retryable", [(FileNotFoundError("~/bom_water/cache/stations.json"), False), (RuntimeError("error_num 218"), True)])
 def test_retryability_survives_streamed_and_final_job_payloads(monkeypatch, tmp_path, error, retryable):
+    """Verify server job payloads preserve measurement errors, retryability and coverage."""
     import server
 
     monkeypatch.setattr(observed, "GAUGE_STAGE", "Renamed download stage")
     monkeypatch.setattr(observed.time, "sleep", lambda delay: None)
 
     def pull(gauges, start, end, *, var, **kwargs):
+        """Return a usable flow reading and fail level requests with the selected error."""
         if var == "L":
             raise error
         return pd.DataFrame({"DATASOURCEID": ["NSW"], "SITEID": gauges, "SUBJECTID": ["WATER"], "DATETIME": [start], "VALUE": [1.0], "QUALITYCODE": [140]})
@@ -211,6 +223,7 @@ def test_retryability_survives_streamed_and_final_job_payloads(monkeypatch, tmp_
     streamed = []
 
     def evaluate(*args, **kwargs):
+        """Capture streamed gauge payloads when scenario evaluation begins."""
         assert job["progress"]["stage"] == "Renamed download stage"
         assert job["progress"]["stage_code"] == "gauges"
         streamed.append(json.loads(json.dumps(job["progress"]["gauges"])))
@@ -249,10 +262,12 @@ def test_retryability_survives_streamed_and_final_job_payloads(monkeypatch, tmp_
     ],
 )
 def test_transient_service_failures_use_existing_two_retry_budget(monkeypatch, tmp_path, error):
+    """Verify transient failures use three source attempts with the established retry delays."""
     calls: list[str] = []
     delays: list[float] = []
 
     def pull(*args, **kwargs):
+        """Record the requested variable and raise the selected transient error."""
         calls.append(kwargs["var"])
         raise error
 
@@ -267,10 +282,12 @@ def test_transient_service_failures_use_existing_two_retry_budget(monkeypatch, t
 
 
 def test_long_retry_after_is_not_waited_out_but_stays_retryable_for_the_user(monkeypatch, tmp_path):
+    """Verify excessive service delays stop automatic retries while preserving manual retryability."""
     calls: list[str] = []
     delays: list[float] = []
 
     def pull(*args, **kwargs):
+        """Record the request and simulate a service delay longer than the deadline."""
         calls.append(kwargs["var"])
         raise HTTPError("HTTP 429; retry after 500 seconds")
 
@@ -283,9 +300,11 @@ def test_long_retry_after_is_not_waited_out_but_stays_retryable_for_the_user(mon
 
 
 def test_short_retry_after_is_honoured_over_the_default_backoff(monkeypatch, tmp_path):
+    """Verify a service-requested delay takes precedence when it fits the deadline."""
     delays: list[float] = []
 
     def pull(gauges, start, end, *, var, **kwargs):
+        """Fail before the first retry delay and return a valid reading afterward."""
         if len(delays) < 1:
             raise HTTPError("HTTP 429; retry after 25 seconds")
         return pd.DataFrame({"DATASOURCEID": ["NSW"], "SITEID": gauges, "SUBJECTID": ["WATER"], "DATETIME": [start], "VALUE": [1.0], "QUALITYCODE": [140]})
@@ -298,10 +317,12 @@ def test_short_retry_after_is_honoured_over_the_default_backoff(monkeypatch, tmp
 
 
 def test_fetch_many_forwards_retry_budget_and_recovers_busy_service(monkeypatch, tmp_path):
+    """Verify concurrent measurements recover from busy responses within the supplied retry budget."""
     calls = {"F": 0, "L": 0}
     delays: list[float] = []
 
     def pull(*args, **kwargs):
+        """Fail each variable once before returning an empty successful response."""
         var = kwargs["var"]
         calls[var] += 1
         if calls[var] == 1:
@@ -318,10 +339,12 @@ def test_fetch_many_forwards_retry_budget_and_recovers_busy_service(monkeypatch,
 
 
 def test_retry_wait_never_exceeds_advisory_deadline(monkeypatch, tmp_path):
+    """Verify no retry sleep is scheduled beyond the advisory deadline."""
     calls: list[dict[str, Any]] = []
     delays: list[float] = []
 
     def pull(*args, **kwargs):
+        """Record each request and simulate a persistently busy service."""
         calls.append(kwargs)
         raise RuntimeError("source busy")
 
@@ -334,6 +357,7 @@ def test_retry_wait_never_exceeds_advisory_deadline(monkeypatch, tmp_path):
 
 
 def test_non_gauge_progress_does_not_keep_the_fetch_stage_code():
+    """Verify later analysis progress clears the gauge-stage code."""
     import server
 
     job: dict[str, Any] = {}

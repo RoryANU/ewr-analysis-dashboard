@@ -76,6 +76,7 @@ class QualityPolicy:
     version: str
 
     def __post_init__(self) -> None:
+        """Validate the policy and freeze copies of its grades and agency tables."""
         if not self.allowed_grades or not set(self.allowed_grades) <= set("ABCEFG"):
             raise ValueError("allowed_grades must be a non-empty subset of A, B, C, E, F, G")
         if not self.tables:
@@ -129,6 +130,7 @@ class QualityPolicy:
         return code is not None and bool(candidates) and all(code in self.tables[n] and self.tables[n][code] not in self.allowed_grades for n in candidates)
 
     def lists(self, code: int | None, candidates: list[str]) -> bool:
+        """Return whether any candidate agency table lists the quality code."""
         return code is not None and any(code in self.tables[n] for n in candidates)
 
 
@@ -175,6 +177,7 @@ class _SourceFailure(Exception):
     """Carry source-attempt metadata without changing public fetch signatures."""
 
     def __init__(self, cause: Exception, *, var: str, attempts: int, last_delay: float | None = None):
+        """Retain the original exception and metadata from the last source attempt."""
         super().__init__(str(cause))
         self.cause = cause
         self.var = var
@@ -193,6 +196,7 @@ _FETCH_STATE: ContextVar[_MeasurementState | None] = ContextVar("observed_measur
 
 
 def _emit_inflight(result: GaugeResult) -> None:
+    """Notify the current measurement callback without propagating callback failures."""
     state = _FETCH_STATE.get()
     if state is None or state.callback is None:
         return
@@ -227,16 +231,19 @@ def _use_repo_bom_cache() -> None:
 
     class _Path:
         def __getattr__(self, name: str) -> Any:
+            """Delegate unchanged path operations to the original os.path module."""
             return getattr(real_os.path, name)
 
         @staticmethod
         def expanduser(path: str) -> str:
+            """Redirect only the home-directory lookup to the repository reference data."""
             return str(BOM_WATER_HOME) if path == "~" else str(real_os.path.expanduser(path))
 
     class _Os:
         path = _Path()
 
         def __getattr__(self, name: str) -> Any:
+            """Delegate unchanged operating-system operations to the original os module."""
             return getattr(real_os, name)
 
     module.os = _Os()
@@ -244,6 +251,7 @@ def _use_repo_bom_cache() -> None:
 
 
 def _http_status(exc: Exception) -> int | None:
+    """Read an HTTP status from the response, falling back to exception text."""
     code = getattr(getattr(exc, "response", None), "status_code", None)
     if isinstance(code, int):
         return code
@@ -255,6 +263,7 @@ def _redact_detail(text: str) -> str:
     """Remove URL credentials/query strings and common labelled credentials."""
 
     def redact_url(match: re.Match[str]) -> str:
+        """Strip credentials, query parameters and fragments from a matched URL."""
         try:
             parts = urlsplit(match[0])
             return str(urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", "")))
@@ -277,6 +286,7 @@ def _redact_detail(text: str) -> str:
 
 
 def _parsed_retry_after(exc: Exception) -> float | None:
+    """Return a finite retry delay from HTTP 429 or 503 exception text."""
     # Same status restriction as _fetch_source.
     if _http_status(exc) not in {429, 503}:
         return None
@@ -414,6 +424,7 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
         future: Future = Future()
 
         def pull(result=future):
+            """Resolve this attempt's future with the getter result or exception."""
             try:
                 raw = gauge_pull([gauge], start, end, var=var, interval="day", data_type="mean", data_source="state")
                 result.set_result(raw)
@@ -460,11 +471,13 @@ def _normalise(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def _cache_paths(gauge: str, var: str) -> tuple[Path, Path]:
+    """Return versioned data and metadata paths for one gauge and variable."""
     key = hashlib.sha256(f"v{CACHE_VERSION}\0{gauge}\0{var}".encode()).hexdigest()
     return CACHE_DIR / f"{key}.csv", CACHE_DIR / f"{key}.json"
 
 
 def _read_cache(gauge: str, var: str) -> tuple[pd.DataFrame, dict[str, Any]] | None:
+    """Read and normalise cached readings, returning None for missing or invalid files."""
     data_path, meta_path = _cache_paths(gauge, var)
     if not data_path.exists() or not meta_path.exists():
         return None
@@ -478,6 +491,7 @@ def _read_cache(gauge: str, var: str) -> tuple[pd.DataFrame, dict[str, Any]] | N
 
 
 def _write_cache(gauge: str, var: str, frame: pd.DataFrame, start: date, end: date) -> None:
+    """Replace the cached readings and range metadata using temporary files."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     data_path, meta_path = _cache_paths(gauge, var)
     tmp_data = data_path.with_suffix(".csv.tmp")
@@ -558,6 +572,7 @@ def _fetch_gauge_cached(
 
 
 def _clean_result(result: GaugeResult, policy: QualityPolicy | None) -> GaugeResult:
+    """Apply quality filtering in place and mark an exhausted successful result empty."""
     cleaned = clean_frame(result.frame, policy)
     if len(cleaned) != len(result.frame):
         result.frame = cleaned
@@ -606,6 +621,7 @@ _UNITS = {"F": "ML/d", "L": "m"}
 
 
 def _coverage_day(value: object) -> date | None:
+    """Parse a timezone-free calendar date, returning None for invalid values."""
     if isinstance(value, datetime):
         return None if pd.isna(value) or value.tzinfo is not None else value.date()
     if isinstance(value, date):
@@ -654,6 +670,7 @@ def _coverage_value(value: object) -> float | None:
 
 
 def _coverage_code(value: object) -> int | None:
+    """Parse integral quality codes while rejecting booleans and non-finite values."""
     if isinstance(value, bool):
         return None
     if isinstance(value, Integral):
@@ -667,6 +684,7 @@ def _coverage_code(value: object) -> int | None:
 
 
 def _coverage_template(first: date, stop: date, *, units: str | None, status: str, policy: QualityPolicy | None) -> dict[str, Any]:
+    """Build an unassessed coverage payload with its period and optional policy metadata."""
     coverage: dict[str, Any] = {
         "units": units,
         "coverage_status": status,
@@ -846,11 +864,13 @@ def fetch_many(
     callback_lock = threading.Lock()
 
     def notify(callback, gauge: str, var: str, result: GaugeResult) -> None:
+        """Serialize calls to a supplied measurement progress callback."""
         if callback is not None:
             with callback_lock:
                 callback(gauge, var, result)
 
     def fetch_one(gauge: str, var: str) -> GaugeResult:
+        """Fetch one measurement with an isolated context for attempts and notifications."""
         callback = (lambda result: notify(inflight_progress, gauge, var, result)) if inflight_progress is not None else None
         token = _FETCH_STATE.set(_MeasurementState(var, callback))
         try:

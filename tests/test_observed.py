@@ -172,6 +172,7 @@ def test_source_errors_map_to_error_and_are_not_cached(getter_stub, tmp_path, er
 
 @pytest.mark.parametrize("error", [ConnectionError("connection lost"), *[HTTPError(f"HTTP {code}") for code in (500, 502, 503, 504)]])
 def test_transient_errors_retry_with_jittered_backoff(getter_stub, monkeypatch, error):
+    """Verify connection and HTTP failures retry with bounded exponential jitter."""
     calls, answer = getter_stub
     delays: list[float] = []
     monkeypatch.setattr(observed.random, "uniform", lambda left, right: 1.25)
@@ -193,6 +194,7 @@ def test_transient_errors_retry_with_jittered_backoff(getter_stub, monkeypatch, 
     "error", [HTTPError("HTTP 400"), HTTPError("HTTP 401"), FileNotFoundError("~/bom_water/cache/stations.json"), json.JSONDecodeError("bad JSON", "x", 0)]
 )
 def test_nontransient_errors_are_not_retried(getter_stub, error):
+    """Verify invalid requests, missing setup and malformed JSON stop without automatic retries."""
     calls, answer = getter_stub
 
     def fail(*args):
@@ -263,6 +265,7 @@ def test_invalid_requests_do_not_call_getter(getter_stub):
 
 
 def test_same_gauge_variable_is_deduplicated(getter_stub):
+    """Verify concurrent requests for one measurement share a single source fetch."""
     calls, _ = getter_stub
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(lambda _: observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2)), range(4)))
@@ -271,11 +274,13 @@ def test_same_gauge_variable_is_deduplicated(getter_stub):
 
 
 def test_fetch_many_isolates_failures_and_reports_progress(getter_stub, monkeypatch):
+    """Verify failed gauges leave successful results intact and report terminal progress."""
     calls, answer = getter_stub
     progress, statuses = [], []
     monkeypatch.setattr(observed.time, "sleep", lambda delay: None)
 
     def fetch(gauge, start, end, var):
+        """Fail the bad gauge and return daily readings for the successful gauge."""
         if gauge == "bad":
             raise HTTPError("HTTP 429")
         return raw_frame(gauge, pd.date_range(start, end))
@@ -322,6 +327,7 @@ def test_standard_frame_passes_the_existing_standard_timeseries_cleaner(tmp_path
 
 @pytest.mark.slow
 def test_observed_worker_matches_standard_upload_results_and_stored_series(monkeypatch, tmp_path):
+    """Verify observed and uploaded readings produce matching analysis and stored series."""
     import server
 
     scenario = Path(__file__).resolve().parents[1] / "data/example_scenarios/dummy_goulburn_scenario_A.csv"
@@ -384,6 +390,7 @@ def test_observed_worker_matches_standard_upload_results_and_stored_series(monke
     ],
 )
 def test_error_envelope_codes(exc, code, retryable):
+    """Verify exception classification populates the public error envelope consistently."""
     result = observed._error_result(exc, var="L")
     assert result.status == "error"
     assert result.message == f"{type(exc).__name__}: {exc}"
@@ -415,12 +422,14 @@ def test_error_envelope_codes(exc, code, retryable):
     ],
 )
 def test_http_envelope_preserves_retryability(status, code, retryable):
+    """Verify HTTP status codes determine both error codes and retryability."""
     result = observed._error_result(HTTPError(f"HTTP {status}"), var="F")
     assert result.error["code"] == code
     assert result.retryable is retryable and result.error["retryable"] is retryable
 
 
 def test_requests_and_json_error_classification():
+    """Verify network and JSON failures receive the expected retryable error codes."""
     from requests.exceptions import Timeout as RequestTimeout
 
     for exc in (RequestTimeout("timed out"), ConnectionError("connection lost")):
@@ -431,6 +440,7 @@ def test_requests_and_json_error_classification():
 
 
 def test_error_details_and_legacy_message_are_redacted():
+    """Verify both diagnostic text fields remove URL and labelled credentials."""
     exc = RuntimeError(
         "GET https://alice:password123@example.test/data?token=query-secret#fragment-secret "
         'api_key="key-secret" token=token-secret client_secret=client-secret '
@@ -445,11 +455,13 @@ def test_error_details_and_legacy_message_are_redacted():
 
 
 def test_setup_error_uses_one_attempt_without_sleep(getter_stub, monkeypatch):
+    """Verify a missing station cache fails once without scheduling a retry."""
     calls, answer = getter_stub
     sleeps = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
+        """Simulate a missing local station cache."""
         raise FileNotFoundError("~/bom_water/cache/stations.json")
 
     answer["fetch"] = fail
@@ -462,11 +474,13 @@ def test_setup_error_uses_one_attempt_without_sleep(getter_stub, monkeypatch):
 
 @pytest.mark.parametrize("retries", [2, 10])
 def test_busy_exhaustion_reports_actual_attempts_and_last_sleep(getter_stub, monkeypatch, retries):
+    """Verify busy retries are capped at three attempts and disclose the final backoff."""
     calls, answer = getter_stub
     sleeps = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
+        """Simulate a persistently busy HTTP service."""
         raise HTTPError("HTTP 503 source busy")
 
     answer["fetch"] = fail
@@ -480,11 +494,13 @@ def test_busy_exhaustion_reports_actual_attempts_and_last_sleep(getter_stub, mon
 
 @pytest.mark.parametrize("seconds", [0.0, 7.0, 45.0])
 def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypatch, seconds):
+    """Verify the service retry delay overrides the last sleep in the error envelope."""
     calls, answer = getter_stub
     sleeps = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
+        """Simulate a busy service requesting the parametrized retry delay."""
         raise HTTPError(f"HTTP 503 source busy; retry after {seconds:g} seconds")
 
     answer["fetch"] = fail
@@ -495,16 +511,19 @@ def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypa
 
 
 def test_busy_without_header_or_sleep_uses_sixty_seconds():
+    """Verify busy errors without delay metadata advertise a sixty-second cooldown."""
     assert observed._error_result(RuntimeError("source busy"), var="F").error["retry_after_s"] == 60.0
 
 
 def test_deadline_can_end_busy_query_before_three_attempts(getter_stub, monkeypatch):
+    """Verify the advisory deadline prevents a retry that cannot fit within it."""
     calls, answer = getter_stub
     sleeps = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
     monkeypatch.setattr(observed.time, "monotonic", lambda: 0.0)
 
     def fail(*args):
+        """Simulate a busy service whose backoff exceeds the query deadline."""
         raise HTTPError("HTTP 503 source busy")
 
     answer["fetch"] = fail
@@ -515,11 +534,13 @@ def test_deadline_can_end_busy_query_before_three_attempts(getter_stub, monkeypa
 
 
 def test_timeout_exhaustion_reports_three_attempts(getter_stub, monkeypatch):
+    """Verify repeated timeouts disclose three attempts and the advisory timeout message."""
     calls, answer = getter_stub
     sleeps = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
+        """Simulate an immediate timeout on each source attempt."""
         raise TimeoutError("upstream timed out")
 
     answer["fetch"] = fail
@@ -531,16 +552,20 @@ def test_timeout_exhaustion_reports_three_attempts(getter_stub, monkeypatch):
 
 
 def test_inflight_order_and_completion_only_status_progress(getter_stub, monkeypatch):
+    """Verify retry notifications precede terminal callbacks and gauge completion counts."""
     calls, answer = getter_stub
     events, completions, progress = [], [], []
 
     def fail(*args):
+        """Simulate a busy source throughout the retry sequence."""
         raise RuntimeError("source busy")
 
     def sleep(delay):
+        """Record a retry delay together with its measurement context."""
         events.append((observed._FETCH_STATE.get().var, "sleep", delay))
 
     def inflight(gauge, var, result):
+        """Record and validate running and retry-wait notifications."""
         assert gauge == "412033"
         events.append((var, result.status, result.attempts))
         if result.status == "retry_wait":
@@ -550,6 +575,7 @@ def test_inflight_order_and_completion_only_status_progress(getter_stub, monkeyp
             assert result.status == "running" and result.error is None
 
     def completed(gauge, var, result):
+        """Record the terminal callback in the shared event sequence."""
         completions.append((gauge, var, result))
         events.append((var, result.status, result.attempts))
 
@@ -582,6 +608,7 @@ def test_inflight_order_and_completion_only_status_progress(getter_stub, monkeyp
 
 @pytest.mark.parametrize("terminal_status", ["ok", "empty", "error"])
 def test_attempts_across_two_cache_ranges(getter_stub, monkeypatch, terminal_status):
+    """Verify attempts reflect the worst successful range or the failing range, rather than their sum."""
     calls, answer = getter_stub
     frame = pd.DataFrame({"value": [1.0]})
     outcomes = [
@@ -593,12 +620,14 @@ def test_attempts_across_two_cache_ranges(getter_stub, monkeypatch, terminal_sta
     monkeypatch.setattr(observed, "_normalise", lambda raw: raw)
 
     def fetch(*args):
+        """Return or raise the next scripted source outcome."""
         outcome = outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
         return outcome.copy()
 
     def cached(gauge, start, end, var="F", **kwargs):
+        """Simulate two missing cache ranges using the real source retry logic."""
         try:
             for left, right in ((start, start), (end, end)):
                 observed._fetch_source(gauge, left, right, var, kwargs["timeout"], kwargs["retries"])
@@ -618,6 +647,7 @@ def test_attempts_across_two_cache_ranges(getter_stub, monkeypatch, terminal_sta
 
 
 def test_invalid_date_range_keeps_legacy_message_and_adds_envelope(getter_stub):
+    """Verify invalid dates preserve legacy wording while adding structured error metadata."""
     calls, _ = getter_stub
     result = observed.fetch_gauge("412033", date(2000, 1, 2), date(2000, 1, 1))
     assert calls == [] and result.status == "error"
@@ -626,6 +656,7 @@ def test_invalid_date_range_keeps_legacy_message_and_adds_envelope(getter_stub):
 
 
 def test_ok_and_empty_results_have_no_envelope(getter_stub):
+    """Verify successful and empty measurements carry no error envelope."""
     _, answer = getter_stub
     ok = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
     assert (ok.status, ok.error, ok.attempts) == ("ok", None, 1)
@@ -641,12 +672,14 @@ D = date
 
 
 def _cov(days, values, qualities=None, **kwargs):
+    """Build a daily readings frame and assess coverage, defaulting to flow units."""
     frame = pd.DataFrame({"DATETIME": pd.to_datetime(days), "VALUE": values, "QUALITYCODE": [10] * len(days) if qualities is None else qualities})
     kwargs.setdefault("var", "F")
     return observed.assess_coverage(frame, kwargs.pop("start"), kwargs.pop("end"), **kwargs)
 
 
 def test_coverage_zero_is_a_real_observation_and_flow_level_are_independent():
+    """Verify zero readings count toward coverage and flow and level are assessed separately."""
     zero = _cov(["2024-01-01"], [0], start=D(2024, 1, 1), end=D(2024, 1, 1), policy=POLICY)
     assert (zero["coverage_pct"], zero["coverage_complete"], zero["zero_count"], zero["all_zero"], zero["units"]) == (100.0, True, 1, True, "ML/d")
     assert zero["last_reading"] == {"timestamp": "2024-01-01", "value": 0.0, "quality_code": 10}
@@ -658,11 +691,13 @@ def test_coverage_zero_is_a_real_observation_and_flow_level_are_independent():
 
 @pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -float("inf"), "abc", "NaN", "0", "1.5", True, pd.NA])
 def test_coverage_invalid_values_are_never_zero_or_present(value):
+    """Verify invalid readings count as neither usable values nor zero observations."""
     cov = _cov(["2024-01-01"], [value], start=D(2024, 1, 1), end=D(2024, 1, 1), policy=POLICY)
     assert (cov["valid_count"], cov["zero_count"], cov["all_zero"], cov["last_reading"], cov["coverage_complete"]) == (0, 0, None, None, False)
 
 
 def test_coverage_placeholders_duplicates_and_ordering():
+    """Verify placeholder filtering, last-duplicate selection and chronological last readings."""
     cov = _cov(
         ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-06"],
         [1, 1, 1, 1, 1, "abc"],
@@ -680,6 +715,7 @@ def test_coverage_placeholders_duplicates_and_ordering():
 
 
 def test_coverage_expected_zero_empty_and_cutoff():
+    """Verify empty periods and reporting cutoffs produce consistent coverage counts."""
     none_expected = _cov(["2024-01-02"], [1], start=D(2024, 1, 2), end=D(2024, 1, 2), policy=POLICY, reporting_cutoff=D(2024, 1, 1))
     assert (none_expected["expected_count"], none_expected["coverage_pct"], none_expected["coverage_complete"], none_expected["gaps"]) == (0, None, None, [])
     empty = observed.assess_coverage(pd.DataFrame(), D(2024, 1, 1), D(2024, 1, 3), var="F")
@@ -691,6 +727,7 @@ def test_coverage_expected_zero_empty_and_cutoff():
 
 
 def test_coverage_policy_gates_completeness_and_98_percent_is_never_complete():
+    """Verify completeness requires a quality policy and every expected daily reading."""
     days = [d.date().isoformat() for d in pd.date_range("2024-01-01", "2024-02-19") if d.date() != D(2024, 1, 25)]
     for policy, complete in ((None, None), (POLICY, False)):
         cov = _cov(days, [1] * len(days), start=D(2024, 1, 1), end=D(2024, 2, 19), policy=policy)
@@ -709,6 +746,7 @@ def test_coverage_policy_gates_completeness_and_98_percent_is_never_complete():
 
 
 def test_coverage_returns_every_gap_without_a_cap():
+    """Verify the coverage payload retains every missing-day interval."""
     days = list(pd.date_range("2024-01-01", "2024-02-09"))
     present = [d.date().isoformat() for d in days[::2]]
     cov = _cov(present, [1] * len(present), start=D(2024, 1, 1), end=D(2024, 2, 9), policy=POLICY)
@@ -718,6 +756,7 @@ def test_coverage_returns_every_gap_without_a_cap():
 
 @pytest.mark.parametrize("with_policy", [False, True])
 def test_coverage_unfiltered_runs_are_not_assessed_against_a_retrieval_boundary(with_policy):
+    """Verify unfiltered runs retain reading counts without claiming period coverage."""
     cov = _cov(
         ["2024-01-01", "2024-01-02"],
         [0, 2],
@@ -736,6 +775,7 @@ def test_coverage_unfiltered_runs_are_not_assessed_against_a_retrieval_boundary(
 
 @pytest.mark.parametrize(("var", "units"), [("X", None), ("F", "m"), ("L", "feet")])
 def test_coverage_unknown_or_incompatible_units_block_assessment(var, units):
+    """Verify unsupported variables and incompatible declared units prevent assessment."""
     frame = pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01"]), "VALUE": [1], "QUALITYCODE": [10]})
     if units:
         frame.attrs["units"] = units
@@ -745,6 +785,7 @@ def test_coverage_unknown_or_incompatible_units_block_assessment(var, units):
 
 
 def test_coverage_policy_is_validated():
+    """Verify invalid grades, missing tables and blank policy versions are rejected."""
     for grades, tables, version in (
         (frozenset(), {"T": {1: "A"}}, "v"),
         (frozenset("X"), {"T": {1: "A"}}, "v"),
@@ -756,6 +797,7 @@ def test_coverage_policy_is_validated():
 
 
 def test_policy_cleans_only_clear_missing_data_and_keeps_mismatches():
+    """Verify agency inference removes disallowed grades while retaining unlisted codes."""
     days = [f"2024-01-0{n}" for n in range(1, 8)]
     # T1 matches 6 of the 7 codes, T2 matches 3: T1 wins, so 12 and 42 are F (removed). 7 is listed nowhere (kept); 130 is "not quality coded" (E, kept).
     cov = _cov(days, [1, 1, 1, 1, 1, 1, 1], [10, 10, 12, 42, 7, 130, 130], start=D(2024, 1, 1), end=D(2024, 1, 7), policy=POLICY)
@@ -776,6 +818,7 @@ def test_policy_cleans_only_clear_missing_data_and_keeps_mismatches():
 
 
 def test_default_policy_is_grades_a_to_e_over_the_bureau_tables():
+    """Verify the bundled Bureau policy, version digest and agency selection metadata."""
     policy = observed.default_quality_policy()
     assert policy is not None and policy.allowed_grades == frozenset("ABCE") and len(policy.tables) == 12
     assert policy.version.startswith("bom-hrs-grades-ABCE-") and len(policy.version.rsplit("-", 1)[1]) == 10  # content digest
@@ -793,6 +836,7 @@ def test_default_policy_is_grades_a_to_e_over_the_bureau_tables():
 
 
 def test_table_ties_are_inspected_not_settled_by_listing_order():
+    """Verify tied agency tables are classified by removal decisions independent of ordering."""
     grades = frozenset("ABCE")
     both = observed.QualityPolicy(grades, {"A1": {10: "A", 12: "F"}, "B1": {10: "A", 12: "F"}}, "v")
     swapped = observed.QualityPolicy(grades, {"B1": {12: "F", 10: "A"}, "A1": {12: "F", 10: "A"}}, "v")
@@ -811,6 +855,7 @@ def test_table_ties_are_inspected_not_settled_by_listing_order():
 
 
 def test_ambiguous_selection_keeps_disputed_readings_and_never_certifies_completeness():
+    """Verify disputed readings remain usable while ambiguous agency selection withholds completeness."""
     policy = observed.QualityPolicy(frozenset("ABCE"), {"A1": {10: "A", 12: "F"}, "B1": {10: "A", 12: "A"}}, "v")
     cov = _cov(["2024-01-01", "2024-01-02"], [1, 1], [10, 12], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=policy)
     assert (cov["quality_table_selection"], cov["quality_table"], cov["valid_count"], cov["coverage_pct"], cov["coverage_complete"]) == (
@@ -824,6 +869,7 @@ def test_ambiguous_selection_keeps_disputed_readings_and_never_certifies_complet
 
 
 def test_policy_is_frozen_and_validated():
+    """Verify published policy tables are immutable copies and reject malformed mappings."""
     source = {"T": {1: "A"}}
     policy = observed.QualityPolicy(frozenset("A"), source, "v")
     source["T"][2] = "F"  # later edits to the caller's dict never reach a published policy
@@ -838,11 +884,13 @@ def test_policy_is_frozen_and_validated():
 
 
 def test_unknown_count_only_counts_readings_that_were_actually_kept():
+    """Verify unknown quality counts exclude readings with unusable values."""
     cov = _cov(["2024-01-01", "2024-01-02"], [None, 1], [500, 501], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=POLICY)
     assert (cov["valid_count"], cov["unknown_quality_count"], cov["quality_table_selection"]) == (1, 1, "no_match")  # the NaN slot is not "kept"
 
 
 def test_clean_frame_removes_f_rows_so_downstream_uses_the_counted_readings():
+    """Verify downstream filtering removes grade F readings and retains unlisted codes."""
     frame = pd.DataFrame(
         {"DATETIME": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"]), "VALUE": [1.0, 2.0, 3.0, 4.0], "QUALITYCODE": [10, 12, 7, 130]}
     )
@@ -852,7 +900,10 @@ def test_clean_frame_removes_f_rows_so_downstream_uses_the_counted_readings():
 
 
 def test_fetch_many_cleans_the_series_it_returns_and_reports_empty_when_nothing_usable_is_left(monkeypatch):
+    """Verify returned series use quality filtering and wholly excluded measurements become empty."""
+
     def fake_fetch_gauge(gauge, start, end, var, **kwargs):
+        """Return mixed-quality flow readings and entirely excluded level readings."""
         codes = [10, 42] if var == "F" else [42, 42]
         return observed.GaugeResult(pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01", "2024-01-02"]), "VALUE": [1.0, 2.0], "QUALITYCODE": codes}), "ok")
 
@@ -864,6 +915,7 @@ def test_fetch_many_cleans_the_series_it_returns_and_reports_empty_when_nothing_
 
 
 def test_policy_load_failure_is_loud_and_not_cached(monkeypatch, tmp_path, caplog):
+    """Verify policy loading logs failures and recovers after the policy file is repaired."""
     monkeypatch.setattr(observed, "_DEFAULT_POLICY", None)
     monkeypatch.setattr(observed, "QUALITY_CODES", tmp_path / "missing.json")
     with caplog.at_level("ERROR"):
@@ -881,6 +933,7 @@ def test_bomwater_cache_lives_in_the_repo_and_needs_no_download(monkeypatch):
     import requests
 
     def no_network(*args, **kwargs):
+        """Reject any attempt to download the shipped station metadata."""
         raise AssertionError("bomwater tried to download its station list")
 
     monkeypatch.setattr(requests, "get", no_network)
@@ -901,11 +954,13 @@ def test_bomwater_cache_lives_in_the_repo_and_needs_no_download(monkeypatch):
 
 
 def test_a_missing_shipped_station_file_is_still_reported_as_a_setup_error():
+    """Verify missing repository station metadata remains a nonretryable setup failure."""
     result = observed._error_result(FileNotFoundError(f"[Errno 2] No such file or directory: '{observed.BOM_WATER_HOME}/bom_water/cache/stations.json'"))
     assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
 
 
 def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
+    """Verify only terminal results carry coverage and failures expose unavailable metrics."""
     err = observed._attach_coverage(
         observed.GaugeResult(pd.DataFrame(), "error", "x", True, {"code": "UNEXPECTED_ERROR"}, 2), D(2024, 1, 1), D(2024, 1, 3), var="F", policy=POLICY
     )
@@ -919,7 +974,10 @@ def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
 
 
 def test_fetch_many_attaches_coverage_before_terminal_callbacks_and_passes_period_flags(monkeypatch):
+    """Verify callbacks receive coverage computed with the requested cutoff and period flags."""
+
     def fake_fetch_gauge(gauge, start, end, var, **kwargs):
+        """Return empty flow data and one usable level reading for coverage callbacks."""
         if var == "F":
             return observed.GaugeResult(pd.DataFrame(), "empty")
         return observed.GaugeResult(pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01"]), "VALUE": [1.2], "QUALITYCODE": [10]}), "ok")
@@ -941,6 +999,7 @@ def test_fetch_many_attaches_coverage_before_terminal_callbacks_and_passes_perio
 
 
 def test_coverage_ignores_rows_outside_the_window():
+    """Verify readings outside the assessment period do not affect coverage metrics."""
     inside = _cov(["2024-01-02", "2024-01-03"], [1, 0], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
     noisy = _cov(["2023-12-31", "2024-01-02", "2024-01-03", "2024-01-04"], [0, 1, 0, 9], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
     assert noisy == inside  # zeros, later timestamps or placeholders outside [start, end] change nothing
@@ -986,6 +1045,7 @@ def test_151_and_999_are_graded_by_the_matched_table_not_dropped_before_grading(
 
 
 def test_cache_entries_from_an_older_normalisation_are_refetched_on_access(getter_stub):
+    """Verify cached readings refresh when their normalisation metadata is obsolete."""
     calls, _ = getter_stub
     observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
     assert len(calls) == 1
