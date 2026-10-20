@@ -194,7 +194,7 @@ If you can only run code in Databricks notebooks, use the notebook `notebooks/ru
 
 Limits of this route: the flow charts (heat map, hydrograph, flow duration curves) need the local server, so they are not in the page; the page itself cannot add a new scenario, so to add or change a scenario edit `SCENARIOS` and run the notebook again. The file is not committed (it is in `.gitignore`).
 
-To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install pandas numpy shapely`, then `!python src/build_dashboard.py` from the repository folder, and commit the new `ewr_analysis_dashboard.html`.
+To rebuild the base dashboard itself after changing the template or `data/`, run in a notebook cell: `%pip install pandas numpy shapely`, then `!python src/build_dashboard.py` from the repository folder. The `ewr_analysis_dashboard.html` file is not committed: the server and pytest generate it automatically when it is missing or stale.
 
 If you can run a terminal somewhere (for example a laptop or a Databricks web terminal), the "Your data" section above (`python3 run.py`) lets you add scenarios inside the page and use the flow charts.
 
@@ -258,7 +258,7 @@ node --test tests/test_custom_ewr.js tests/test_dashboard_core.js tests/test_per
 | `test_parameter_sheet_sync.py` | the local parameter sheet equals the one on GitHub (`network` test, skipped offline) |
 | `test_flow_regime_rules.py`, `test_northern_connectivity.py`, `test_embed_scenarios.py` | the flow-regime rule, the workbook reader and the notebook helper |
 
-Baselines live in `tests/fixtures/snapshots/`. After an *intended* change, regenerate them with `UPDATE_SNAPSHOTS=1 pytest -m "slow or not slow"` and review the diff before committing. If the HTML test says the page is stale, run `python3 src/build_dashboard.py` and commit the result.
+Baselines live in `tests/fixtures/snapshots/`. After an *intended* change, regenerate them with `UPDATE_SNAPSHOTS=1 pytest -m "slow or not slow"` and review the diff before committing. If the HTML test says the page is stale, run `python3 src/build_dashboard.py`. Do not commit `ewr_analysis_dashboard.html`: the server and pytest generate it automatically when it is missing or stale.
 
 A few tests are marked `xfail(strict=True)`: they record known discrepancies (see the pull request that added them). Fixing one makes its test fail until the marker is removed.
 
