@@ -470,6 +470,25 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
     }
 
 
+OUTPUT = ROOT / "ewr_analysis_dashboard.html"
+
+
+def is_stale() -> bool:
+    """True when the generated page is missing or older than anything it is built from (the template, scripts and data/)."""
+    if not OUTPUT.exists():
+        return True
+    built = OUTPUT.stat().st_mtime
+    inputs = [*HERE.glob("*.js"), *HERE.glob("*.py"), HERE / "dashboard_template.html", *(p for p in (ROOT / "data").rglob("*") if p.is_file())]
+    return any(p.stat().st_mtime > built for p in inputs)
+
+
+def ensure_built() -> None:
+    """Generate the page if it is missing or out of date. It is not committed: it is made here, on start-up, and served by server.py."""
+    if is_stale():
+        print("Building the dashboard page (a few seconds)...")
+        main()
+
+
 def main() -> None:
     """Rebuild ewr_analysis_dashboard.html from the template and data/."""
     payload = build_payload()

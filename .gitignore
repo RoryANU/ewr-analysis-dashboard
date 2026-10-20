@@ -8,3 +8,4 @@ ewr_dashboard_with_scenarios.html
 .ruff_cache/
 .pytest_cache/
 node_modules/
+ewr_analysis_dashboard.html

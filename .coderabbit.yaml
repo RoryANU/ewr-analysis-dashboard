@@ -1,0 +1,54 @@
+# .coderabbit.yaml
+version: "2"
+
+language: "en-US"
+tone_instructions: >
+  Be concise, direct, and technical. Do not praise changes or offer general advice.
+  Only comment on concrete bugs, syntax errors, regressions, or actionable AST grep patterns.
+  No conversational fluff, greetings, or sign-offs.
+
+reviews:
+  # 1. Strip top-level fluff
+  poem: false
+  collapse_walkthrough: true
+  high_level_summary: false  # Leave high-level synthesis to the Tier-2 Omnigent agent
+  sequence_diagrams: false
+
+  # 2. Automation boundaries
+  auto_review:
+    enabled: true
+    drafts: false
+    ignore_title_keywords:
+      - "WIP"
+      - "draft"
+
+  # 3. Suppress speculative nits
+  path_instructions:
+    - path: "**/*"
+      instructions: >
+        Focus exclusively on:
+        - Structural syntax and off-by-one errors.
+        - Broken imports, unhandled null/undefined references, or type mismatches.
+        - Obvious performance regressions directly inside the diff (e.g., O(n^2) loops).
+        Do NOT comment on:
+        - Code formatting, indentation, or variable naming (leave to linter).
+        - Broad architectural suggestions or refactoring advice.
+        - Missing high-level tests (handled by secondary review).
+
+  # 4. Enable AST-level static inspection
+  tools:
+    ast-grep:
+      enabled: true
+      # You can point to custom rules or use standard ast-grep rules
+      # rule_dirs:
+      #   - ".github/ast-grep-rules"
+    shellcheck:
+      enabled: true
+    ruff:
+      enabled: true
+    markdownlint:
+      enabled: false  # Disable trivial markdown checks
+
+# Keep chat open for inline PR questions, but disable automated auto-replies
+chat:
+  auto_reply: false

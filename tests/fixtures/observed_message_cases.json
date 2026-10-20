@@ -1,0 +1,13 @@
+[
+  {"message": "FileNotFoundError: ~/bom_water/cache/stations.json", "retryable": false, "label": "Weather-bureau station list not set up", "code": "STATION_LIST_SETUP_REQUIRED"},
+  {"message": "BOM_WATER/cache/STATIONS.JSON is missing", "retryable": false, "label": "Weather-bureau station list not set up", "code": "STATION_LIST_SETUP_REQUIRED"},
+  {"message": "BoM station cache missing", "retryable": false, "label": "Weather-bureau station list not set up", "code": "STATION_LIST_SETUP_REQUIRED"},
+  {"message": "too many requests in queue", "retryable": true, "label": "Data service busy", "code": "SERVICE_BUSY"},
+  {"message": "TOO MANY REQUESTS IN QUEUE", "retryable": true, "label": "Data service busy", "code": "SERVICE_BUSY"},
+  {"message": "error_num 218", "retryable": true, "label": "Data service busy", "code": "SERVICE_BUSY"},
+  {"message": "response: {\"error_num\": 218}", "retryable": true, "label": "Data service busy", "code": "SERVICE_BUSY"},
+  {"message": "source busy", "retryable": true, "label": "Data service busy", "code": "SERVICE_BUSY"},
+  {"message": "stations.json is missing elsewhere", "retryable": true, "label": "Unexpected problem", "code": "UNEXPECTED_ERROR"},
+  {"message": "bom_water failed", "retryable": true, "label": "Unexpected problem", "code": "UNEXPECTED_ERROR"},
+  {"message": "error_num 219", "retryable": true, "label": "Unexpected problem", "code": "UNEXPECTED_ERROR"}
+]

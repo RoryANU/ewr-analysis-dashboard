@@ -59,7 +59,7 @@ import webbrowser
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
-from datetime import date
+from datetime import date, timedelta
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -661,26 +661,55 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
         partner_rows = table[table.Gauge.astype(str).isin(gauges)]
         all_gauges = sorted(set(gauges) | _partner_gauges(partner_rows))
 
-        def report_gauge(gauge: str, var: str, result: observed.GaugeResult) -> None:
-            progress = dict(job.get("progress", {}))
-            gauge_progress = dict(progress.get("gauges", {}))
-            per_gauge = dict(gauge_progress.get(gauge, {}))
-            per_gauge[var.lower()] = {"status": result.status, "message": result.message}
-            gauge_progress[gauge] = per_gauge
-            progress["gauges"] = gauge_progress
-            job["progress"] = progress
+        measurement_lock = threading.RLock()  # in-flight retry callbacks arrive from worker threads
 
+        def _measurement_payload(result: observed.GaugeResult) -> dict:
+            """Serialize a measurement result for streamed and final job responses."""
+            # Legacy keys (status, message, retryable) stay; `error` is the additive envelope.
+            return {
+                "status": result.status,
+                "message": result.message,
+                "retryable": result.retryable,
+                "error": result.error,
+                "attempts": result.attempts,
+                "max_attempts": observed.MAX_ATTEMPTS,
+                "schema_version": 2,
+                "coverage": result.coverage,  # null while a measurement is still running/retrying
+            }
+
+        def report_gauge(gauge: str, var: str, result: observed.GaugeResult) -> None:
+            """Update one measurement in job progress under the shared measurement lock."""
+            with measurement_lock:
+                progress = dict(job.get("progress", {}))
+                gauge_progress = dict(progress.get("gauges", {}))
+                per_gauge = dict(gauge_progress.get(gauge, {}))
+                per_gauge[var.lower()] = _measurement_payload(result)
+                gauge_progress[gauge] = per_gauge
+                progress["gauges"] = gauge_progress
+                job["progress"] = progress
+
+        report_stage = _progress_reporter(job, stage_code="gauges")
+
+        def report_progress(*args) -> None:
+            """Record gauge-stage counts under the shared measurement lock."""
+            with measurement_lock:
+                report_stage(*args)
+
+        _progress_reporter(job, stage_code="gauges")(observed.GAUGE_STAGE, 0, len(all_gauges))
         results, statuses = observed.fetch_many(
             all_gauges,
             start,
             end,
-            progress=_progress_reporter(job),
+            progress=report_progress,
             refresh=refresh,
             status_progress=report_gauge,
+            inflight_progress=report_gauge,
+            policy=observed.default_quality_policy(),
+            filter_period=filter_period,
+            reporting_cutoff=date.today() - timedelta(days=1),  # today's daily mean is not complete yet; disclosed in coverage.period
         )
         job["gauge_status"] = {
-            gauge: {var.lower(): {"status": result.status, "message": result.message} for (g, var), result in statuses.items() if g == gauge}
-            for gauge in all_gauges
+            gauge: {var.lower(): _measurement_payload(result) for (g, var), result in statuses.items() if g == gauge} for gauge in all_gauges
         }
         if not results:
             raise ValueError("No selected gauges returned flow or level data")
@@ -756,12 +785,19 @@ def uewr_worker(job_id: str, ids: list[str], scns: list[str]) -> None:
     job["elapsed"] = round(time.time() - job["t0"], 1)
 
 
-def _progress_reporter(job: dict[str, Any]) -> Callable[[str, int, int], None]:
+def _progress_reporter(job: dict[str, Any], stage_code: str | None = None) -> Callable[[str, int, int], None]:
     """A progress(stage, done, total) callback that records the job's current stage and work counts for /api/job."""
 
     def progress(stage: str, done: int, total: int) -> None:
+        """Replace stage counts while preserving any recorded measurement progress."""
         current = job.get("progress", {})
-        job["progress"] = {"stage": stage, "done": done, "total": total, **({"gauges": current["gauges"]} if "gauges" in current else {})}
+        job["progress"] = {
+            "stage": stage,
+            "done": done,
+            "total": total,
+            **({"stage_code": stage_code} if stage_code else {}),
+            **({"gauges": current["gauges"]} if "gauges" in current else {}),
+        }
 
     return progress
 
@@ -2214,8 +2250,10 @@ def main(argv=None):
     open_browser = "--no-browser" not in args
     port_args = [a for a in args if a.isdigit()]
     host = next((a.split("=", 1)[1] for a in args if a.startswith("--host=")), "127.0.0.1")
+    import build_dashboard
     import custom_ewr
 
+    build_dashboard.ensure_built()  # the page is generated, not committed
     custom_ewr.sweep_sheets()
     srv = make_server(int(port_args[0]) if port_args else DEFAULT_PORT, host)
     port = srv.server_address[1]
