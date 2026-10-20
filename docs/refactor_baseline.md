@@ -302,3 +302,140 @@ fixture or data file was changed by this check.
   divide warning. No empty-input policy has been invented.
 - `nice_ceiling` returns 100 for nonpositive values (and `None`), but raises
   for NaN or positive infinity. These results/exceptions are unchanged.
+
+
+## Phase 1, slice 1: architecture and final verification
+
+Added **70 core test cases**, **1 architecture test** and **1 rebuild-detection
+regression test**, beyond the unchanged 794-test Step A baseline. The McNemar reference enumerates equiprobable binary
+sequences and sums outcomes no more likely than the observation; it does not
+reuse the implementation's binomial-coefficient/tail-sum expression and adds
+no SciPy dependency. Other expected results are derived in test comments.
+
+The only new declared dependency is the requested development tool
+`import-linter==2.15`, whose executable is `lint-imports`. Runtime requirements
+are unchanged. The forbidden contract uses `include_external_packages = true`
+and forbids all application siblings of `ewr_analysis.core`, plus the ten named
+external packages. The sibling wildcard includes future config/data_io/
+workflows/interfaces/visualization packages without creating placeholders;
+core may still import its own descendants. This uses the documented
+[forbidden-contract wildcard/overlap behavior](https://github.com/seddonym/import-linter/blob/main/docs/contract_types/forbidden.md).
+
+Synthetic in-memory import graphs verified that all five prohibited application
+layers and all ten named external targets are rejected for both direct and
+indirect imports (**30 negative controls**). These checks create no source
+folders. The required text-pattern test scans every core Python source file,
+including docstrings, with no allowlist. Both core initializer files are empty.
+
+Final commands (repository root, existing activated venv):
+
+```sh
+source .venv/bin/activate
+pytest -q > /tmp/ewr-slice1-final-pytest.log 2>&1
+# 866 passed in 139.23s (0:02:19), zero failures/skips
+node --test tests/test_performance.js tests/test_dashboard_core.js tests/test_ewr_guide.js tests/test_custom_ewr.js tests/test_heatmap_selection.js > /tmp/ewr-slice1-final-node.log 2>&1
+# 205 passed, 0 failed, 0 skipped; 205 total
+python scripts/compare_implementations.py > /tmp/ewr-slice1-final-compare.log
+# Exit 0; 270 cases; all 12 functions have max_abs=0 and max_rel=0
+lint-imports > /tmp/ewr-slice1-final-imports.log
+# Contracts: 1 kept, 0 broken
+mypy
+# Success: no issues found in 49 source files
+pytest -q tests/core tests/architecture
+# 71 passed in 0.05s
+pre-commit run --all-files > /tmp/ewr-slice1-final-precommit.log 2>&1
+# Exit 0: every applicable hook passed; the symlink hook had no files to check.
+git grep -n '__file__' src/ewr_analysis/core
+# No output; exit 1 (no matches).
+git grep -nE 'open\(|read_csv|read_excel|os\.environ|__file__|lru_cache|Lock\(' -- src/ewr_analysis/core
+# No output; exit 1 (no matches).
+git diff --name-only 29370e3 -- data tests/fixtures .github .omnigent .coderabbit.yaml scripts/run_omnigent_review.py
+# No output.
+git diff --check
+# No output.
+```
+
+Additional complete-module AST checks against `29370e3` confirmed:
+
+- Removing only the nine extracted function definitions from the old server,
+  and only their compatibility imports from the new server, makes the complete
+  module ASTs identical. No other server statements were changed.
+- All nine extracted function signatures/bodies are identical after removing
+  only docstrings. Both table/reader module ASTs are likewise identical after
+  removing only function docstrings.
+- The docstring commit changes only twelve function docstrings across seven
+  modules: the seven complete module ASTs match its parent after stripping
+  those docstrings, without any other normalization.
+- Old table shims expose the same objects as core, and private server helper
+  names still resolve to the extracted functions.
+
+The documentation uses these local audit identifiers for rules visible in the
+legacy source; these are traceability labels, not claims of reviewed scientific
+provenance. Formal sources and scientific suitability remain explicitly
+**TBD, needs scientist review** in the docstrings:
+
+| Identifier | Core symbol | Preserved rule |
+|---|---|---|
+| EQ-PAIR-01 | paired_comparison.mcnemar_p | Exact two-sided fair-binomial tail; four-decimal rounding |
+| EQ-FDC-01 | flow_duration_curves.exceed_pct | Percent greater than or equal; left search in sorted observations |
+| EQ-AXIS-01 | axis_limits.nice_ceiling | Ceiling on the original power-of-ten grid; sentinel 100 |
+| EQ-MRIP-01 | event_gaps._mrip_days | Positive years times 365, rounded to an integer day |
+| EQ-WINDOW-01 | assessment_years._window_days | Inclusive month mask in an ending-labeled water year |
+| EQ-WY-START-01 | assessment_years._water_year | Starting calendar year of a July-start interval |
+| EQ-RECORD-DAYS-01 | assessment_years.record_days | Trim nonmissing endpoints, then daily reindex without interpolation |
+| EQ-LEAP-01 | assessment_years._feb29 | Gregorian leap test on start year plus one |
+| EQ-WY-DAYS-01 | assessment_years._water_year_days | 365 or 366 according to the included February |
+| EQ-DROUGHT-DATES-01 | drought_windows.window_dates | First/last inclusive assessment-year dates for catalog labels |
+| EQ-DROUGHT-META-01 | drought_windows.meta | Catalog projection in insertion order |
+| EQ-REGIME-01 | flow_regimes.regimes_for | Longest substring key; first declared key breaks ties |
+
+All listed symbols moved after the explicit constant-table authorization;
+none were excluded. Table TOML conversion, other scientific logic and slice 2
+remain deferred. The observed oddities above were documented, not fixed.
+No fixture, snapshot, data or protected review-tooling file changed. The
+pre-existing untracked `.claude/` and plan remain untouched.
+
+Slice implementation commits (the separately authorized rebuild fix uses the
+requested "no scientific behaviour change" label):
+
+```text
+cda5036 refactor: extract slice 1 leaf calculations with compatibility shims; no behaviour change
+c941547 test: compare slice 1 calculations with pre-refactor and record Step A; no behaviour change
+aebd552 test: add independent known answers for slice 1 calculations; no behaviour change
+5309111 build: enforce core import and I/O boundaries with import-linter; no behaviour change
+3227c8f docs: record slice 1 destinations, tests and later TOML migration; no behaviour change
+08ec2e4 docs: add units, assumptions and provenance to leaf docstrings; no behaviour change
+1050275 build: rebuild-detection fix, no scientific behaviour change
+```
+
+A final documentation-only commit records these verification results.
+
+
+### Authorized rebuild-detection follow-up
+
+The original `is_stale()` scanned only the top-level package Python scripts.
+After moving the two table sources into core/calculations, later edits there
+would not have invalidated generated HTML. This path-dependent regression was
+reported, and the user explicitly authorized a recursive scan plus a focused
+test. Commit `1050275` changes only `HERE.glob("*.py")` to `HERE.rglob("*.py")`
+in the existing input list; no scientific calculation is changed. This also
+covers later config/data_io/workflows subpackages, as requested.
+
+The regression test copies the source package to pytest's temporary directory,
+sets copied inputs older than a dummy generated page, then touches only the
+temporary `core/calculations/assessment_years.py` to make it newer. It confirms
+freshness before that touch and staleness afterward. It does not touch the real
+tables, data, fixtures or snapshots.
+
+```sh
+pytest -q tests/test_rebuild_detection.py
+# Before the fix: 1 failed in 0.12s; the final is_stale() assertion got False.
+# After the fix: 1 passed in 0.08s.
+```
+
+Before this follow-up, the full slice suite passed **865 tests in 141.59s**.
+The final rerun includes the additional regression case: **866 passed in 139.23s (0:02:19)**,
+with zero failures/skips.
+All 30 protected data/fixture files also retain their original Phase 0 SHA-256
+hashes. The existing builder prints 301 FR variant-conflict groups and retains
+its existing mean aggregation; this policy and the data remain unchanged.
