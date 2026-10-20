@@ -475,7 +475,7 @@ def is_stale() -> bool:
     if not OUTPUT.exists():
         return True
     built = OUTPUT.stat().st_mtime
-    inputs = [*HERE.glob("*.js"), *HERE.glob("*.py"), HERE / "dashboard_template.html", *(p for p in (ROOT / "data").rglob("*") if p.is_file())]
+    inputs = [*HERE.glob("*.js"), *HERE.rglob("*.py"), HERE / "dashboard_template.html", *(p for p in (ROOT / "data").rglob("*") if p.is_file())]
     return any(p.stat().st_mtime > built for p in inputs)
 
 
