@@ -67,6 +67,15 @@ from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
 
 from ewr_analysis import observed
+from ewr_analysis.core.calculations.assessment_years import _feb29 as _feb29
+from ewr_analysis.core.calculations.assessment_years import _water_year as _water_year
+from ewr_analysis.core.calculations.assessment_years import _water_year_days as _water_year_days
+from ewr_analysis.core.calculations.assessment_years import _window_days as _window_days
+from ewr_analysis.core.calculations.assessment_years import record_days as record_days
+from ewr_analysis.core.calculations.axis_limits import nice_ceiling as nice_ceiling
+from ewr_analysis.core.calculations.event_gaps import _mrip_days as _mrip_days
+from ewr_analysis.core.calculations.flow_duration_curves import exceed_pct as exceed_pct
+from ewr_analysis.core.calculations.paired_comparison import mcnemar_p as mcnemar_p
 from ewr_analysis.drought_windows import DROUGHTS, window_dates
 from ewr_analysis.paths import PACKAGE_DIR, ROOT
 from ewr_analysis.paths import USER_SCENARIOS as STORE
@@ -107,11 +116,6 @@ def _is_multigauge(value: Any) -> bool:
 def _dispatch_key(code: str, multigauge: bool, kind: Any) -> str:
     """The key py_ewr's calc config uses to pick an EWR's handler, e.g. 'BF1_a-single-F'."""
     return f"{code}-{'multigauge' if multigauge else 'single'}-{kind}"
-
-
-def _mrip_days(max_inter_event_years: Any) -> int:
-    """Maximum inter-event period (MRIP) in days; 0 when the EWR has none (blank, NaN or not positive)."""
-    return int(round(float(max_inter_event_years) * 365)) if max_inter_event_years > 0 else 0
 
 
 def _authority(hostport: str | None, default_port: int | None = None) -> tuple[str, int | None] | None:
@@ -864,14 +868,6 @@ def gauge_series(scn_id: str, gauge: str, kind: str = "flow") -> Any:
     return df[gauge]
 
 
-def nice_ceiling(x: float) -> int:
-    """Round x up to two significant figures, and at least to a whole number (1234 -> 1300, 57.2 -> 58), for a tidy axis limit; 100 when x is not positive."""
-    if not x or x <= 0:
-        return 100
-    k = 10 ** max(int(math.floor(math.log10(x))) - 1, 0)
-    return int(math.ceil(x / k) * k)
-
-
 def _json_safe(obj: Any) -> Any:
     """Recursively replace non-finite floats (NaN, +-inf) with None so the response is strict JSON (null in the browser)."""
     if isinstance(obj, float):
@@ -881,14 +877,6 @@ def _json_safe(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_json_safe(v) for v in obj]
     return obj
-
-
-def _window_days(wy_label: int, sm: int, em: int) -> int:
-    """Calendar days of the timing window (months sm..em, may wrap the year end) inside water year `wy_label` (1 Jul - 30 Jun)."""
-    import pandas as pd
-
-    m = pd.date_range(f"{wy_label - 1}-07-01", f"{wy_label}-06-30").month.to_numpy()
-    return int(((m >= sm) & (m <= em) if sm <= em else (m >= sm) | (m <= em)).sum())
 
 
 def achievement_frequencies(flows: Any, index: Any, thresholds: Any, durations: Any, sm: int, em: int, consecutive: bool = False) -> tuple[Any, int]:
@@ -1123,11 +1111,6 @@ def record_coverage(flow: Any, complete: list[int]) -> dict[str, Any]:
 _EVAL_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 
 
-def _water_year(d: Any) -> int:
-    """py_ewr's water year label: the calendar year it starts in (1 Jul Y - 30 Jun Y+1)."""
-    return cast(int, d.year if d.month >= 7 else d.year - 1)
-
-
 def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]:
     """py_ewr on one EWR at one gauge of a stored scenario: its yearly statistics, every threshold event, the successful events and
     the gaps between successful events, exactly as py_ewr computes them (calc_sorter + ScenarioHandler). Missing days stay
@@ -1311,17 +1294,6 @@ def gap_severity(gaps: list[dict[str, Any]], mrip: int) -> dict[str, Any]:
         return {"sev": None, "sev_b": None, "eps": None}
     inner = [g["days"] for g in known if not g["boundary"]] or [g["days"] for g in known]
     return {"sev": round(max(inner) / mrip, 2), "sev_b": round(max(g["days"] for g in known) / mrip, 2), "eps": sum(1 for g in known if g["excess"])}
-
-
-def record_days(s: Any) -> Any:
-    """A gauge's series from its first to its last observed day on every calendar day (missing days NaN), as ewr_eval sees it; None when the
-    index is not dates (ten-thousand-year runs)."""
-    import pandas as pd
-
-    if s is None or not isinstance(s.index, pd.DatetimeIndex):
-        return None
-    s = s.loc[s.first_valid_index() : s.last_valid_index()] if s.notna().any() else s.iloc[:0]
-    return s if s.empty else s.reindex(pd.date_range(s.index[0], s.index[-1]))
 
 
 def assessment_start(sm: int, em: int) -> int:
@@ -1580,27 +1552,6 @@ def _paired_achievement(base: dict[str, Any], comp: dict[str, Any]) -> dict[str,
     }
 
 
-def mcnemar_p(gained: int, lost: int) -> float | None:
-    """Exact two-sided McNemar p-value for paired yes/no years: under no change the discordant years (achieved in one scenario only) split
-    50:50, so p = min(1, 2 * P(X <= min(gained, lost))) with X ~ Binomial(gained + lost, 1/2). None when no year differs."""
-    n = gained + lost
-    if n == 0:
-        return None
-    return cast(float, round(min(1.0, 2 * sum(math.comb(n, k) for k in range(min(gained, lost) + 1)) / 2**n), 4))
-
-
-def _feb29(w: int) -> bool:
-    """True when water year w (1 Jul w - 30 Jun w+1) holds a 29 February."""
-    import calendar
-
-    return calendar.isleap(w + 1)
-
-
-def _water_year_days(w: int) -> int:
-    """Calendar days in water year w (1 Jul w - 30 Jun w+1)."""
-    return 366 if _feb29(w) else 365
-
-
 def _runs_by_year(s: Any, hit: Any) -> tuple[dict[str, list[Any]], list[dict[str, Any]]]:
     """Runs of consecutive days where `hit` is true in the daily series `s` (missing days are never hits and break a run; a run
     beside a missing day or the record's ends is `censored`: its true length is unknown). Per water year (1 Jul - 30 Jun,
@@ -1779,14 +1730,6 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
             out["mark"] = out["marks"][0]["values"]  # retain the original single-point API
     out["consecutive"] = consec
     return out
-
-
-def exceed_pct(sorted_vals: Any, x: Any) -> Any:
-    """% of days the flow is equal to or above x (sorted_vals ascending)."""
-    import numpy as np
-
-    n = len(sorted_vals)
-    return 100.0 * (n - np.searchsorted(sorted_vals, x, side="left")) / n
 
 
 def _paired(q: dict[str, str], gauge: str) -> dict[str, Any]:
