@@ -223,6 +223,7 @@ If you can run a terminal somewhere (for example a laptop or a Databricks web te
 - [ ] *(Backburner)* Document / understand the inner workings of the HTML+JS that produce the heatmap and flow plots (how data flows from the embedded JSON through to Plotly rendering)
 - [x] Heatmap occasionally throws "Could not draw: Maximum call stack size exceeded"; if this occurs, automatically reduce the date density (coarser x-axis) until the plot renders within stack limits
 - [x] *(Backburner)* Monthly differential FDC heatmap
+- [ ] **Stored scenarios and caches are not kept in step.** Daily series live in `.user_scenarios/` and raw gauge records in `.observed_cache/` (both untracked), but the scenario list and evaluated results live only in the browser's `localStorage`, and the server has no endpoint that lists what is stored. So a stored scenario can have no entry in the page (for example Lower Darling and Murrumbidgee had files but no picker entry), and an SDL unit with cached data can still show "Run observed data for <SDL unit> to show its EWR results here." until it is run again. The same gap affects the **Your data** menu. Fix: rebuild the scenario list from the server's stored files (and reconcile it with `localStorage`), and have Observed and Your data read cached results instead of requiring a rerun. Root cause not yet diagnosed.
 
 <!-- VALIDATION_FRAMEWORK_START -->
 ## Testing, linting and git hooks
