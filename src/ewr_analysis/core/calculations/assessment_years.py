@@ -516,7 +516,36 @@ def _iso_date(value: Any) -> str:
 
 
 def record_coverage(flow: Any, complete: list[int]) -> dict[str, Any]:
-    """Count nulls AND absent calendar dates; handle empty records without formatting NaT."""
+    """Count missing calendar dates and report the supplied completeness summary.
+
+    Equation / rule: Reindex daily between observed index min/max and count NaN; separately sum
+    complete flags and report their length.
+
+    Parameters
+    ----------
+    flow : Series
+        Observations [caller units] on a DatetimeIndex. Original timezone is kept;
+        absent dates and existing NaN both count missing after daily reindexing.
+    complete : list[int]
+        Caller-supplied assessment-year flags [dimensionless], independently trusted.
+
+    Returns
+    -------
+    dict
+        start/end [inclusive ISO local dates or None], missing_days [days],
+        complete_years/years [counts]. Empty flow has zero missing days and None
+        endpoints while still summing/length-counting supplied flags.
+
+    Assumptions
+    -----------
+    No input is mutated or timezone converted. Duplicate/non-date indexes are not
+    repaired. Completeness is not re-derived from missingness; no numerical
+    threshold is applied. Nonempty all-NaT indexes can still raise.
+
+    References
+    ----------
+    pre-refactor:src/server.py::record_coverage. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     import pandas as pd
 
     if flow.empty:

@@ -6,18 +6,97 @@ LOW_FLOW_HANDLERS = ("lowflow_handle", "lowflow_handle_multi")
 
 
 def _is_multigauge(value: Any) -> bool:
-    """A parameter-sheet Multigauge cell names a partner gauge (blank cells read as NaN or whitespace)."""
+    """Test whether a parameter cell names a nonblank string partner gauge.
+
+    Equation / rule: isinstance(value, str) and bool(value.strip()).
+
+    Parameters
+    ----------
+    value : scalar
+        Partner-gauge cell [identifier], often blank/NaN; no index/timezone.
+
+    Returns
+    -------
+    bool
+        Multigauge flag [dimensionless]. None, NaN, numeric and list values are
+        False; whitespace-only strings are False.
+
+    Assumptions
+    -----------
+    Only the predicate uses stripped text; it does not normalize or return the
+    identifier. No scientific threshold/date boundary applies. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_is_multigauge. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     return isinstance(value, str) and bool(value.strip())
 
 
 def _dispatch_key(code: str, multigauge: bool, kind: Any) -> str:
-    """The key py_ewr's calc config uses to pick an EWR's handler, e.g. 'BF1_a-single-F'."""
+    """Format the legacy EWR handler dispatch key from explicit arguments.
+
+    Equation / rule: Concatenate code, multigauge or single, and kind with hyphens.
+
+    Parameters
+    ----------
+    code : str
+        EWR code [identifier], scalar.
+    multigauge : bool
+        Partner-gauge flag [dimensionless]; truthiness selects the literal label.
+    kind : scalar
+        Flow/level/volume kind [label]; formatted with Python string conversion.
+
+    Returns
+    -------
+    str
+        Dispatch identifier [label]. None becomes None text, NaN becomes nan text,
+        and unexpected kind values are formatted unchanged rather than validated.
+
+    Assumptions
+    -----------
+    No module constant or handler registry is consulted. No index, timezone or
+    scientific boundary applies. Formatting arbitrary objects retains their own
+    string behavior. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_dispatch_key. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     return f"{code}-{'multigauge' if multigauge else 'single'}-{kind}"
 
 
 def ewr_params(sheet: pd.DataFrame | None) -> dict[tuple[str, str, str], dict[str, Any]]:
-    """Per (gauge, code, planning unit): target frequency (% of years), required duration (days) and maximum inter-event period (years),
-    from the parameter sheet (the first row where a key repeats); empty without a sheet."""
+    """Project a supplied parameter sheet to per-EWR display parameters.
+
+    Equation / rule: Stringify gauge/code/planning-unit keys, keep the first duplicate, coerce
+    numeric fields, truncate duration via int and round MRIP to four places.
+
+    Parameters
+    ----------
+    sheet : DataFrame or None
+        Gauge, Code, PlanningUnitName [labels], TargetFrequency [% years], Duration
+        [days], MaxInter-event [years], optional FlowLevelVolume [kind label].
+        Arbitrary row index/timezone is ignored; None means no parameters.
+
+    Returns
+    -------
+    dict[tuple[str, str, str], dict]
+        T [% years], dur [days], mrip [years], kind [label] per first key.
+        Missing/invalid numeric cells become None; absent kind column defaults F.
+        None/empty sheet yields {} if required key columns exist.
+
+    Assumptions
+    -----------
+    Present missing kind values are stringified, not defaulted. First duplicates
+    win even when missing; negative/fractional values are not range checked, and
+    infinite duration can raise during int conversion. No dates or inclusive
+    thresholds are evaluated. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::ewr_params. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     if sheet is None:
         return {}
 

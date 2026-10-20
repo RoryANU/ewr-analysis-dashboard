@@ -10,14 +10,65 @@ from ewr_analysis.core.calculations.ewr_parameters import LOW_FLOW_HANDLERS, _di
 
 
 def _group_by_ewr(table: Any) -> dict[tuple[str, str, str], Any]:
-    """Split a py_ewr event summary into one frame per (gauge, planning unit, EWR code)."""
+    """Partition a supplied successful-event summary by EWR key.
+
+    Equation / rule: Group by Gauge, PlanningUnit, Code and stringify the gauge in each output key.
+
+    Parameters
+    ----------
+    table : DataFrame
+        Py_ewr summary rows with Gauge, PlanningUnit, Code [labels], plus arbitrary
+        summary columns [original units]. Row index/timezone is retained in groups.
+
+    Returns
+    -------
+    dict[tuple[str, str, str], DataFrame]
+        Group frames under (gauge, planning unit, code). Empty input or missing Gauge
+        yields {}; other absent required columns can raise.
+
+    Assumptions
+    -----------
+    Pandas default group sorting/drop-null behavior is retained. Gauge string
+    conversion can collapse formerly distinct keys. No metric NaN filtering or date
+    boundary operation occurs. No input is mutated; group alias semantics follow pandas.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_group_by_ewr. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     if not len(table) or "Gauge" not in table:
         return {}
     return {(str(gauge), pu, code): group for (gauge, pu, code), group in table.groupby(["Gauge", "PlanningUnit", "Code"])}
 
 
 def _json_safe(obj: Any) -> Any:
-    """Recursively replace non-finite floats (NaN, +-inf) with None so the response is strict JSON (null in the browser)."""
+    """Replace nonfinite Python float values in nested payload containers.
+
+    Equation / rule: Return None for nonfinite Python floats; recurse over dict values and
+    list/tuple elements, returning lists for both sequence types.
+
+    Parameters
+    ----------
+    obj : object
+        Scalar or nested payload [original units/labels]; arbitrary structure, no
+        required shape/index/timezone. Dictionary keys are not converted.
+
+    Returns
+    -------
+    object
+        A finite float, None, reconstructed dict/list, or the original other object.
+        Python float NaN/positive/negative infinity become None.
+
+    Assumptions
+    -----------
+    Non-float numpy scalars, sets and other types pass through; this is not a
+    complete JSON validator. Cyclic structures are not handled. No numerical/date
+    boundary changes or input mutation occur.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_json_safe. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     if isinstance(obj, float):
         return obj if math.isfinite(obj) else None
     if isinstance(obj, dict):
@@ -45,7 +96,37 @@ NS = len(POLICIES) * len(CLIMATES)
 
 
 def detect_variant_conflicts(df: pd.DataFrame, key_columns: list[str], value_column: str) -> list[dict[str, Any]]:
-    """Return groups keyed by key_columns that contain multiple distinct non-null metric values."""
+    """Report groups with more than one distinct non-null metric value.
+
+    Equation / rule: Group by the supplied keys, preserving encounter order, and sort distinct
+    non-null values; emit only groups with more than one value.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Rows of result observations; key labels [identifiers] and metric values
+        [value_column units]. Index/timezone is ignored and retained on input.
+    key_columns : list[str]
+        Grouping column names [labels]; null grouping keys are included.
+    value_column : str
+        Metric column name [label], e.g. FR [dimensionless] or ETP [record fraction].
+
+    Returns
+    -------
+    list[dict]
+        One key-to-label mapping plus sorted values per conflicting group. Empty
+        frames with the required key columns yield [].
+
+    Assumptions
+    -----------
+    NaN metrics are excluded; repeated equal values are one value. Group boundaries
+    are exact key equality, not approximate numeric comparison. Values are sortable;
+    mixed incomparable types can raise. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::detect_variant_conflicts. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     conflicts = []
     for key, group in df.groupby(key_columns, dropna=False, sort=False):
         values = sorted(group[value_column].dropna().unique().tolist())
@@ -56,17 +137,95 @@ def detect_variant_conflicts(df: pd.DataFrame, key_columns: list[str], value_col
 
 
 def scenario_index(policy: str, climate: str) -> int:
-    """Position of a policy x climate scenario in the per-row FR / ETP arrays (policy-major)."""
+    """Locate a policy/climate scenario in the fixed catalogue order.
+
+    Equation / rule: POLICIES.index(policy) * len(CLIMATES) + CLIMATES.index(climate).
+
+    Parameters
+    ----------
+    policy, climate : str
+        Case-sensitive catalogue labels [identifiers], scalars; no index/timezone.
+
+    Returns
+    -------
+    int
+        Zero-based policy-major position [scenario slot]; current catalogue has
+        28 slots. Unknown labels, including None, raise ValueError.
+
+    Assumptions
+    -----------
+    Catalogue lists are read-only and their order is significant. NaN labels are
+    not missing-value defaults. First/last slots are 0/27 for the current catalogue.
+    No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::scenario_index. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     return POLICIES.index(policy) * len(CLIMATES) + CLIMATES.index(climate)
 
 
 def fix_theme(t: str) -> str:
-    """One spelling for the "Other Species" theme (the sources use both cases)."""
+    """Fold one known theme spelling to the existing display label.
+
+    Equation / rule: Return Other Species only for exact equality to Other species.
+
+    Parameters
+    ----------
+    t : str
+        Theme label [identifier], scalar; no index or timezone applies.
+
+    Returns
+    -------
+    str
+        Normalized label [identifier]; other values pass through unchanged. The
+        runtime also accepts None/NaN and does not coerce them to strings.
+
+    Assumptions
+    -----------
+    Only this exact case variant is folded; no trimming or general case conversion.
+    Comparison uses Python equality; unusual objects can raise. No input is mutated.
+    Date boundaries are inapplicable.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::fix_theme. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     return "Other Species" if t == "Other species" else t
 
 
 def objective_themes(fr: pd.DataFrame, et: pd.DataFrame, objs: list[str], ref: pd.DataFrame) -> dict[str, str]:
-    """objective -> theme: the model outputs' Target (most common), else the parameter metadata reference, else Unclassified."""
+    """Assign objective themes from result modes, then reference metadata.
+
+    Equation / rule: For each objective take the first FR mode, else first ETP mode; fill absent
+    objectives from a string reference Target, else Unclassified.
+
+    Parameters
+    ----------
+    fr, et : DataFrame
+        EcoObj and Target [objective/theme labels]; arbitrary row index/timezone
+        is ignored. Rows missing either field are excluded from modes.
+    objs : list[str]
+        Objective labels to fill [identifiers]. Extra result objectives are retained.
+    ref : DataFrame
+        Target [theme label], indexed by objective [identifier].
+
+    Returns
+    -------
+    dict[str, str]
+        Objective-to-theme labels. The fixed spelling fold uses fix_theme; empty
+        results still permit reference/default assignments.
+
+    Assumptions
+    -----------
+    FR precedes ETP, and mode ties select pandas' first (sorted) mode. A present
+    Unclassified label prevents reference fallback. Reference values must be strings;
+    no timezone or numerical threshold applies. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::objective_themes. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     obj_theme: dict[str, str] = {}
     for d in (fr, et):
         for o, t in d.dropna(subset=["EcoObj", "Target"]).groupby("EcoObj").Target.agg(lambda x: x.mode().iat[0]).items():
@@ -78,19 +237,72 @@ def objective_themes(fr: pd.DataFrame, et: pd.DataFrame, objs: list[str], ref: p
 
 
 def objectives_of(rows: dict[tuple[str, str, str, str], dict[str, Any]]) -> list[str]:
-    """Every ecological objective in the rows, ordered by its prefix then code."""
+    """List distinct objective codes ordered by prefix then full code.
+
+    Equation / rule: Sort the union of row ob sets by (code.split("-")[0], code).
+
+    Parameters
+    ----------
+    rows : dict
+        EWR-keyed mappings with ob [set/list of objective labels]. No date index
+        or timezone applies; labels are assumed strings.
+
+    Returns
+    -------
+    list[str]
+        Unique objective labels [identifiers]; empty rows give [].
+
+    Assumptions
+    -----------
+    Ordering is lexical, not numerical suffix ordering (A-10 precedes A-2).
+    Missing/NaN labels are not filtered. There are no numeric boundaries.
+    No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::objectives_of. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     return sorted({o for r in rows.values() for o in r["ob"]}, key=lambda o: (o.split("-")[0], o))
 
 
 def build_row_table(
     rows: dict[tuple[str, str, str, str], dict[str, Any]], obj_theme: dict[str, str], params: dict[tuple[str, str, str], dict[str, Any]] | None = None
 ) -> tuple[list[list[Any]], dict[str, Any]]:
-    """The compact ROWS table the page reads, and the lookup lists (pus, sdls, gids, objs, themes, regimes, objTheme) its indices refer to.
-    Columns 0-7 are fixed (the page and performance.js index them); 8 = {T, ny, dur, mrip}: target % of years, record years, required days and
-    MRIP years (from `params`, keyed (gauge, code, planning unit); None when unknown); 9 = achieved years (EventYears) per scenario;
-    10 = gap severity per scenario: None here, as the results hold the MRIP parameter, not the observed gaps (uploads fill it in the page);
-    11 = duration ratio per scenario, approximated as mean event length ÷ required duration, capped at 2 (flow EWRs only; dr_approx);
-    12 = drought-window metrics: None here (no yearly results; uploads fill it)."""
+    """Encode EWR rows into the existing compact table and lookup lists.
+
+    Equation / rule: Sort EWR keys and lookup labels; retain raw metric lists, join parameter
+    metadata by (gauge, code, planning unit), and derive DR through dr_approx.
+
+    Parameters
+    ----------
+    rows : dict
+        Keys (planning unit, SDL unit, gauge, EWR) [labels]. Values contain ob/rg
+        label sets and scenario lists: fr [dimensionless], et [record fraction],
+        ey [achieved years], ael [days], ny [record years]. No date index/timezone.
+    obj_theme : dict[str, str]
+        Objective-to-theme labels, required for every row objective.
+    params : dict or None
+        Keys (gauge, EWR, planning unit); T [% years], dur [days], mrip [years],
+        kind [label], plus any other existing metadata fields.
+
+    Returns
+    -------
+    (list[list], dict)
+        Sorted 13-column compact rows and lookup arrays. Metric lists keep their
+        scenario order; None placeholders and the fixed seven themes remain on
+        empty input. DR [dimensionless] follows dr_approx's cap/rounding.
+
+    Assumptions
+    -----------
+    No FR cap or NaN normalization occurs here. FR/ETP/achieved lists are returned
+    by reference, while inputs are not mutated. Extra themes append in sorted order;
+    parameter kind is omitted and row ny overrides metadata ny. Label/index bounds
+    are assumed valid. Numeric/date boundaries are delegated to existing helpers.
+
+    References
+    ----------
+    pre-refactor:src/build_dashboard.py::build_row_table. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     params = params or {}
     pus = sorted({k[0] for k in rows})
     sdls = sorted({k[1] for k in rows})
@@ -145,8 +357,54 @@ def _assessment_year_stats(
     handlers: dict[str, str],
     use_days: bool,
 ) -> dict[str, Any]:
-    """An EWR's results by assessment year (achieved, complete, duration or volume ratio), summarised as the median duration
-    ratio and near misses (year_summary) and as metrics inside each drought window (`win`, window_metrics)."""
+    """Aggregate annual EWR ratios and completeness into summary/window metrics.
+
+    Equation / rule: Choose the existing flow/volume ratio rule from kind/handler, compute timing
+    completeness, summarize DR/near misses and apply window_metrics per drought.
+    The scientific interpretation of this composition: TBD, needs scientist review.
+
+    Parameters
+    ----------
+    code : str
+        EWR identifier matching yearly column prefixes [label].
+    params : parameter row
+        StartMonth/EndMonth [months], optional StartDay/EndDay [days of month], kind
+        and Multigauge [labels], Duration/AccumulationPeriod [days], EventsPerYear
+        [count], VolumeThreshold [ML for daily ML/d flow].
+    yearly : DataFrame
+        Assessment-start-year index [year labels]; <code>_eventYears [flags] and
+        relevant maxEventDays/totalEventDays [days] columns. NaN achievement -> 0.
+    ewr_events : dict or None
+        Year-to-event lists; lengths [days] consumed by dr_years.
+    daily : Series
+        Nonempty ordered daily DatetimeIndex observations [caller units]; timezone
+        must match inherited calendar/window contracts. No normalization is added.
+    gaps : list[dict]
+        Inclusive start/end [dates], days [days], censored [flag].
+    mrip, target : scalar
+        Maximum inter-event period [days] and target frequency [% years].
+    handlers : dict
+        Explicit dispatch-key-to-handler labels; read-only LOW_FLOW_HANDLERS applies.
+    use_days : bool
+        Use supplied optional day boundaries [flag], otherwise whole months.
+
+    Returns
+    -------
+    dict
+        dr [dimensionless median], nm [near-miss/failure year counts], win keyed by
+        existing DROUGHTS with n [years], fr/et/sev/dr [dimensionless or None].
+        Ratio/window rounding and caps are inherited unchanged.
+
+    Assumptions
+    -----------
+    Starting-year labels and inclusive timing/date bounds are preserved. None/NaN
+    policies are delegated to existing helpers; daily first/last must exist. Unknown
+    kind gives None ratios. Global catalogues are read-only. No input is mutated.
+
+    References
+    ----------
+    pre-refactor:src/server.py::_assessment_year_stats. Scientific provenance or
+    suitability of this retained convention: TBD, needs scientist review."""
     import pandas as pd
 
     start_month, end_month = int(params.StartMonth), int(params.EndMonth)
