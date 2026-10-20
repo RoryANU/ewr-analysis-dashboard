@@ -28,8 +28,9 @@ from uuid import uuid4
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent.parent
-CACHE_DIR = ROOT / ".observed_cache"
+from ewr_analysis.paths import OBSERVED_CACHE as CACHE_DIR
+from ewr_analysis.paths import ROOT
+
 NORMALISATION = "2"  # cache metadata: entries from an older normalisation (which also dropped 151 and >=999 before grading) are refetched on access
 CACHE_VERSION = "3"  # gauge_pull output only; no trace-metadata units or alternate routing
 RAW_COLUMNS = ["DATASOURCEID", "SITEID", "SUBJECTID", "DATETIME", "VALUE", "QUALITYCODE"]

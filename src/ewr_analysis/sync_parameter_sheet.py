@@ -14,8 +14,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ewr_analysis.paths import DATA_DIR
+
 UPSTREAM_URL = "https://raw.githubusercontent.com/MDBAuth/EWR_tool/main/py_ewr/parameter_metadata/parameter_sheet.csv"
-LOCAL = Path(__file__).resolve().parent.parent / "data" / "reference" / "parameter_sheet.csv"
+LOCAL = DATA_DIR / "reference" / "parameter_sheet.csv"
 
 
 def normalise(raw: bytes) -> bytes:

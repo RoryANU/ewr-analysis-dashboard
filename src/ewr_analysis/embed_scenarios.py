@@ -13,9 +13,10 @@ import json
 import tempfile
 from pathlib import Path
 
-HERE = Path(__file__).parent
-ROOT = HERE.parent
+from ewr_analysis.paths import PACKAGE_DIR, ROOT
 from ewr_analysis.server import FORMATS, VAL_KEYS, run_scenario  # the same EWR run as the local server (server.py), imported without starting it
+
+HERE = PACKAGE_DIR
 
 PLACEHOLDER = "const PRELOADED=[];"
 REKEY = {"A4260527": "A4260524"}  # same re-keying as build_dashboard.py (not imported: importing it runs the build)

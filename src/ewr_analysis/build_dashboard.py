@@ -19,9 +19,9 @@ from shapely.geometry import mapping, shape
 
 from ewr_analysis.drought_windows import meta as drought_meta
 from ewr_analysis.flow_regime_mappings import regimes_for
-
-HERE = Path(__file__).parent  # src/
-ROOT = HERE.parent  # repository root; inputs are in data/, the page is written here
+from ewr_analysis.paths import DASHBOARD_HTML as OUTPUT
+from ewr_analysis.paths import PACKAGE_DIR as HERE
+from ewr_analysis.paths import ROOT
 
 
 def norm(s: str) -> str:
@@ -468,9 +468,6 @@ def build_payload(root: Path = ROOT) -> dict[str, Any]:
         "__EWRIDX__": ewr_index(root),
         "__SCENARIOS__": [],
     }
-
-
-OUTPUT = ROOT / "ewr_analysis_dashboard.html"
 
 
 def is_stale() -> bool:

@@ -68,15 +68,15 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 
 from ewr_analysis import observed
 from ewr_analysis.drought_windows import DROUGHTS, window_dates
+from ewr_analysis.paths import PACKAGE_DIR, ROOT
+from ewr_analysis.paths import USER_SCENARIOS as STORE
 
-HERE = Path(__file__).parent
-ROOT = HERE.parent  # repository root: the page is served from here; py_ewr comes from pip (pip install -r requirements.txt)
+HERE = PACKAGE_DIR
 warnings.filterwarnings("ignore")
 
 JOBS: dict[str, dict[str, Any]] = {}
 OBSERVED_ACTIVE: dict[str, str] = {}
 OBSERVED_ACTIVE_LOCK = threading.Lock()
-STORE = ROOT / ".user_scenarios"
 FLOWS: dict[tuple[str, str], Any] = {}  # (scenario id, kind) -> DataFrame (date index, one column per gauge)
 SERIES_SUFFIX = {"flow": "", "level": "_level", "salinity": "_salinity"}
 MAX_BYTES = 400 * 1024 * 1024
