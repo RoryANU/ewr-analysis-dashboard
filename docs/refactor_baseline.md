@@ -70,6 +70,89 @@ authoritative Python baseline. No network or optional-observed tests skipped.
   deliberately invalid/immutable test inputs. It does not change expectations,
   error handling, thresholds, operation order or returned runtime values.
 
+### Phase 1 slice 2 — preserved observations
+
+All observations below describe existing behaviour, not corrections. The move
+retains statement order, values, label conventions, sentinels and rounding.
+
+- `_iso_date` accepts numeric nanosecond timestamps and local timezone-aware
+  dates. None/NaT/blank raise ValueError rather than return None. **Clock
+  dependency:** pandas relative strings `"now"` / `"today"` are accepted and
+  depend on wall time. The user explicitly authorized moving this helper
+  unchanged. Every call site was checked: event endpoints are converted to
+  Timestamp first, or come from daily-series index entries; no direct raw q
+  value is formatted. User scenario dates still reach upstream pandas parsing,
+  so relative-input validation belongs at the interface in a later phase.
+- `assessment_start` selects the timing start when sm <= 6 and em >= 7,
+  otherwise July. Other starting-year helpers retain their starting label,
+  while `achievement_frequencies` uses an ending-year label. No convention
+  was unified.
+- `_timing_mask` treats day 0 as unspecified (1/31); equal-month reversed day
+  bounds select nothing, rather than wrapping within the month. Month/day
+  bounds are not validated; local timezone fields are used without conversion.
+- `complete_years` constructs a timezone-naive daily calendar, so a timezone-aware
+  series can align as entirely missing. Missing dates are inserted as NaN;
+  missingness outside the timing window is ignored. No selected dates gives
+  0 rather than vacuous completeness; an empty requested-year list gives [].
+- `year_summary` ignores None but keeps NaN in its median (3 decimals); NaN
+  compares false to the failure bounds. Near misses include equality to .5
+  and exclude equality to 1. No retained ratio yields dr/nm None; mismatched
+  list lengths raise through strict zip.
+- `window_metrics` counts only whole assessment years inside inclusive bounds.
+  FR/ET round to 4 decimals, severity to 2, DR median to 3. None DR is excluded,
+  NaN retained. Antecedent gaps contribute from start+MRIP, and severity uses
+  the entire overlapping gap even when record bounds clip the ET denominator.
+  Empty gaps leave ET/severity None even with explicit record bounds. Unlike
+  `ewr_gaps`, ET is not capped; overlapping gaps can double-count days. No
+  span merge or clipping correction was introduced.
+- `achievement_frequencies` counts equality to the threshold, pairs all scenarios
+  over their intersection of complete years, returns float32, and uses NaN
+  when there are no shared complete years. Empty index raises ValueError;
+  zero scenarios also raises. It counts rows and assumes sorted unique daily
+  dates. Consecutive rolling width only grows: unsorted durations can yield
+  unexpected results, and zero/negative durations are not validated. No row
+  continuity or duration validation was added.
+- `ewr_gaps` needs a nonempty flow index (empty raises IndexError). With no
+  success it uses one full-record gap. A NaN censors the entire inclusive gap,
+  but absent dates are not inserted. Counted days subtract full censored spans
+  from row count, assuming regular daily nonoverlapping inputs. ETP is capped
+  at 1, rounds to 4 decimals, and is None with no MRIP/countable denominator.
+- `gap_severity` prefers the longest interior gap, falling back to all known
+  gaps; boundary-inclusive severity is separate. Both round to 2 decimals.
+  Episode count uses supplied truthy excess, without recomputing days > MRIP.
+  No maximum/no uncensored gap returns three None values.
+- `_dateless_gap_stats` determines success by key membership, even if that
+  summary value is an empty DataFrame. It coerces gap lengths and drops NaN.
+  With success it may return positive ETP but no severity/episode metrics:
+  only the no-success case constructs gap objects for severity.
+- `_has_any_event` checks yearly list length only: `[[]]` counts as containing
+  an event although the event itself is empty. No contents are validated.
+- `_runs_by_year` clears NaN hits and censors runs beside NaN or record edges.
+  Adjacent rows are treated as consecutive days; annual completeness counts
+  365/366 nonmissing rows, not unique dates. A boundary-crossing run is counted
+  in its starting year; days/longest are split between years. Incomplete annual
+  metrics are None; empty input returns empty lists.
+- `dr_years` caps at 2 and rounds to 3 decimals. Nonpositive/missing duration
+  gives None; missing lengths give None, while insufficient k events gives 0.
+  Low-flow total days ignore the k-event rule. Fractional numeric per_year is
+  truncated; the numeric string `"2.0"` passes numeric coercion then raises at
+  int conversion. Negative event lengths are not floored at zero.
+- `vr_years` caps at 2 and rounds to 3 decimals. NaN/out-of-window rows break
+  full rolling windows and assessment years separate accumulation. Fractional
+  acc >= 1 is truncated; missing calendar days are not inserted, so row count
+  is assumed to mean days. No timezone conversion occurs.
+- `dr_approx` caps at 2 and rounds to 3 decimals; only None event lengths are
+  excluded. It accepts truthy negative durations, whereas dr_years rejects
+  them; truthy NaN can propagate, and a numeric string can raise on division.
+  Nonflow kind or falsy duration yields all None. No input policy was unified.
+- `_paired_achievement` keeps the last complete entry for duplicate year labels.
+  Gain/loss uses truthiness but totals sum actual values, assuming binary
+  achievement without normalizing it. Percentages round to 3 decimals; no
+  common year yields zero counts and None percentages/p-value.
+- `_pair_years` mutates its input payload by assigning out["paired"]. It stays
+  in server; a later slice must separate common-year computation from payload
+  assignment. No partial extraction was attempted.
+
 ## Phase 0 implementation
 
 The move-only commit uses `git mv` and reports 100% similarity for all 13 files:
