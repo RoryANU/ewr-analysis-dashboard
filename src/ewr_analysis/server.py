@@ -76,6 +76,7 @@ from ewr_analysis.core.calculations.assessment_years import _window_days as _win
 from ewr_analysis.core.calculations.assessment_years import achievement_frequencies as achievement_frequencies
 from ewr_analysis.core.calculations.assessment_years import assessment_start as assessment_start
 from ewr_analysis.core.calculations.assessment_years import complete_years as complete_years
+from ewr_analysis.core.calculations.assessment_years import record_coverage as record_coverage
 from ewr_analysis.core.calculations.assessment_years import record_days as record_days
 from ewr_analysis.core.calculations.assessment_years import window_metrics as window_metrics
 from ewr_analysis.core.calculations.assessment_years import year_summary as year_summary
@@ -88,10 +89,15 @@ from ewr_analysis.core.calculations.event_gaps import _mrip_days as _mrip_days
 from ewr_analysis.core.calculations.event_gaps import _runs_by_year as _runs_by_year
 from ewr_analysis.core.calculations.event_gaps import ewr_gaps as ewr_gaps
 from ewr_analysis.core.calculations.event_gaps import gap_severity as gap_severity
+from ewr_analysis.core.calculations.ewr_parameters import LOW_FLOW_HANDLERS as LOW_FLOW_HANDLERS
+from ewr_analysis.core.calculations.ewr_parameters import _dispatch_key as _dispatch_key
+from ewr_analysis.core.calculations.ewr_parameters import _is_multigauge as _is_multigauge
 from ewr_analysis.core.calculations.flow_duration_curves import exceed_pct as exceed_pct
+from ewr_analysis.core.calculations.frequency_ratio import _assessment_year_stats as _assessment_year_stats
+from ewr_analysis.core.calculations.frequency_ratio import _group_by_ewr as _group_by_ewr
+from ewr_analysis.core.calculations.frequency_ratio import _json_safe as _json_safe
 from ewr_analysis.core.calculations.paired_comparison import _paired_achievement as _paired_achievement
 from ewr_analysis.core.calculations.paired_comparison import mcnemar_p as mcnemar_p
-from ewr_analysis.drought_windows import DROUGHTS, window_dates
 from ewr_analysis.paths import PACKAGE_DIR, ROOT
 from ewr_analysis.paths import USER_SCENARIOS as STORE
 
@@ -108,23 +114,11 @@ MAX_JSON_BYTES = 64 * 1024
 EARLIEST_RECORD = date(1890, 1, 1)
 DEFAULT_PORT = 8792
 PAGE = "/ewr_analysis_dashboard.html"
-# py_ewr handlers that count any days at or above the threshold rather than one consecutive run
-LOW_FLOW_HANDLERS = ("lowflow_handle", "lowflow_handle_multi")
 
 
 def _safe_id(value: str | None) -> str:
     """Strip everything but letters, digits, underscores and hyphens, so a client-supplied id is safe in a file name."""
     return re.sub(r"[^A-Za-z0-9_-]", "", value or "")
-
-
-def _is_multigauge(value: Any) -> bool:
-    """A parameter-sheet Multigauge cell names a partner gauge (blank cells read as NaN or whitespace)."""
-    return isinstance(value, str) and bool(value.strip())
-
-
-def _dispatch_key(code: str, multigauge: bool, kind: Any) -> str:
-    """The key py_ewr's calc config uses to pick an EWR's handler, e.g. 'BF1_a-single-F'."""
-    return f"{code}-{'multigauge' if multigauge else 'single'}-{kind}"
 
 
 def _authority(hostport: str | None, default_port: int | None = None) -> tuple[str, int | None] | None:
@@ -454,55 +448,6 @@ def _successful_summary(fetch: Callable[[], Any], has_events: bool, empty: Any) 
         if exc.args != ("Gauge",):
             raise
         return empty
-
-
-def _group_by_ewr(table: Any) -> dict[tuple[str, str, str], Any]:
-    """Split a py_ewr event summary into one frame per (gauge, planning unit, EWR code)."""
-    if not len(table) or "Gauge" not in table:
-        return {}
-    return {(str(gauge), pu, code): group for (gauge, pu, code), group in table.groupby(["Gauge", "PlanningUnit", "Code"])}
-
-
-def _assessment_year_stats(
-    code: str,
-    params: Any,
-    yearly: Any,
-    ewr_events: Any,
-    daily: Any,
-    gaps: list[dict[str, Any]],
-    mrip: int,
-    target: Any,
-    handlers: dict[str, str],
-    use_days: bool,
-) -> dict[str, Any]:
-    """An EWR's results by assessment year (achieved, complete, duration or volume ratio), summarised as the median duration
-    ratio and near misses (year_summary) and as metrics inside each drought window (`win`, window_metrics)."""
-    import pandas as pd
-
-    start_month, end_month = int(params.StartMonth), int(params.EndMonth)
-    start_day, end_day = (int(getattr(params, f)) if use_days and not pd.isna(getattr(params, f, None)) else None for f in ("StartDay", "EndDay"))
-    year_start = assessment_start(start_month, end_month)
-    water_years = [int(w) for w in yearly.index]
-    kind = str(params.FlowLevelVolume)
-
-    if kind == "F":
-        low = handlers.get(_dispatch_key(code, _is_multigauge(params.Multigauge), kind)) in LOW_FLOW_HANDLERS
-        ratios = dr_years(yearly, code, params.Duration, low, params.EventsPerYear, ewr_events)
-    elif kind == "V":
-        ratios = vr_years(daily, water_years, year_start, start_month, end_month, params.AccumulationPeriod, params.VolumeThreshold, start_day, end_day)
-    else:
-        ratios = [None] * len(water_years)
-
-    years = {
-        "wy": water_years,
-        "achieved": pd.to_numeric(yearly[f"{code}_eventYears"], errors="coerce").fillna(0).astype(int).tolist(),
-        "ystart": year_start,
-        "dr": ratios,
-        "complete": complete_years(daily, water_years, year_start, start_month, end_month, start_day, end_day),
-    }
-    record = (daily.index[0], daily.index[-1])
-    windows = {w: window_metrics(years, gaps, mrip, target, *window_dates(w, year_start), record=record) for w in DROUGHTS}
-    return {**year_summary(ratios, years["complete"]), "win": windows}
 
 
 def run_scenario(
@@ -853,17 +798,6 @@ def gauge_series(scn_id: str, gauge: str, kind: str = "flow") -> Any:
     return df[gauge]
 
 
-def _json_safe(obj: Any) -> Any:
-    """Recursively replace non-finite floats (NaN, +-inf) with None so the response is strict JSON (null in the browser)."""
-    if isinstance(obj, float):
-        return obj if math.isfinite(obj) else None
-    if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_json_safe(v) for v in obj]
-    return obj
-
-
 _EWR_CACHE: dict[str, Any] = {}
 _EWR_LOCK = threading.RLock()
 
@@ -1016,23 +950,6 @@ def diagnostic_payload(gauge: str) -> dict[str, Any]:
             result = cache[gauge]
     user = custom_ewr.ewr_list(gauge)
     return {"ewrs": result["ewrs"] + user, "inventory": result["inventory"] + custom_ewr.inventory(gauge, user)} if user else result
-
-
-def record_coverage(flow: Any, complete: list[int]) -> dict[str, Any]:
-    """Count nulls AND absent calendar dates; handle empty records without formatting NaT."""
-    import pandas as pd
-
-    if flow.empty:
-        return {"start": None, "end": None, "missing_days": 0, "complete_years": sum(complete), "years": len(complete)}
-    start, end = flow.index.min(), flow.index.max()
-    daily = flow.reindex(pd.date_range(start, end))
-    return {
-        "start": start.strftime("%Y-%m-%d"),
-        "end": end.strftime("%Y-%m-%d"),
-        "missing_days": int(daily.isna().sum()),
-        "complete_years": sum(complete),
-        "years": len(complete),
-    }
 
 
 # (scenario id, gauge, code, planning unit[, user version]) -> one EWR evaluated by py_ewr (see ewr_eval)

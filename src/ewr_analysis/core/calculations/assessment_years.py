@@ -513,3 +513,20 @@ def _iso_date(value: Any) -> str:
     import pandas as pd
 
     return cast(str, pd.Timestamp(value).strftime("%Y-%m-%d"))
+
+
+def record_coverage(flow: Any, complete: list[int]) -> dict[str, Any]:
+    """Count nulls AND absent calendar dates; handle empty records without formatting NaT."""
+    import pandas as pd
+
+    if flow.empty:
+        return {"start": None, "end": None, "missing_days": 0, "complete_years": sum(complete), "years": len(complete)}
+    start, end = flow.index.min(), flow.index.max()
+    daily = flow.reindex(pd.date_range(start, end))
+    return {
+        "start": start.strftime("%Y-%m-%d"),
+        "end": end.strftime("%Y-%m-%d"),
+        "missing_days": int(daily.isna().sum()),
+        "complete_years": sum(complete),
+        "years": len(complete),
+    }
