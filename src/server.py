@@ -59,7 +59,7 @@ import webbrowser
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
-from datetime import date
+from datetime import date, timedelta
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -672,6 +672,8 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
                 "error": result.error,
                 "attempts": result.attempts,
                 "max_attempts": observed.MAX_ATTEMPTS,
+                "schema_version": 2,
+                "coverage": result.coverage,  # null while a measurement is still running/retrying
             }
 
         def report_gauge(gauge: str, var: str, result: observed.GaugeResult) -> None:
@@ -699,6 +701,8 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
             refresh=refresh,
             status_progress=report_gauge,
             inflight_progress=report_gauge,
+            filter_period=filter_period,
+            reporting_cutoff=date.today() - timedelta(days=1),  # today's daily mean is not complete yet; disclosed in coverage.period
         )
         job["gauge_status"] = {
             gauge: {var.lower(): _measurement_payload(result) for (g, var), result in statuses.items() if g == gauge} for gauge in all_gauges

@@ -117,7 +117,7 @@ body.nobar #bar{display:none}body.nobar #tabT{display:block}
 .obs-gauge-heading{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.obs-outcome{display:inline-flex;align-items:baseline;gap:5px;font-weight:600;white-space:nowrap}.obs-gauge-identity{flex:1 1 150px;min-width:0;overflow-wrap:anywhere}.obs-gauge-identity b{white-space:nowrap}
 .obs-measurements{display:flex;flex-wrap:wrap;gap:6px}.obs-measurement{display:inline-flex;align-items:baseline;flex-wrap:wrap;gap:4px;max-width:100%;border:1px solid #d6dbe1;border-radius:5px;padding:4px 7px;background:#fff;overflow-wrap:anywhere}.obs-reason{min-width:0}
 .obs-tone-success{color:var(--obs-green)}.obs-tone-warning{color:var(--obs-amber)}.obs-tone-error{color:var(--obs-red)}.obs-tone-muted{color:var(--obs-grey)}
-.obs-measurement-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}.obs-action{font-size:11px;color:#44505e;margin:0;overflow-wrap:anywhere}.obs-technical{margin:6px 0;color:#52606d}.obs-details dd p{margin:4px 0}.obs-details textarea{display:block;width:100%;max-width:100%;min-height:110px;font:11px monospace;margin-top:5px}
+.obs-measurement-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;max-width:100%}.obs-action{font-size:11px;color:#44505e;margin:0;overflow-wrap:anywhere}.obs-coverage{font-size:11px;color:#44505e;margin:0;overflow-wrap:anywhere}.obs-coverage.obs-warn{color:#8a4b00}.obs-technical{margin:6px 0;color:#52606d}.obs-details dd p{margin:4px 0}.obs-details textarea{display:block;width:100%;max-width:100%;min-height:110px;font:11px monospace;margin-top:5px}
 .obs-details{font-size:11px;color:#44505e;min-width:0}.obs-details summary,.obs-complete>summary{cursor:pointer;width:fit-content}.obs-details dl{margin:8px 0;overflow-wrap:anywhere}.obs-details dt{font-weight:600;margin-top:6px}.obs-details dd{margin:2px 0 0}.obs-details pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:3px 0}.obs-complete{margin-top:10px}.obs-complete>summary{font-weight:600;color:var(--obs-green);padding:5px 0}
 @media(max-width:600px){.uewr-dialog{padding:12px;width:calc(100vw - 24px)}.uewr-layout{display:block}.uewr-layout nav{position:static;display:grid;grid-template-columns:1fr 1fr;margin-bottom:12px}.uewr-fields,.uewr-rules{grid-template-columns:1fr}.uewr-sections{max-height:65vh}.uewr-sections fieldset{padding:10px}}
 </style></head><body class="nol"><div id="app">
@@ -553,7 +553,7 @@ async function runObserved(gauges,merge=false){
   const token=++observedWatch;
   const previousIds=S.obs.displayIds?.length?S.obs.displayIds:Object.keys(S.obs.status||{});
   S.obs.displayIds=merge?[...new Set([...previousIds,...gauges])]:[...gauges]; S.obs.completed=false;
-  if(!merge)S.obs.detailsOpen=new Set();
+  S.obs.completeOpen=false; if(!merge)S.obs.detailsOpen=new Set();
   S.obs.notice=""; S.obs.progress=null; S.obs.status=merge?{...S.obs.status}:{}; S.obs.ranges=merge?{...S.obs.ranges}:{};
   S.obs.cooldown||={};for(const id of gauges){delete S.obs.status[id];delete S.obs.ranges[id];for(const v of Object.keys(VAR_NAME))delete S.obs.cooldown[cooldownKey(id,v)];}
   S.obs.runIds=[...gauges]; S.obs.job="starting"; render();
@@ -626,6 +626,7 @@ $("panel").addEventListener("input",event=>{if(event.target.id==="obsSearch"){S.
 $("panel").addEventListener("toggle",event=>{
   const t=event.target;
   if(t.matches("details[data-obs-details]")){S.obs.detailsOpen||=new Set();t.open?S.obs.detailsOpen.add(t.dataset.obsDetails):S.obs.detailsOpen.delete(t.dataset.obsDetails);}
+  else if(t.matches("details[data-obs-complete]"))S.obs.completeOpen=t.open;
 },true);
 // ---- observed result classification (pure; no DOM or application state)
 const VAR_NAME={f:"Flow",l:"Water level"};
@@ -723,6 +724,74 @@ const retryWaitLabel=seconds=>`Data service busy — retry in ${seconds===60?"a 
 function neverAnswered(gaugeIds,status={}){
   return gaugeIds.filter(id=>{const states=status[id]||{};return classifyGauge(states).outcome==="failed"&&Object.keys(VAR_NAME).every(v=>states[v]?.status==="error"&&states[v]?.error?.code==="NETWORK_TIMEOUT"&&states[v]?.error?.retryable===true);}).length;
 }
+const VERIFIED_LABEL="Complete"; // earned only from coverage_complete===true on BOTH measurements; otherwise COMPLETE_LABEL
+const DAY_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+/** Daily values carry a calendar date, not an instant: format the ISO date text directly so no time zone can shift it. */
+const formatDay=iso=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));return m?`${+m[3]} ${DAY_MONTHS[+m[2]-1]} ${m[1]}`:"";};
+const dayBefore=iso=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||""));return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3]-1)).toISOString().slice(0,10):"";};
+/** Coverage is read from terminal ok/empty measurements (an empty one really is 0 % available); failed, running and retrying ones show no coverage. */
+const coverageOf=x=>(x?.status==="ok"||x?.status==="empty")&&x.coverage&&typeof x.coverage==="object"&&!Array.isArray(x.coverage)?x.coverage:null;
+const finiteNumber=n=>typeof n==="number"&&Number.isFinite(n);
+/** Floor, never round: 99.6 % must not read as 100 %. */
+const pctText=p=>finiteNumber(p)?`${p>=100?100:Math.floor(p)}%`:"";
+/** Visible coverage lines for one measurement: {text, warn}. Nothing is shown when the server sent no coverage block. */
+function coverageLines(v,x){
+  const c=coverageOf(x);if(!c)return [];
+  const name=VAR_NAME[v]||v, last=formatDay(c.last_reading?.timestamp), pct=pctText(c.coverage_pct), tail=last?` · last usable reading ${last}`:"";
+  const lines=[];
+  if(c.coverage_complete===true)lines.push({text:`${name} ✓ ${pct}${tail}`,warn:false});
+  else if(pct)lines.push({text:`${name} · ${pct} of days have a usable reading${c.coverage_status==="unassessed_quality_policy"?" · quality policy pending":""}${tail}`,warn:false});
+  else lines.push({text:`${name} · coverage not assessed${c.coverage_status==="unassessed_open_period"?" for all available data":c.coverage_status==="unassessed_units"?" (units not recognised)":""}${tail}`,warn:false});
+  if(Array.isArray(c.gaps)&&c.gaps.length){const days=c.gaps.reduce((n,g)=>n+(finiteNumber(g.missing_count)?g.missing_count:0),0);lines.push({text:`⚠ ${countOf(c.gaps.length,"gap")} (${countOf(days,"day")} missing)`,warn:true});}
+  if(finiteNumber(c.zero_count)&&c.zero_count>0)lines.push({text:c.all_zero===true?`⚠ Every reading was 0 ${c.units||""} — check quality codes`.replace("  "," "):`⚠ 0 ${c.units||""} recorded on ${countOf(c.zero_count,"day")} — check quality codes`.replace("  "," "),warn:true});
+  return lines;
+}
+/** Defensive: trust coverage_complete only when every field that must back it agrees. A missing block is never complete. */
+function measurementComplete(v,x){
+  const c=coverageOf(x);
+  return x?.status==="ok"&&!!c&&c.coverage_status==="assessed"&&c.coverage_complete===true&&typeof c.policy_version==="string"&&c.policy_version.trim().length>0
+    &&c.units===({f:"ML/d",l:"m"})[v]&&Number.isInteger(c.expected_count)&&c.expected_count>0&&c.valid_count===c.expected_count&&c.coverage_pct===100&&Array.isArray(c.gaps)&&c.gaps.length===0;
+}
+/** "Complete": both measurements present and complete. Completeness is about coverage only; it says nothing about EWR eligibility. */
+const gaugeComplete=states=>Object.keys(VAR_NAME).every(v=>measurementComplete(v,states?.[v]));
+/** Folding needs more than completeness: no zero day and no rejected or unrecognised quality code, so warnings stay visible. */
+function gaugeFoldable(states){
+  return gaugeComplete(states)&&Object.keys(VAR_NAME).every(v=>{const c=coverageOf(states[v]);return c.zero_count===0&&c.excluded_quality_count===0&&c.unknown_quality_count===0;});
+}
+/** Distinct assessment periods across the list (open-period runs have none). More than one means retries or reruns mixed contexts. */
+function assessedPeriods(gaugeIds,status={}){
+  const seen=new Map();
+  for(const id of gaugeIds)for(const v of Object.keys(VAR_NAME)){const c=coverageOf(status[id]?.[v]);if(c?.period&&c.coverage_status!=="unassessed_open_period")seen.set(`${c.period.start}|${c.period.end_exclusive}`,c.period);}
+  return [...seen.values()];
+}
+const periodText=period=>period.start===period.end_exclusive?"No reporting days fall within this assessment period":`${formatDay(period.start)} to ${formatDay(dayBefore(period.end_exclusive))}`;
+/** Sort key inside an outcome bucket: unknown coverage first (-1), then the lowest percentage. null is never coerced to 0. */
+function coverageSortKey(states){
+  const pcts=Object.keys(VAR_NAME).map(v=>{const c=coverageOf(states?.[v]);return c&&finiteNumber(c.coverage_pct)?c.coverage_pct:null;});
+  return pcts.some(p=>p===null)?-1:Math.min(...pcts);
+}
+/** Plain-text coverage block for Details / Copy details. `limit` caps how many gaps are listed (Copy details lists all). */
+function coverageDetailText(label,x,limit=Infinity){
+  const c=coverageOf(x);if(!c)return "";
+  const count=n=>finiteNumber(n)?String(n):"Unavailable", lines=[`${label} coverage`,`Status: ${c.coverage_status}`];
+  if(finiteNumber(c.expected_count))lines.push(`Usable days: ${count(c.valid_count)} of ${c.expected_count} (${pctText(c.coverage_pct)||"not assessed"})`);
+  else lines.push(`Usable days: ${count(c.valid_count)}`);
+  if(c.period?.start)lines.push(`Period: ${periodText(c.period)}`);
+  lines.push("Time zone: not recorded (daily values)");
+  if(c.last_reading)lines.push(`Last usable reading: ${formatDay(c.last_reading.timestamp)} (${c.last_reading.value}${c.units?" "+c.units:""})`);
+  if(!Array.isArray(c.gaps))lines.push("Gaps not assessed");
+  else if(!c.gaps.length)lines.push(c.expected_count>0?"No gaps":"No reporting days assessed");
+  else{
+    lines.push(`Gaps (${c.gaps.length}):`);
+    for(const g of c.gaps.slice(0,limit))lines.push(`  ${formatDay(g.start)} to ${formatDay(dayBefore(g.end_exclusive))} (${countOf(g.missing_count,"day")})`);
+    if(c.gaps.length>limit)lines.push(`  …and ${c.gaps.length-limit} more`);
+  }
+  if(finiteNumber(c.zero_count)&&c.zero_count>0)lines.push(`Zero readings: ${c.zero_count}`);
+  lines.push(`Quality codes: ${count(c.excluded_quality_count)} excluded, ${c.policy_version?`${count(c.unknown_quality_count)} with missing or unrecognised quality codes`:`${count(c.unknown_quality_count)} not checked against an approved policy`}`);
+  lines.push("Counts exclude placeholder readings removed before assessment");
+  if(c.policy_version)lines.push(`Quality policy: ${c.policy_version}`);
+  return lines.join("\n");
+}
 /** One line per gauge while any measurement is retrying, e.g. "Flow: retrying (2 of 3) · Level ✓". */
 function rollupText(states){
   if(!Object.keys(VAR_NAME).some(v=>isRetrying(states?.[v])))return "";
@@ -736,7 +805,8 @@ function observedDetailsText(id,name,states,context={}){
     return lines.join("\n");
   });
   const header=[`Gauge: ${id}`,`Name: ${name||"Unnamed gauge"}`,context.period?`Period: ${context.period}`:"",context.timezone?`Time zone: ${context.timezone}`:""].filter(Boolean);
-  return [...header,...measurements.map(x=>"\n"+x)].join("\n");
+  const coverage=Object.entries(VAR_NAME).map(([v,label])=>coverageDetailText(label,states[v])).filter(Boolean);
+  return [...header,...measurements.map(x=>"\n"+x),...coverage.map(x=>"\n"+x)].join("\n");
 }
 const resultTextKey=text=>String(text||"").trim().replace(/\s+/g," ").toLowerCase();
 function observedPanel(){
@@ -753,14 +823,15 @@ function observedPanel(){
   const statusLine=statusText?`<div class="obs-status${S.obs.notice.startsWith("Failed")?" obs-error":""}">${esc(statusText)}</div>`:"";
   const outcomes={complete:{label:COMPLETE_LABEL,icon:"✓",tone:"success"},partial:{label:"Partial",icon:"⚠",tone:"warning"},nodata:{label:"No records",icon:"–",tone:"muted"},failed:{label:"Failed",icon:"✗",tone:"error"},waiting:{label:"Waiting",icon:"·",tone:"muted"},running:{label:"Checking…",icon:"⟳",tone:"muted"}};
   const resultRow=id=>{
-    const g=byId.get(id)||{id,name:""}, states=S.obs.status[id]||{}, cls=classifyGauge(states), outcome=cls.outcome, display=outcome==="partial"?{...outcomes.partial,label:cls.partialKind==="noflow"?"Partial — no flow":"Partial — no water level"}:outcomes[outcome];
+    const g=byId.get(id)||{id,name:""}, states=S.obs.status[id]||{}, cls=classifyGauge(states), outcome=cls.outcome, display=outcome==="partial"?{...outcomes.partial,label:cls.partialKind==="noflow"?"Partial — no flow":"Partial — no water level"}:outcome==="complete"&&gaugeComplete(states)?{...outcomes.complete,label:VERIFIED_LABEL}:outcomes[outcome];
     const chips=Object.entries(VAR_NAME).map(([v,name])=>{
       const x=states[v], description=describeResult(v,x), label=x?.status==="unsupported"?"Not available":description.label;
       const tone=x?.status==="ok"?"success":["error","timeout","rate_limited"].includes(x?.status)?"error":"muted";
       const action=x?.status!=="ok"&&typeof description.action==="string"&&description.action.trim()&&resultTextKey(description.action)!==resultTextKey(label)?description.action:"";
+      const coverage=coverageLines(v,x).map(line=>`<p class="obs-coverage${line.warn?" obs-warn":""}">${esc(line.text)}</p>`).join("");
       const skipped=description.skip&&attemptsOf(x)===1&&failures&&!S.obs.job&&!retry.ready.includes(id)?description.skip:"";
       const icon=x?.status==="ok"?`role="img" aria-label="${esc(label)}"`:`aria-hidden="true"`;
-      return `<div class="obs-measurement-item"><span class="obs-measurement obs-tone-${esc(tone)}" data-obs-measurement="${esc(v)}"><b>${esc(name)}</b> <span ${icon}>${esc(stateIcon(x?.status))}</span>${x?.status==="ok"?"":` <span class="obs-reason">${esc(label)}</span>`}</span>${action?`<p class="obs-action">${esc(action)}</p>`:""}${skipped?`<p class="obs-action obs-skip">${esc(skipped)}</p>`:""}</div>`;
+      return `<div class="obs-measurement-item"><span class="obs-measurement obs-tone-${esc(tone)}" data-obs-measurement="${esc(v)}"><b>${esc(name)}</b> <span ${icon}>${esc(stateIcon(x?.status))}</span>${x?.status==="ok"?"":` <span class="obs-reason">${esc(label)}</span>`}</span>${action?`<p class="obs-action">${esc(action)}</p>`:""}${skipped?`<p class="obs-action obs-skip">${esc(skipped)}</p>`:""}${coverage}</div>`;
     }).join("");
     const explanations=Object.entries(VAR_NAME).map(([v,name])=>{
       const x=states[v], description=describeResult(v,x), seen=new Set([resultTextKey(description.label)]);
@@ -772,14 +843,21 @@ function observedPanel(){
     }).join("");
     const raw=Object.entries(VAR_NAME).map(([v,name])=>`<dt>${esc(name)}</dt><dd>Status: ${esc(states[v]?.status||"not reported")}${states[v]?.error?`<br>Code: ${esc(states[v].error.code||"unknown")} · Attempts: ${esc(attemptsOf(states[v]))} of ${esc(maxAttemptsOf(states[v]))}${states[v].error.diagnostic_id?` · Diagnostic ID: ${esc(states[v].error.diagnostic_id)}`:""}`:""}${(states[v]?.error?.detail??states[v]?.message)?`<pre>${esc(states[v]?.error?.detail??states[v].message)}</pre>`:""}</dd>`).join("");
     const range=S.obs.ranges[id];
-    const copyable=Object.keys(VAR_NAME).some(v=>states[v]?.status!=="ok");
-    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span>${rollupText(states)?`<span class="obs-rollup">${esc(rollupText(states))}</span>`:""}</div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">Copy details</button><div data-obs-copy-fallback hidden><p>Clipboard unavailable. Select and copy these technical details.</p><textarea readonly aria-label="Technical details to copy"></textarea></div>`:""}</details></article>`;
+    const coverageDetails=Object.entries(VAR_NAME).map(([v,name])=>coverageDetailText(name,states[v],10)).filter(Boolean).map(text=>`<pre>${esc(text)}</pre>`).join("");
+    const copyable=Object.keys(VAR_NAME).some(v=>states[v]?.status!=="ok"||coverageOf(states[v]));
+    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span>${rollupText(states)?`<span class="obs-rollup">${esc(rollupText(states))}</span>`:""}</div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${coverageDetails?`<div class="obs-technical"><b>Coverage</b>${coverageDetails}</div>`:""}${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">Copy details</button><div data-obs-copy-fallback hidden><p>Clipboard unavailable. Select and copy these technical details.</p><textarea readonly aria-label="Technical details to copy"></textarea></div>`:""}</details></article>`;
   };
   const finished=!!S.obs.completed&&!S.obs.job, rank={failed:0,nodata:1,noflow:2,nolevel:3,running:4,waiting:5,complete:6};
   const rankOf=id=>{const c=classifyGauge(S.obs.status[id]);return rank[c.outcome==="partial"?c.partialKind:c.outcome];};
   // Worst first (error, empty, no-flow, no-level, then records returned). No folding until coverage is verified (Phase 3).
-  const ordered=finished?[...reportIds].sort((a,b)=>rankOf(a)-rankOf(b)):reportIds;
-  const results=ordered.map(resultRow).join("");
+  const nameOf=id=>byId.get(id)?.name||id;
+  const ordered=finished?[...reportIds].sort((a,b)=>rankOf(a)-rankOf(b)||coverageSortKey(S.obs.status[a])-coverageSortKey(S.obs.status[b])||nameOf(a).localeCompare(nameOf(b),undefined,{numeric:true})||a.localeCompare(b,undefined,{numeric:true})):reportIds;
+  // Fold only gauges whose every measurement is verified complete (coverage_complete===true, no zero warning). Derived each render, never stored.
+  // Never fold across mixed assessment periods (retries can combine runs): disclose that instead of one undifferentiated bucket.
+  const periods=assessedPeriods(reportIds,S.obs.status);
+  const periodNote=periods.length===1?`Assessed period: ${periodText(periods[0])}`:periods.length>1?"Gauges were assessed over different periods; each gauge's Details show its own.":"";
+  const verified=finished&&periods.length<=1?ordered.filter(id=>gaugeFoldable(S.obs.status[id])):[];
+  const results=ordered.filter(id=>!verified.includes(id)).map(resultRow).join("");
   const rows=gauges.filter(g=>!S.obs.query||`${g.id} ${g.name}`.toLowerCase().includes(S.obs.query.toLowerCase())).map(g=>{
     const states=S.obs.status[g.id]||{}, short=v=>`${VAR_NAME[v]} ${stateIcon(states[v]?.status)}`;
     return `<label class="obs-gauge"><input type="checkbox" data-obs-gauge="${esc(g.id)}"${S.obs.gauges.has(g.id)?" checked":""}><span><b>${esc(g.id)}</b>${g.name?` · ${esc(g.name)}`:""}<small> ${esc(short("f"))} · ${esc(short("l"))}</small></span></label>`;
@@ -794,8 +872,8 @@ function observedPanel(){
     ${selectedGaugeId?`<div class="obs-status">Selected gauge ${esc(selectedGaugeId)} · ${selectedGaugeRange?`available records ${esc(selectedGaugeRange.start)} to ${esc(selectedGaugeRange.end)}`:"record range will appear after data is fetched"}</div>`:""}
     <label class="obs-gauge"><input type="checkbox" id="obsRefresh"${S.obs.refresh?" checked":""}>Refresh cached data</label>
     <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry ${failures} failed</button>`:retry.waiting&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry" data-obs-wait disabled>${esc(retryWaitLabel(retry.waitSeconds))}</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
-    <div class="obs-progress-status" aria-live="polite">${S.obs.job?`<progress class="obs-progress" max="${esc(Math.max(1,progress?.total||1))}" value="${esc(progress?.done||0)}"></progress>${statusLine}`:""}${tally?`<div class="obs-status">${esc(tally)}</div><div class="obs-status">${esc(breakdown)}</div><div class="obs-status obs-footnote">${esc(COVERAGE_FOOTNOTE)}</div>`:""}${!S.obs.job?statusLine:""}</div>
-    ${results}
+    <div class="obs-progress-status" aria-live="polite">${S.obs.job?`<progress class="obs-progress" max="${esc(Math.max(1,progress?.total||1))}" value="${esc(progress?.done||0)}"></progress>${statusLine}`:""}${tally?`<div class="obs-status">${esc(tally)}</div><div class="obs-status">${esc(breakdown)}</div><div class="obs-status obs-footnote">${esc(COVERAGE_FOOTNOTE)}</div>${periodNote?`<div class="obs-status">${esc(periodNote)}</div>`:""}`:""}${!S.obs.job?statusLine:""}</div>
+    ${results}${verified.length?`<details class="obs-complete" data-obs-complete${S.obs.completeOpen?" open":""}><summary>${countOf(verified.length,"gauge")} fully covered ▸</summary>${verified.map(resultRow).join("")}</details>`:""}
   </section>`;
 }
 function render(){

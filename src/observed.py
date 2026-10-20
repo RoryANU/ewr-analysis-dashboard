@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -16,8 +17,9 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from math import isfinite
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -50,6 +52,26 @@ class GaugeResult:
     retryable: bool = False
     error: dict | None = None  # additive envelope (code, retryable, retry_after_s, ...); None unless status is error/retry_wait
     attempts: int = 1
+    coverage: dict[str, Any] | None = None  # terminal ok/empty/error only; see assess_coverage
+
+
+@dataclass(frozen=True)
+class QualityPolicy:
+    """The data owner's approved quality-code allowlist. Without one, nothing can be called complete."""
+
+    allowed_codes: frozenset[int]
+    version: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.allowed_codes, frozenset):
+            raise TypeError("allowed_codes must be a frozenset of integers")
+        if not isinstance(self.version, str) or not self.version.strip():
+            raise ValueError("A non-empty policy version is required")
+        for code in self.allowed_codes:
+            if isinstance(code, bool) or not isinstance(code, int):
+                raise TypeError("Quality policy codes must be integers")
+            if _is_placeholder_code(code):
+                raise ValueError("A policy cannot approve placeholder codes removed by the source")
 
 
 class _SourceFailure(Exception):
@@ -82,6 +104,10 @@ def _emit_inflight(result: GaugeResult) -> None:
     except Exception as exc:
         # Progress reporting must not turn a successful request into a failure; do not log the callback's own text.
         logging.getLogger(__name__).warning("Gauge progress callback failed (%s)", type(exc).__name__)
+
+
+def _is_placeholder_code(code: int) -> bool:
+    return code in {255, 201, 151} or code >= 999  # the same rule _normalise applies
 
 
 def _http_status(exc: Exception) -> int | None:
@@ -425,6 +451,197 @@ def fetch_gauge(
             _FETCH_STATE.reset(token)
 
 
+# ---- coverage (daily source; calendar dates, no timezone is claimed) -------------------------------------------------
+_UNITS = {"F": "ML/d", "L": "m"}
+
+
+def _coverage_day(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return None if pd.isna(value) or value.tzinfo is not None else value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coverage_window(start: date, end: date, reporting_cutoff: date | None) -> tuple[date, date]:
+    """Return [first, stop): `end` and `reporting_cutoff` are inclusive, `stop` is exclusive."""
+    first, last = _coverage_day(start), _coverage_day(end)
+    if first is None or last is None:
+        raise ValueError("Coverage boundaries must be timezone-free calendar dates")
+    if last < first:
+        raise ValueError("Coverage end must not precede start")
+    if reporting_cutoff is not None:
+        cutoff = _coverage_day(reporting_cutoff)
+        if cutoff is None:
+            raise ValueError("reporting_cutoff must be a calendar date")
+        last = min(last, cutoff)
+    return (first, first) if last < first else (first, last + timedelta(days=1))
+
+
+def _coverage_units(var: str, frame: pd.DataFrame) -> str | None:
+    """Units come from the F/L contract; a frame that declares anything else blocks coverage (no conversion)."""
+    expected = _UNITS.get(var)
+    if expected is None:
+        return None
+    declared = frame.attrs.get("units", expected)
+    return expected if declared == expected else None
+
+
+def _coverage_value(value: object) -> float | None:
+    """Finite real numbers only. Strings and booleans are rejected, never coerced (0 must stay a real observation)."""
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _coverage_code(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        number = float(value)
+        return int(number) if math.isfinite(number) and number.is_integer() else None
+    if isinstance(value, str) and re.fullmatch(r"[+-]?[0-9]+", value.strip()):
+        return int(value.strip())
+    return None
+
+
+def _coverage_template(first: date, stop: date, *, units: str | None, status: str, policy: QualityPolicy | None) -> dict[str, Any]:
+    coverage: dict[str, Any] = {
+        "units": units,
+        "coverage_status": status,
+        "coverage_pct": None,
+        "coverage_complete": None,
+        "expected_count": None,
+        "valid_count": None,
+        "last_reading": None,
+        "gaps": None,
+        "gaps_truncated": False,
+        "zero_count": None,
+        "zero_days_count": None,
+        "all_zero": None,
+        "excluded_quality_count": None,
+        "unknown_quality_count": None,
+        "period": {"start": first.isoformat(), "end_exclusive": stop.isoformat(), "timezone": None},
+    }
+    if policy is not None:
+        coverage["policy_version"] = policy.version
+    return coverage
+
+
+def assess_coverage(
+    frame: pd.DataFrame,
+    start: date,
+    end: date,
+    *,
+    var: str,
+    policy: QualityPolicy | None = None,
+    filter_period: bool = True,
+    reporting_cutoff: date | None = None,
+) -> dict[str, Any]:
+    """Assess one gauge/variable frame of DAILY readings; pure (never reads the clock).
+
+    Unique calendar-day slots only (the last duplicate wins; an invalid last duplicate does not fall back).
+    Without a policy, finite non-placeholder readings qualify provisionally, `coverage_complete` stays null even at 100 %,
+    and every retained slot counts as unknown quality. With a policy only allowed codes qualify, and complete is true only
+    when every expected day has a qualifying reading. An unfiltered run has no meaningful expected period, so its
+    expected_count, percentage and gaps are null. Zero is an observation: it never lowers coverage.
+    """
+    first, stop = _coverage_window(start, end, reporting_cutoff)
+    units = _coverage_units(var, frame)
+    if units is None:
+        return _coverage_template(first, stop, units=None, status="unassessed_units", policy=policy)
+    status = "unassessed_open_period" if not filter_period else "unassessed_quality_policy" if policy is None else "assessed"
+    coverage = _coverage_template(first, stop, units=units, status=status, policy=policy)
+
+    slots: dict[date, tuple[object, object]] = {}
+    if len(frame.index):
+        if not {"DATETIME", "VALUE"} <= set(frame.columns):
+            raise ValueError("Coverage frame needs DATETIME and VALUE columns")
+        qualities = frame["QUALITYCODE"].tolist() if "QUALITYCODE" in frame.columns else [None] * len(frame.index)
+        for stamp, value, quality in zip(frame["DATETIME"].tolist(), frame["VALUE"].tolist(), qualities, strict=True):
+            day = _coverage_day(stamp)
+            if day is not None and first <= day < stop:
+                slots[day] = (value, quality)
+
+    usable: dict[date, tuple[float, int | None]] = {}
+    excluded = unknown = 0
+    for day, (raw_value, raw_quality) in slots.items():
+        code = _coverage_code(raw_quality)
+        if code is not None and _is_placeholder_code(code):
+            excluded += 1  # normally already dropped by _normalise
+            continue
+        if policy is None or code is None:
+            unknown += 1
+        if policy is not None and (code is None or code not in policy.allowed_codes):
+            excluded += code is not None
+            continue
+        value = _coverage_value(raw_value)
+        if value is not None:
+            usable[day] = (value, code)
+
+    zeros = sum(1 for value, _ in usable.values() if value == 0.0)
+    last = max(usable) if usable else None
+    coverage.update(
+        valid_count=len(usable),
+        last_reading=None if last is None else {"timestamp": last.isoformat(), "value": usable[last][0], "quality_code": usable[last][1]},
+        zero_count=zeros,
+        zero_days_count=zeros,  # daily source with unique slots: the two counts are equal by construction
+        all_zero=(zeros == len(usable)) if usable else None,
+        excluded_quality_count=excluded,
+        unknown_quality_count=unknown,
+    )
+    if not filter_period:
+        return coverage
+
+    expected = (stop - first).days
+    gaps: list[dict[str, Any]] = []  # every gap; never silently capped
+    run_start: date | None = None
+    for offset in range(expected + 1):
+        day = first + timedelta(days=offset)
+        missing = offset < expected and day not in usable
+        if missing and run_start is None:
+            run_start = day
+        elif not missing and run_start is not None:
+            gaps.append({"start": run_start.isoformat(), "end_exclusive": day.isoformat(), "missing_count": (day - run_start).days})
+            run_start = None
+    coverage.update(expected_count=expected, gaps=gaps)
+    if expected > 0:
+        coverage["coverage_pct"] = 100.0 * len(usable) / expected
+        if policy is not None:
+            coverage["coverage_complete"] = len(usable) == expected
+    return coverage
+
+
+def _attach_coverage(
+    result: GaugeResult,
+    start: date,
+    end: date,
+    *,
+    var: str,
+    policy: QualityPolicy | None = None,
+    filter_period: bool = True,
+    reporting_cutoff: date | None = None,
+) -> GaugeResult:
+    """Terminal results only; in-flight (running/retry_wait) notifications carry no coverage."""
+    if result.status in {"ok", "empty"}:
+        result.coverage = assess_coverage(result.frame, start, end, var=var, policy=policy, filter_period=filter_period, reporting_cutoff=reporting_cutoff)
+    elif result.status not in {"running", "retry_wait", "pending"}:
+        first, stop = _coverage_window(start, end, reporting_cutoff)
+        result.coverage = _coverage_template(first, stop, units=_coverage_units(var, result.frame), status="unavailable_error", policy=policy)
+    return result
+
+
 def fetch_many(
     gauges: list[str],
     start: date,
@@ -437,8 +654,12 @@ def fetch_many(
     status_progress: Callable[[str, str, GaugeResult], None] | None = None,
     retries: int = DEFAULT_RETRIES,
     inflight_progress: Callable[[str, str, GaugeResult], None] | None = None,
+    policy: QualityPolicy | None = None,
+    filter_period: bool = True,
+    reporting_cutoff: date | None = None,
 ) -> tuple[dict[tuple[str, str], pd.DataFrame], dict[tuple[str, str], GaugeResult]]:
     """Fetch flow and level independently; report progress once both variables finish per gauge."""
+    _coverage_window(start, end, reporting_cutoff)  # reject bad boundaries before any network work
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     statuses: dict[tuple[str, str], GaugeResult] = {}
     callback_lock = threading.Lock()
@@ -466,6 +687,8 @@ def fetch_many(
                 result = future.result()
             except Exception as exc:
                 result = _error_result(exc, var=var)
+            # Attach once, before the callback, so streamed and final payloads carry the same assessment.
+            _attach_coverage(result, start, end, var=var, policy=policy, filter_period=filter_period, reporting_cutoff=reporting_cutoff)
             statuses[(gauge, var)] = result
             notify(status_progress, gauge, var, result)
             if result.status == "ok":

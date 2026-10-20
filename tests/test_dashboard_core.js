@@ -819,3 +819,70 @@ test('phase 2: the "Not retried" note is withheld when the gauge is included in 
   assert.doesNotMatch(html,/Not retried — needs setup/); // Retry re-requests the whole gauge, so the claim would be false
   assert.match(html,/<pre>DETAIL WINS<\/pre>/);assert.doesNotMatch(html,/legacy text/);
 });
+
+// ---- Phase 3: coverage lines, the earned "Complete" label, folding and coverage sorting ---------------------------------
+const coverageBlock=(over={})=>({units:'ML/d',coverage_status:'unassessed_quality_policy',coverage_pct:98,coverage_complete:null,expected_count:50,valid_count:49,
+  last_reading:{timestamp:'2024-02-19',value:12,quality_code:10},gaps:[{start:'2024-01-25',end_exclusive:'2024-01-26',missing_count:1}],gaps_truncated:false,
+  zero_count:0,zero_days_count:0,all_zero:false,excluded_quality_count:0,unknown_quality_count:49,period:{start:'2024-01-01',end_exclusive:'2024-02-20',timezone:null},...over});
+const okWith=over=>({status:'ok',message:'',retryable:false,error:null,attempts:1,max_attempts:3,schema_version:2,coverage:coverageBlock(over)});
+const completeCoverage={coverage_status:'assessed',coverage_pct:100,coverage_complete:true,valid_count:50,gaps:[],unknown_quality_count:0,policy_version:'example-only-v1'};
+const completeFor=v=>okWith({...completeCoverage,units:v==='l'?'m':'ML/d'});
+test('phase 3: coverage lines state facts only; 98 % and an unapproved 100 % are never ticked, and dates ignore the time zone',()=>{
+  const run=observedHarness(), lines=(v,x)=>run(`coverageLines('${v}',${JSON.stringify(x)})`).map(l=>l.text);
+  assert.deepEqual(lines('f',okWith()),['Flow · 98% of days have a usable reading · quality policy pending · last usable reading 19 Feb 2024','⚠ 1 gap (1 day missing)']);
+  assert.deepEqual(lines('f',okWith({coverage_pct:100,gaps:[],valid_count:50})),['Flow · 100% of days have a usable reading · quality policy pending · last usable reading 19 Feb 2024']); // no policy => no tick
+  assert.deepEqual(lines('l',okWith({...completeCoverage,units:'m'})),['Water level ✓ 100% · last usable reading 19 Feb 2024']);
+  assert.deepEqual(lines('f',okWith({zero_count:12,all_zero:false,gaps:[]})).slice(1),['⚠ 0 ML/d recorded on 12 days — check quality codes']);
+  assert.deepEqual(lines('f',okWith({zero_count:3,all_zero:true,gaps:[]})).slice(1),['⚠ Every reading was 0 ML/d — check quality codes']);
+  assert.deepEqual(lines('f',okWith({coverage_status:'unassessed_open_period',coverage_pct:null,expected_count:null,gaps:null})),['Flow · coverage not assessed for all available data · last usable reading 19 Feb 2024']);
+  for(const x of [{status:'error',coverage:coverageBlock({coverage_status:'unavailable_error'})},{status:'running',coverage:null},{status:'retry_wait',coverage:coverageBlock()},{status:'ok'},{status:'ok',coverage:[]},undefined])assert.deepEqual(lines('f',x),[]);
+  // an empty measurement really is 0 % available: show it rather than hide the distinction from "not assessed"
+  assert.deepEqual(lines('f',{status:'empty',coverage:coverageBlock({coverage_pct:0,valid_count:0,last_reading:null,gaps:[{start:'2024-01-01',end_exclusive:'2024-01-04',missing_count:3}]})}),['Flow · 0% of days have a usable reading · quality policy pending','⚠ 1 gap (3 days missing)']);
+  assert.deepEqual([99.6,100,0,null,NaN,'98'].map(p=>run(`pctText(${JSON.stringify(p)===undefined?'undefined':p===null?'null':Number.isNaN(p)?'NaN':JSON.stringify(p)})`)),['99%','100%','0%','','','']);
+  assert.equal(run("formatDay('2024-02-19')"),'19 Feb 2024');assert.equal(run("formatDay('2024-1-9')"),'');assert.equal(run("dayBefore('2024-03-01')"),'2024-02-29');
+});
+test('phase 3: Complete needs BOTH measurements fully backed by coverage; folding additionally needs no warnings',()=>{
+  const run=observedHarness(), call=(fn,states)=>run(`${fn}(${JSON.stringify(states)})`), f=completeFor('f'), l=completeFor('l');
+  assert.equal(call('gaugeComplete',{f,l}),true);assert.equal(call('gaugeFoldable',{f,l}),true);
+  for(const states of [{},{f},{f,l:{status:'ok'}},{f,l:okWith({...completeCoverage,units:'m',coverage_complete:null})},{f,l:{status:'empty'}},{f,l:completeFor('f')},  // wrong units
+    {f,l:okWith({...completeCoverage,units:'m',coverage_status:'unassessed_quality_policy'})},{f,l:okWith({...completeCoverage,units:'m',policy_version:''})},{f,l:okWith({...completeCoverage,units:'m',expected_count:0,valid_count:0})},
+    {f,l:okWith({...completeCoverage,units:'m',coverage_pct:99.9})},{f,l:okWith({...completeCoverage,units:'m',gaps:null})},{f,l:okWith({...completeCoverage,units:'m',gaps:[{start:'2024-01-02',end_exclusive:'2024-01-03',missing_count:1}]})}])assert.equal(call('gaugeComplete',states),false,JSON.stringify(states).slice(0,120));
+  // legitimate zeros keep "Complete" but stop the fold, so the warning stays visible
+  const zeros={f:okWith({...completeCoverage,zero_count:2}),l};
+  assert.equal(call('gaugeComplete',zeros),true);assert.equal(call('gaugeFoldable',zeros),false);
+  assert.equal(run(`coverageSortKey(${JSON.stringify({f:okWith({coverage_pct:80}),l:okWith({coverage_pct:60})})})`),60);
+  assert.equal(run(`coverageSortKey(${JSON.stringify({f:okWith({coverage_pct:80}),l:{status:'ok'}})})`),-1); // unknown first, null never coerced to 0
+});
+test('phase 3: Complete is earned, verified gauges fold, and the rest sort unknown-first then lowest coverage then name',()=>{
+  const h=observedPanelHarness(), doneF=completeFor('f'), doneL=completeFor('l');
+  h.run(`S.obs.job=null;S.obs.completed=true;S.obs.progress=null;S.obs.runIds=['P98','V','P50','U'];
+    for(const [id,name] of [['P98','Zed'],['V','V'],['P50','Alpha'],['U','Bravo']])gauges.push({id,name});
+    S.obs.status={P98:{f:${JSON.stringify(okWith())},l:${JSON.stringify(okWith({units:'m'}))}},V:{f:${JSON.stringify(doneF)},l:${JSON.stringify(doneL)}},
+      P50:{f:${JSON.stringify(okWith({coverage_pct:50,gaps:[],valid_count:25}))},l:${JSON.stringify(okWith({coverage_pct:90,gaps:[]}))}},U:{f:{status:'ok'},l:{status:'ok'}}};`);
+  const html=h.html(), rows=observedStatusRows(html), ids=[...html.matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]);
+  assert.deepEqual(ids,['U','P50','P98','V']); // unknown coverage, then 50 %, then 98 %, then the folded verified gauge
+  assert.match(html,/<details class="obs-complete" data-obs-complete><summary>1 gauge fully covered ▸<\/summary>/);
+  assert.match(rows[3],/<span aria-hidden="true">✓<\/span> Complete/);
+  for(const i of [0,1,2])assert.match(rows[i],/<span aria-hidden="true">✓<\/span> Records returned/);
+  assert.match(html,/Water level · 98% of days have a usable reading · quality policy pending/);
+  assert.ok(html.includes('>Records returned does not mean full coverage of the selected period.</div>'));
+  assert.ok(html.includes('>Assessed period: 1 Jan 2024 to 19 Feb 2024</div>'));
+  // a retry that mixed assessment periods must not present one undifferentiated fully-covered bucket
+  h.run("S.obs.status.V.f.coverage.period={start:'2024-01-01',end_exclusive:'2024-03-01',timezone:null}");
+  const mixed=h.html();assert.doesNotMatch(mixed,/data-obs-complete/);assert.match(mixed,/Gauges were assessed over different periods/);
+  assert.match(observedStatusRows(mixed).find(r=>/<b>V<\/b>/.test(r)),/<\/span> Complete/); // its own badge is still true for its own coverage
+  h.run('S.obs.completed=false;S.obs.job="job"'); // while loading: no fold and no reordering (V still earned its own badge)
+  assert.doesNotMatch(h.html(),/data-obs-complete/);
+  assert.deepEqual([...h.html().matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]),['P98','V','P50','U']);
+});
+test('phase 3: Details list the first 10 gaps while Copy details lists them all, with the assessed period and no invented time zone',()=>{
+  const gaps=Array.from({length:12},(_,i)=>({start:`2024-01-${String(2*i+1).padStart(2,'0')}`,end_exclusive:`2024-01-${String(2*i+2).padStart(2,'0')}`,missing_count:1}));
+  const run=observedHarness(), x=okWith({gaps,valid_count:38,coverage_pct:76,expected_count:50,zero_count:2});
+  const panel=run(`coverageDetailText('Flow',${JSON.stringify(x)},10)`), copy=run(`observedDetailsText('G1','Name',{f:${JSON.stringify(x)},l:{status:'ok'}})`);
+  assert.match(panel,/Gaps \(12\):/);assert.equal((panel.match(/\(1 day\)/g)||[]).length,10);assert.match(panel,/…and 2 more/);
+  assert.equal((copy.match(/\(1 day\)/g)||[]).length,12);assert.doesNotMatch(copy,/…and/);
+  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({period:{start:'2024-01-02',end_exclusive:'2024-01-02',timezone:null},expected_count:0,valid_count:0,coverage_pct:null,gaps:[]}))})`),/No reporting days fall within this assessment period[\s\S]*No reporting days assessed/);
+  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({gaps:null,excluded_quality_count:null}))})`),/Gaps not assessed[\s\S]*Unavailable excluded/);
+  assert.match(run(`coverageDetailText('Flow',${JSON.stringify(okWith({policy_version:'p1',unknown_quality_count:3}))})`),/3 with missing or unrecognised quality codes/);
+  for(const text of [panel,copy]){assert.match(text,/Usable days: 38 of 50 \(76%\)/);assert.match(text,/Period: 1 Jan 2024 to 19 Feb 2024/);assert.match(text,/Time zone: not recorded \(daily values\)/);assert.match(text,/Zero readings: 2/);}
+});

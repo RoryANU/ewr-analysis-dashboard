@@ -632,3 +632,159 @@ def test_ok_and_empty_results_have_no_envelope(getter_stub):
     answer["fetch"] = lambda gauge, start, end, var: pd.DataFrame(columns=observed.RAW_COLUMNS)
     empty = observed.fetch_gauge("412034", date(2000, 1, 1), date(2000, 1, 2))
     assert (empty.status, empty.error) == ("empty", None)
+
+
+# ---- coverage (daily source; no approved quality policy exists, so nothing may be called complete without one) --------
+POLICY = observed.QualityPolicy(frozenset({10}), "test-v1")
+D = date
+
+
+def _cov(days, values, qualities=None, **kwargs):
+    frame = pd.DataFrame({"DATETIME": pd.to_datetime(days), "VALUE": values, "QUALITYCODE": [10] * len(days) if qualities is None else qualities})
+    kwargs.setdefault("var", "F")
+    return observed.assess_coverage(frame, kwargs.pop("start"), kwargs.pop("end"), **kwargs)
+
+
+def test_coverage_zero_is_a_real_observation_and_flow_level_are_independent():
+    zero = _cov(["2024-01-01"], [0], start=D(2024, 1, 1), end=D(2024, 1, 1), policy=POLICY)
+    assert (zero["coverage_pct"], zero["coverage_complete"], zero["zero_count"], zero["all_zero"], zero["units"]) == (100.0, True, 1, True, "ML/d")
+    assert zero["last_reading"] == {"timestamp": "2024-01-01", "value": 0.0, "quality_code": 10}
+    missing_flow = observed.assess_coverage(pd.DataFrame(), D(2024, 1, 1), D(2024, 1, 2), var="F", policy=POLICY)
+    level = _cov(["2024-01-01", "2024-01-02"], [1.2, 1.3], start=D(2024, 1, 1), end=D(2024, 1, 2), var="L", policy=POLICY)
+    assert (missing_flow["coverage_pct"], missing_flow["coverage_complete"], missing_flow["last_reading"]) == (0.0, False, None)
+    assert (level["units"], level["coverage_complete"]) == ("m", True)
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -float("inf"), "abc", "NaN", "0", "1.5", True, pd.NA])
+def test_coverage_invalid_values_are_never_zero_or_present(value):
+    cov = _cov(["2024-01-01"], [value], start=D(2024, 1, 1), end=D(2024, 1, 1), policy=POLICY)
+    assert (cov["valid_count"], cov["zero_count"], cov["all_zero"], cov["last_reading"], cov["coverage_complete"]) == (0, 0, None, None, False)
+
+
+def test_coverage_placeholders_duplicates_and_ordering():
+    cov = _cov(
+        ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-06"],
+        [1, 1, 1, 1, 1, "abc"],
+        [255, 201, 151, 999, 1200, 10],
+        start=D(2024, 1, 1),
+        end=D(2024, 1, 6),
+    )
+    assert (cov["valid_count"], cov["coverage_pct"], cov["excluded_quality_count"], cov["unknown_quality_count"]) == (0, 0.0, 5, 1)
+    assert cov["gaps"] == [{"start": "2024-01-01", "end_exclusive": "2024-01-07", "missing_count": 6}]
+    dup = _cov(["2024-01-03", "2024-01-01", "2024-01-02", "2024-01-01"], [3, 99, 2, 1], start=D(2024, 1, 1), end=D(2024, 1, 3), policy=POLICY)
+    assert (dup["expected_count"], dup["valid_count"], dup["coverage_pct"]) == (3, 3, 100.0)  # duplicates never raise coverage
+    assert dup["last_reading"]["timestamp"] == "2024-01-03"  # chosen by date, not row order
+    bad_last = _cov(["2024-01-01", "2024-01-01"], [7, None], start=D(2024, 1, 1), end=D(2024, 1, 1), policy=POLICY)
+    assert bad_last["valid_count"] == 0  # an invalid final duplicate does not fall back to an earlier value
+
+
+def test_coverage_expected_zero_empty_and_cutoff():
+    none_expected = _cov(["2024-01-02"], [1], start=D(2024, 1, 2), end=D(2024, 1, 2), policy=POLICY, reporting_cutoff=D(2024, 1, 1))
+    assert (none_expected["expected_count"], none_expected["coverage_pct"], none_expected["coverage_complete"], none_expected["gaps"]) == (0, None, None, [])
+    empty = observed.assess_coverage(pd.DataFrame(), D(2024, 1, 1), D(2024, 1, 3), var="F")
+    assert (empty["expected_count"], empty["coverage_pct"], empty["coverage_complete"], empty["all_zero"]) == (3, 0.0, None, None)
+    cut = _cov(["2024-01-01", "2024-01-02", "2024-01-03"], [1, 2, 0], start=D(2024, 1, 1), end=D(2024, 1, 3), policy=POLICY, reporting_cutoff=D(2024, 1, 2))
+    assert (cut["expected_count"], cut["zero_count"], cut["last_reading"]["timestamp"], cut["period"]["end_exclusive"]) == (2, 0, "2024-01-02", "2024-01-03")
+    trusted = _cov(["2024-01-01", "2024-01-02"], [1, 2], start=D(2024, 1, 1), end=D(2024, 1, 2))
+    assert trusted["period"]["end_exclusive"] == "2024-01-03"
+
+
+def test_coverage_policy_gates_completeness_and_98_percent_is_never_complete():
+    days = [d.date().isoformat() for d in pd.date_range("2024-01-01", "2024-02-19") if d.date() != D(2024, 1, 25)]
+    for policy, complete in ((None, None), (POLICY, False)):
+        cov = _cov(days, [1] * len(days), start=D(2024, 1, 1), end=D(2024, 2, 19), policy=policy)
+        assert (cov["expected_count"], cov["valid_count"], cov["coverage_pct"], cov["coverage_complete"]) == (50, 49, 98.0, complete)
+        assert cov["gaps"] == [{"start": "2024-01-25", "end_exclusive": "2024-01-26", "missing_count": 1}]
+    full = {p: _cov(["2024-01-01", "2024-01-02"], [1, 2], start=D(2024, 1, 1), end=D(2024, 1, 2), policy=p) for p in (None, POLICY)}
+    assert full[None]["coverage_pct"] == 100.0 and full[None]["coverage_complete"] is None and full[None]["coverage_status"] == "unassessed_quality_policy"
+    assert full[POLICY]["coverage_complete"] is True and full[POLICY]["coverage_status"] == "assessed" and full[POLICY]["policy_version"] == "test-v1"
+    mixed = _cov(
+        ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-04"], [1, 2, 3, 4], ["10", 42, None, "abc"], start=D(2024, 1, 1), end=D(2024, 1, 4), policy=POLICY
+    )
+    assert (mixed["valid_count"], mixed["excluded_quality_count"], mixed["unknown_quality_count"], mixed["coverage_pct"]) == (1, 1, 2, 25.0)
+    provisional = _cov(["2024-01-01", "2024-01-02", "2024-01-03"], [0, 2, None], [10, None, 42], start=D(2024, 1, 1), end=D(2024, 1, 3))
+    assert (provisional["valid_count"], provisional["unknown_quality_count"], provisional["all_zero"], "policy_version" in provisional) == (2, 3, False, False)
+
+
+def test_coverage_returns_every_gap_without_a_cap():
+    days = list(pd.date_range("2024-01-01", "2024-02-09"))
+    present = [d.date().isoformat() for d in days[::2]]
+    cov = _cov(present, [1] * len(present), start=D(2024, 1, 1), end=D(2024, 2, 9), policy=POLICY)
+    assert len(cov["gaps"]) == 20 and cov["gaps_truncated"] is False
+    assert sum(g["missing_count"] for g in cov["gaps"]) == 20
+
+
+@pytest.mark.parametrize("with_policy", [False, True])
+def test_coverage_unfiltered_runs_are_not_assessed_against_a_retrieval_boundary(with_policy):
+    cov = _cov(
+        ["2024-01-01", "2024-01-02"],
+        [0, 2],
+        start=D(1890, 1, 1),
+        end=D(2024, 1, 3),
+        policy=POLICY if with_policy else None,
+        filter_period=False,
+        reporting_cutoff=D(2024, 1, 2),
+    )
+    assert cov["coverage_status"] == "unassessed_open_period"
+    assert (cov["coverage_pct"], cov["coverage_complete"], cov["expected_count"], cov["gaps"]) == (None, None, None, None)
+    assert (cov["valid_count"], cov["zero_days_count"], cov["last_reading"]["timestamp"]) == (2, 1, "2024-01-02")
+    empty = observed.assess_coverage(pd.DataFrame(), D(1890, 1, 1), D(2024, 1, 1), var="F", filter_period=False)
+    assert (empty["valid_count"], empty["coverage_pct"], empty["expected_count"]) == (0, None, None)
+
+
+@pytest.mark.parametrize(("var", "units"), [("X", None), ("F", "m"), ("L", "feet")])
+def test_coverage_unknown_or_incompatible_units_block_assessment(var, units):
+    frame = pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01"]), "VALUE": [1], "QUALITYCODE": [10]})
+    if units:
+        frame.attrs["units"] = units
+    cov = observed.assess_coverage(frame, D(2024, 1, 1), D(2024, 1, 1), var=var, policy=POLICY)
+    assert cov["coverage_status"] == "unassessed_units" and cov["units"] is None
+    assert (cov["coverage_pct"], cov["coverage_complete"], cov["expected_count"], cov["valid_count"], cov["gaps"]) == (None,) * 5
+
+
+def test_coverage_policy_cannot_approve_removed_placeholders():
+    with pytest.raises(ValueError):
+        observed.QualityPolicy(frozenset({255}), "v1")
+    with pytest.raises(ValueError):
+        observed.QualityPolicy(frozenset({10}), " ")
+
+
+def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
+    err = observed._attach_coverage(
+        observed.GaugeResult(pd.DataFrame(), "error", "x", True, {"code": "UNEXPECTED_ERROR"}, 2), D(2024, 1, 1), D(2024, 1, 3), var="F", policy=POLICY
+    )
+    assert err.attempts == 2 and err.coverage["coverage_status"] == "unavailable_error" and err.coverage["units"] == "ML/d"
+    assert all(
+        err.coverage[k] is None
+        for k in ("coverage_pct", "coverage_complete", "expected_count", "valid_count", "last_reading", "gaps", "zero_count", "all_zero")
+    )
+    for status in ("running", "retry_wait"):
+        assert observed._attach_coverage(observed.GaugeResult(pd.DataFrame(), status), D(2024, 1, 1), D(2024, 1, 3), var="F").coverage is None
+
+
+def test_fetch_many_attaches_coverage_before_terminal_callbacks_and_passes_period_flags(monkeypatch):
+    def fake_fetch_gauge(gauge, start, end, var, **kwargs):
+        if var == "F":
+            return observed.GaugeResult(pd.DataFrame(), "empty")
+        return observed.GaugeResult(pd.DataFrame({"DATETIME": pd.to_datetime(["2024-01-01"]), "VALUE": [1.2], "QUALITYCODE": [10]}), "ok")
+
+    monkeypatch.setattr(observed, "fetch_gauge", fake_fetch_gauge)
+    seen = []
+    _, statuses = observed.fetch_many(
+        ["g"],
+        D(2024, 1, 1),
+        D(2024, 1, 2),
+        status_progress=lambda g, v, r: seen.append((g, v, r.coverage is not None)),
+        policy=POLICY,
+        reporting_cutoff=D(2024, 1, 1),
+    )
+    assert sorted(seen) == [("g", "F", True), ("g", "L", True)]
+    assert statuses[("g", "F")].coverage["coverage_complete"] is False and statuses[("g", "L")].coverage["coverage_complete"] is True
+    _, open_period = observed.fetch_many(["g"], D(1890, 1, 1), D(2024, 1, 1), filter_period=False)
+    assert all(r.coverage["coverage_status"] == "unassessed_open_period" for r in open_period.values())
+
+
+def test_coverage_ignores_rows_outside_the_window():
+    inside = _cov(["2024-01-02", "2024-01-03"], [1, 0], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
+    noisy = _cov(["2023-12-31", "2024-01-02", "2024-01-03", "2024-01-04"], [0, 1, 0, 9], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
+    assert noisy == inside  # zeros, later timestamps or placeholders outside [start, end] change nothing
