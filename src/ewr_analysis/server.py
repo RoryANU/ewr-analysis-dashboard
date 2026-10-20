@@ -66,8 +66,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import parse_qs, urlparse, urlsplit
 
-import observed
-from drought_windows import DROUGHTS, window_dates
+from ewr_analysis import observed
+from ewr_analysis.drought_windows import DROUGHTS, window_dates
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent  # repository root: the page is served from here; py_ewr comes from pip (pip install -r requirements.txt)
@@ -233,7 +233,7 @@ def load_frames(fmt: str, path: str, sub: str = "", tds_factor: float = 0.6) -> 
         raw = pd.read_csv(path, index_col="Date")
         df_F, df_L = sc.cleaner_ten_thousand_year(raw, default_sheet)
     elif fmt == "Northern connectivity":
-        import northern_connectivity as nc
+        from ewr_analysis import northern_connectivity as nc
 
         scenarios = nc.unpack_northern_connectivity(path)  # one workbook, several scenarios: pick one by its code
         key = next((k for k in scenarios if k.lower() == sub.lower()), None) if sub else next(iter(scenarios), None)
@@ -775,7 +775,7 @@ def observed_units() -> list[dict[str, Any]]:
 
 def uewr_worker(job_id: str, ids: list[str], scns: list[str]) -> None:
     """Evaluate saved user EWRs via the existing job/polling contract."""
-    import custom_ewr
+    from ewr_analysis import custom_ewr
 
     job = JOBS[job_id]
     try:
@@ -1031,7 +1031,7 @@ def _builtin_ewr_list(gauge: str) -> list[dict[str, Any]]:
 
 def ewr_list(gauge: str) -> list[dict[str, Any]]:
     """Stock flow rules plus every user EWR kind, merged afresh outside the immutable diagnostics cache."""
-    import custom_ewr
+    from ewr_analysis import custom_ewr
 
     return _builtin_ewr_list(gauge) + custom_ewr.ewr_list(gauge)
 
@@ -1079,14 +1079,14 @@ def _builtin_diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
 
 def diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
     """Every EWR rule at a gauge, stock and user-defined, with its handler and whether detailed diagnostics are offered."""
-    import custom_ewr
+    from ewr_analysis import custom_ewr
 
     return _builtin_diagnostic_inventory(gauge) + custom_ewr.inventory(gauge)
 
 
 def diagnostic_payload(gauge: str) -> dict[str, Any]:
     """Cache stock diagnostics only; registry definitions are merged at request time."""
-    import custom_ewr
+    from ewr_analysis import custom_ewr
 
     validate_diagnostic_gauge(gauge)
     with _EWR_LOCK:
@@ -1135,7 +1135,7 @@ def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]
     import pandas as pd
     from py_ewr.scenario_handling import ScenarioHandler
 
-    import custom_ewr
+    from ewr_analysis import custom_ewr
 
     is_user_ewr = code.startswith("U_")
     spec = custom_ewr.find(code, gauge) if is_user_ewr else None
@@ -1224,7 +1224,7 @@ def _calculate_stock_ewr(scn_id: str, gauge: str, ewr_row: Any) -> tuple[Any, An
 def _calculate_user_ewr(scn_id: str, gauge: str, spec: dict[str, Any], ewr_row: Any) -> tuple[Any, Any, Any, Any, Any, dict[str, str]]:
     """custom_ewr's evaluation of one user EWR: (df_F, df_L, results, events, series, handlers). The series is the level for a
     level EWR, and the two gauges' summed flow for a two-gauge EWR."""
-    import custom_ewr
+    from ewr_analysis import custom_ewr
 
     df_F, df_L = custom_ewr.frames(scn_id, spec)
     config = custom_ewr.calc_config([spec])
@@ -1681,7 +1681,7 @@ def regimes(q: dict[str, str]) -> dict[str, Any]:
     tool's parameter sheet: the lowest flow threshold among the gauge's flow EWRs in that regime, with EWR codes assigned to regimes
     by the MDBA pipeline mapping (flow_regime_mappings). For each threshold and complete water year (whole year, not each EWR's
     timing window): days at or above it, events (runs of consecutive days at or above) starting in the year and the longest one."""
-    from flow_regime_mappings import regimes_for
+    from ewr_analysis.flow_regime_mappings import regimes_for
 
     gauge = q["gauge"]
     ewrs_by_regime: dict[str, list[dict[str, Any]]] = {}
@@ -2025,7 +2025,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._json({"job": job_id})
 
     def _user_ewr_post(self, path: str, query: str) -> None:
-        import custom_ewr
+        from ewr_analysis import custom_ewr
 
         if not self._origin_allowed():
             return self._json({"message": "origin or host not allowed"}, 403)
@@ -2061,7 +2061,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._deny()
 
         if url.path in ("/api/uewr", "/api/uewr/schema"):
-            import custom_ewr
+            from ewr_analysis import custom_ewr
 
             return self._json({"specs": list(custom_ewr.load_registry().values())} if url.path == "/api/uewr" else custom_ewr.schema())
         if url.path == "/api/forget":
@@ -2250,8 +2250,7 @@ def main(argv=None):
     open_browser = "--no-browser" not in args
     port_args = [a for a in args if a.isdigit()]
     host = next((a.split("=", 1)[1] for a in args if a.startswith("--host=")), "127.0.0.1")
-    import build_dashboard
-    import custom_ewr
+    from ewr_analysis import build_dashboard, custom_ewr
 
     build_dashboard.ensure_built()  # the page is generated, not committed
     custom_ewr.sweep_sheets()
@@ -2274,5 +2273,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.modules.setdefault("server", sys.modules[__name__])
+    sys.modules.setdefault("ewr_analysis.server", sys.modules[__name__])
     main()

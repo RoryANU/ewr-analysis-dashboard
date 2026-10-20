@@ -157,7 +157,7 @@ class SkipScenario(ValueError):
 
 def _store() -> Path:
     """The server's upload store, read at call time so tests (and worker processes) can redirect it."""
-    import server
+    from ewr_analysis import server
 
     return server.STORE
 
@@ -184,8 +184,8 @@ def base_sheet_raw() -> pd.DataFrame:
 @lru_cache(maxsize=1)
 def review_context() -> dict[str, Any]:
     """Use the review's gauges, gauge/PU pairs, objectives and regimes, with the page's gauge alias."""
-    import server
-    from flow_regime_mappings import regimes_for
+    from ewr_analysis import server
+    from ewr_analysis.flow_regime_mappings import regimes_for
 
     pairs: set[tuple[str, str]] = set()
     objectives: set[str] = set()
@@ -520,7 +520,7 @@ def _atomic_write(path: Path, data: bytes) -> None:
 
 def _invalidate(code: str) -> None:
     """Drop every cached evaluation and job result of a user EWR code after its definition changes or is deleted."""
-    import server
+    from ewr_analysis import server
 
     for key in list(server._EVAL_CACHE):
         if key[2] == code:
@@ -537,7 +537,7 @@ def _invalidate(code: str) -> None:
 
 def cache_evaluation(spec: dict, key: tuple, result: dict) -> bool:
     """Publish diagnostics under the registry lock so an in-flight request cannot undo deletion."""
-    import server
+    from ewr_analysis import server
 
     with _LOCK:
         current = load_registry().get(spec["id"])
@@ -638,7 +638,7 @@ def calc_config(specs: list[dict]) -> dict:
 def frames(scn_id: str, spec: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(df_F, df_L) for evaluating a user EWR on a stored scenario: its gauge(s)' series, trimmed to the observed span and with
     every calendar day present. Raises SkipScenario when the scenario cannot be evaluated for this definition."""
-    import server
+    from ewr_analysis import server
 
     if not isinstance(scn_id, str) or not SCN_RE.fullmatch(scn_id):
         raise ValidationError({"scn": "Invalid uploaded scenario id"})
@@ -692,7 +692,7 @@ def calculate(spec: dict, df_F: pd.DataFrame, df_L: pd.DataFrame, rows: pd.DataF
 
 def evaluate(spec: dict, scn_id: str) -> list[dict]:
     """A user EWR on one stored scenario, as dashboard rows (server.summarise_rows), one per planning unit."""
-    import server
+    from ewr_analysis import server
 
     spec = validate_spec(spec)
     df_F, df_L = frames(scn_id, spec)
@@ -778,7 +778,7 @@ def sweep_sheets() -> None:
 
 def _pair(spec: dict, scn_id: str, store_path: str) -> tuple[list[dict], str | None, str | None]:
     """Evaluate one (definition, scenario) pair as (rows, skip reason, error); runs in a worker process."""
-    import server
+    from ewr_analysis import server
 
     server.STORE = Path(store_path)  # explicit for spawned workers, including tests with an isolated STORE
     try:

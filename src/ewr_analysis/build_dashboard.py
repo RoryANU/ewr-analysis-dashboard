@@ -17,8 +17,8 @@ from typing import Any
 import pandas as pd
 from shapely.geometry import mapping, shape
 
-from drought_windows import meta as drought_meta
-from flow_regime_mappings import regimes_for
+from ewr_analysis.drought_windows import meta as drought_meta
+from ewr_analysis.flow_regime_mappings import regimes_for
 
 HERE = Path(__file__).parent  # src/
 ROOT = HERE.parent  # repository root; inputs are in data/, the page is written here
