@@ -20,7 +20,7 @@ from concurrent.futures.process import BrokenProcessPool
 from datetime import UTC, date, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from py_ewr import data_inputs, evaluate_EWRs
@@ -480,7 +480,7 @@ def _normalise_salinity(salinity: Any, kind: str, params: dict[str, Any], errors
         return None
     if not isinstance(salinity, dict) or salinity.get("unit") not in ("EC", "TDS") or salinity.keys() - {"unit", "tds_factor"}:
         errors["salinity"] = "Specify EC or TDS and a positive TDS-to-EC factor"
-        return salinity
+        return cast(dict[str, Any] | None, salinity)
     try:
         factor = _number(salinity.get("tds_factor", 0.6))
         if factor <= 0:
@@ -490,7 +490,7 @@ def _normalise_salinity(salinity: Any, kind: str, params: dict[str, Any], errors
         return {"unit": "EC", "tds_factor": factor}
     except (ValueError, TypeError, OverflowError):
         errors["salinity.tds_factor"] = "Factor must be finite and positive"
-        return salinity
+        return cast(dict[str, Any] | None, salinity)
 
 
 def _convert_tds_thresholds(params: dict[str, Any], factor: float, errors: dict[str, str]) -> None:
@@ -576,7 +576,7 @@ def _merged_bytes(specs: list[dict]) -> bytes:
     """The base parameter sheet with the given user EWRs' rows appended, as py_ewr reads it (cp1252 CSV)."""
     raw = base_sheet_raw()
     rows = [sheet_rows(spec, raw) for spec in sorted(specs, key=lambda s: s["code"])]
-    return pd.concat([raw, *rows], ignore_index=True).to_csv(index=False, lineterminator="\n").encode("cp1252")
+    return cast(bytes, pd.concat([raw, *rows], ignore_index=True).to_csv(index=False, lineterminator="\n").encode("cp1252"))
 
 
 def sheet_rows(spec: dict, sheet_raw: pd.DataFrame) -> pd.DataFrame:
@@ -627,7 +627,7 @@ def read_sheet(path: str) -> pd.DataFrame:
 
 def calc_config(specs: list[dict]) -> dict:
     """py_ewr's handler dispatch config with each user EWR's dispatch key added under its chosen handler."""
-    cfg = copy.deepcopy(data_inputs.get_ewr_calc_config(None))
+    cfg: dict = copy.deepcopy(data_inputs.get_ewr_calc_config(None))
     for spec in specs:
         kind = "F" if spec["kind"] == "S" else spec["kind"]  # salinity runs through py_ewr's flow handlers
         key = f"{spec['code']}-{'multigauge' if spec.get('second_gauge') else 'single'}-{kind}"

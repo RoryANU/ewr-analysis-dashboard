@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
+from typing import Any, cast
 
 import pandas as pd
 import pytest
@@ -396,14 +397,14 @@ def test_error_envelope_codes(exc, code, retryable):
     assert result.message == f"{type(exc).__name__}: {exc}"
     assert result.retryable is retryable
     assert result.attempts == 1
-    assert result.error["code"] == code
-    assert result.error["retryable"] is retryable
-    assert result.error["measurement"] == "level"
-    assert result.error["attempts"] == 1
-    assert result.error["max_attempts"] == 3
-    assert len(result.error["diagnostic_id"]) == 32 and int(result.error["diagnostic_id"], 16) >= 0
-    assert result.error["detail"] == result.message
-    assert result.error["retry_after_s"] == (60.0 if code == "SERVICE_BUSY" else None)
+    assert cast(dict, result.error)["code"] == code
+    assert cast(dict, result.error)["retryable"] is retryable
+    assert cast(dict, result.error)["measurement"] == "level"
+    assert cast(dict, result.error)["attempts"] == 1
+    assert cast(dict, result.error)["max_attempts"] == 3
+    assert len(cast(dict, result.error)["diagnostic_id"]) == 32 and int(cast(dict, result.error)["diagnostic_id"], 16) >= 0
+    assert cast(dict, result.error)["detail"] == result.message
+    assert cast(dict, result.error)["retry_after_s"] == (60.0 if code == "SERVICE_BUSY" else None)
 
 
 @pytest.mark.parametrize(
@@ -424,8 +425,8 @@ def test_error_envelope_codes(exc, code, retryable):
 def test_http_envelope_preserves_retryability(status, code, retryable):
     """Verify HTTP status codes determine both error codes and retryability."""
     result = observed._error_result(HTTPError(f"HTTP {status}"), var="F")
-    assert result.error["code"] == code
-    assert result.retryable is retryable and result.error["retryable"] is retryable
+    assert cast(dict, result.error)["code"] == code
+    assert result.retryable is retryable and cast(dict, result.error)["retryable"] is retryable
 
 
 def test_requests_and_json_error_classification():
@@ -434,9 +435,9 @@ def test_requests_and_json_error_classification():
 
     for exc in (RequestTimeout("timed out"), ConnectionError("connection lost")):
         result = observed._error_result(exc, var="F")
-        assert result.error["code"] == "NETWORK_TIMEOUT" and result.retryable is True
+        assert cast(dict, result.error)["code"] == "NETWORK_TIMEOUT" and result.retryable is True
     result = observed._error_result(json.JSONDecodeError("bad JSON", "", 0), var="F")
-    assert result.error["code"] == "UNEXPECTED_ERROR" and result.retryable is True
+    assert cast(dict, result.error)["code"] == "UNEXPECTED_ERROR" and result.retryable is True
 
 
 def test_error_details_and_legacy_message_are_redacted():
@@ -447,17 +448,17 @@ def test_error_details_and_legacy_message_are_redacted():
         "Authorization: Bearer bearer-secret"
     )
     result = observed._error_result(exc, var="F")
-    for text in (result.message, result.error["detail"]):
+    for text in (result.message, cast(dict, result.error)["detail"]):
         assert "https://example.test/data" in text and "[REDACTED]" in text
         for secret in ("alice", "password123", "query-secret", "fragment-secret", "key-secret", "token-secret", "client-secret", "bearer-secret"):
             assert secret not in text
-    assert result.message == result.error["detail"]
+    assert result.message == cast(dict, result.error)["detail"]
 
 
 def test_setup_error_uses_one_attempt_without_sleep(getter_stub, monkeypatch):
     """Verify a missing station cache fails once without scheduling a retry."""
     calls, answer = getter_stub
-    sleeps = []
+    sleeps: list[float] = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
@@ -467,16 +468,16 @@ def test_setup_error_uses_one_attempt_without_sleep(getter_stub, monkeypatch):
     answer["fetch"] = fail
     result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), var="L")
     assert len(calls) == 1 and sleeps == []
-    assert result.attempts == result.error["attempts"] == 1
-    assert result.error["measurement"] == "level"
-    assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
+    assert result.attempts == cast(dict, result.error)["attempts"] == 1
+    assert cast(dict, result.error)["measurement"] == "level"
+    assert cast(dict, result.error)["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
 
 
 @pytest.mark.parametrize("retries", [2, 10])
 def test_busy_exhaustion_reports_actual_attempts_and_last_sleep(getter_stub, monkeypatch, retries):
     """Verify busy retries are capped at three attempts and disclose the final backoff."""
     calls, answer = getter_stub
-    sleeps = []
+    sleeps: list[float] = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
@@ -487,16 +488,16 @@ def test_busy_exhaustion_reports_actual_attempts_and_last_sleep(getter_stub, mon
     result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), retries=retries)
     assert len(calls) == 3 and sleeps == [10.0, 30.0]
     assert result.status == "error" and result.retryable is True
-    assert result.error["code"] == "SERVICE_BUSY"
-    assert result.attempts == result.error["attempts"] == 3 and result.error["max_attempts"] == 3
-    assert result.error["retry_after_s"] == 30.0
+    assert cast(dict, result.error)["code"] == "SERVICE_BUSY"
+    assert result.attempts == cast(dict, result.error)["attempts"] == 3 and cast(dict, result.error)["max_attempts"] == 3
+    assert cast(dict, result.error)["retry_after_s"] == 30.0
 
 
 @pytest.mark.parametrize("seconds", [0.0, 7.0, 45.0])
 def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypatch, seconds):
     """Verify the service retry delay overrides the last sleep in the error envelope."""
     calls, answer = getter_stub
-    sleeps = []
+    sleeps: list[float] = []
     inflight: list[observed.GaugeResult] = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
     monkeypatch.setattr(observed, "_emit_inflight", inflight.append)
@@ -510,18 +511,18 @@ def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypa
     assert len(calls) == 3
     assert sleeps == [max(10.0, seconds), max(30.0, seconds)]
     assert [result.error["retry_after_s"] for result in inflight if result.status == "retry_wait" and result.error is not None] == sleeps
-    assert result.error["retry_after_s"] == seconds and result.attempts == 3
+    assert cast(dict, result.error)["retry_after_s"] == seconds and result.attempts == 3
 
 
 def test_busy_without_header_or_sleep_uses_sixty_seconds():
     """Verify busy errors without delay metadata advertise a sixty-second cooldown."""
-    assert observed._error_result(RuntimeError("source busy"), var="F").error["retry_after_s"] == 60.0
+    assert cast(dict, observed._error_result(RuntimeError("source busy"), var="F").error)["retry_after_s"] == 60.0
 
 
 def test_deadline_can_end_busy_query_before_three_attempts(getter_stub, monkeypatch):
     """Verify the advisory deadline prevents a retry that cannot fit within it."""
     calls, answer = getter_stub
-    sleeps = []
+    sleeps: list[float] = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
     monkeypatch.setattr(observed.time, "monotonic", lambda: 0.0)
 
@@ -533,13 +534,13 @@ def test_deadline_can_end_busy_query_before_three_attempts(getter_stub, monkeypa
     result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), timeout=1.0)
     assert len(calls) == 1 and sleeps == []
     assert result.status == "error" and result.retryable is True and result.attempts == 1
-    assert result.error["retry_after_s"] == 60.0
+    assert cast(dict, result.error)["retry_after_s"] == 60.0
 
 
 def test_timeout_exhaustion_reports_three_attempts(getter_stub, monkeypatch):
     """Verify repeated timeouts disclose three attempts and the advisory timeout message."""
     calls, answer = getter_stub
-    sleeps = []
+    sleeps: list[float] = []
     monkeypatch.setattr(observed.time, "sleep", sleeps.append)
 
     def fail(*args):
@@ -549,8 +550,8 @@ def test_timeout_exhaustion_reports_three_attempts(getter_stub, monkeypatch):
     answer["fetch"] = fail
     result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
     assert len(calls) == 3 and sleeps == [10.0, 30.0]
-    assert result.error["code"] == "NETWORK_TIMEOUT" and result.error["retry_after_s"] is None
-    assert result.attempts == result.error["attempts"] == 3
+    assert cast(dict, result.error)["code"] == "NETWORK_TIMEOUT" and cast(dict, result.error)["retry_after_s"] is None
+    assert result.attempts == cast(dict, result.error)["attempts"] == 3
     assert result.message == "TimeoutError: Gauge 412033 exceeded 90 s advisory timeout"
 
 
@@ -565,15 +566,15 @@ def test_inflight_order_and_completion_only_status_progress(getter_stub, monkeyp
 
     def sleep(delay):
         """Record a retry delay together with its measurement context."""
-        events.append((observed._FETCH_STATE.get().var, "sleep", delay))
+        events.append((cast(observed._MeasurementState, observed._FETCH_STATE.get()).var, "sleep", delay))
 
     def inflight(gauge, var, result):
         """Record and validate running and retry-wait notifications."""
         assert gauge == "412033"
         events.append((var, result.status, result.attempts))
         if result.status == "retry_wait":
-            assert result.error["code"] == "SERVICE_BUSY" and result.error["attempts"] == result.attempts
-            assert result.error["retry_after_s"] == (10.0 if result.attempts == 1 else 30.0)
+            assert cast(dict, result.error)["code"] == "SERVICE_BUSY" and cast(dict, result.error)["attempts"] == result.attempts
+            assert cast(dict, result.error)["retry_after_s"] == (10.0 if result.attempts == 1 else 30.0)
         else:
             assert result.status == "running" and result.error is None
 
@@ -643,8 +644,8 @@ def test_attempts_across_two_cache_ranges(getter_stub, monkeypatch, terminal_sta
     result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
     assert len(calls) == 3 and result.status == terminal_status
     if terminal_status == "error":
-        assert result.attempts == result.error["attempts"] == 1  # the failing range had one attempt
-        assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
+        assert result.attempts == cast(dict, result.error)["attempts"] == 1  # the failing range had one attempt
+        assert cast(dict, result.error)["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
     else:
         assert result.attempts == 2 and result.error is None and result.retryable is False  # worst range, not 3 requests
 
@@ -655,7 +656,7 @@ def test_invalid_date_range_keeps_legacy_message_and_adds_envelope(getter_stub):
     result = observed.fetch_gauge("412033", date(2000, 1, 2), date(2000, 1, 1))
     assert calls == [] and result.status == "error"
     assert result.message == "Start date must not follow end date" and result.retryable is False
-    assert result.error["code"] == "INVALID_REQUEST" and result.attempts == result.error["attempts"] == 1
+    assert cast(dict, result.error)["code"] == "INVALID_REQUEST" and result.attempts == cast(dict, result.error)["attempts"] == 1
 
 
 def test_ok_and_empty_results_have_no_envelope(getter_stub):
@@ -878,9 +879,10 @@ def test_policy_is_frozen_and_validated():
     source["T"][2] = "F"  # later edits to the caller's dict never reach a published policy
     assert 2 not in policy.tables["T"]
     with pytest.raises(TypeError):
-        policy.tables["T"][3] = "A"
+        cast(dict, policy.tables["T"])[3] = "A"
     with pytest.raises(TypeError):
-        policy.tables["U"] = {1: "A"}
+        cast(dict, policy.tables)["U"] = {1: "A"}
+    bad: Any
     for bad in ({"T": {}}, {"T": {"1": "A"}}, {"T": {1: "Z"}}, {"T": {True: "A"}}):
         with pytest.raises(ValueError):
             observed.QualityPolicy(frozenset("A"), bad, "v")
@@ -914,7 +916,7 @@ def test_fetch_many_cleans_the_series_it_returns_and_reports_empty_when_nothing_
     frames, statuses = observed.fetch_many(["g"], D(2024, 1, 1), D(2024, 1, 2), policy=POLICY)
     assert list(frames[("g", "F")]["VALUE"]) == [1.0] and statuses[("g", "F")].status == "ok"
     assert statuses[("g", "L")].status == "empty" and ("g", "L") not in frames  # every reading was grade F
-    assert statuses[("g", "L")].coverage["valid_count"] == 0 and statuses[("g", "L")].coverage["excluded_quality_count"] == 2
+    assert cast(dict, statuses[("g", "L")].coverage)["valid_count"] == 0 and cast(dict, statuses[("g", "L")].coverage)["excluded_quality_count"] == 2
 
 
 def test_policy_load_failure_is_loud_and_not_cached(monkeypatch, tmp_path, caplog):
@@ -959,7 +961,7 @@ def test_bomwater_cache_lives_in_the_repo_and_needs_no_download(monkeypatch):
 def test_a_missing_shipped_station_file_is_still_reported_as_a_setup_error():
     """Verify missing repository station metadata remains a nonretryable setup failure."""
     result = observed._error_result(FileNotFoundError(f"[Errno 2] No such file or directory: '{observed.BOM_WATER_HOME}/bom_water/cache/stations.json'"))
-    assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
+    assert cast(dict, result.error)["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
 
 
 def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
@@ -967,9 +969,9 @@ def test_attach_coverage_is_terminal_only_and_errors_are_unavailable():
     err = observed._attach_coverage(
         observed.GaugeResult(pd.DataFrame(), "error", "x", True, {"code": "UNEXPECTED_ERROR"}, 2), D(2024, 1, 1), D(2024, 1, 3), var="F", policy=POLICY
     )
-    assert err.attempts == 2 and err.coverage["coverage_status"] == "unavailable_error" and err.coverage["units"] == "ML/d"
+    assert err.attempts == 2 and cast(dict, err.coverage)["coverage_status"] == "unavailable_error" and cast(dict, err.coverage)["units"] == "ML/d"
     assert all(
-        err.coverage[k] is None
+        cast(dict, err.coverage)[k] is None
         for k in ("coverage_pct", "coverage_complete", "expected_count", "valid_count", "last_reading", "gaps", "zero_count", "all_zero")
     )
     for status in ("running", "retry_wait"):
@@ -996,9 +998,9 @@ def test_fetch_many_attaches_coverage_before_terminal_callbacks_and_passes_perio
         reporting_cutoff=D(2024, 1, 1),
     )
     assert sorted(seen) == [("g", "F", True), ("g", "L", True)]
-    assert statuses[("g", "F")].coverage["coverage_complete"] is False and statuses[("g", "L")].coverage["coverage_complete"] is True
+    assert cast(dict, statuses[("g", "F")].coverage)["coverage_complete"] is False and cast(dict, statuses[("g", "L")].coverage)["coverage_complete"] is True
     _, open_period = observed.fetch_many(["g"], D(1890, 1, 1), D(2024, 1, 1), filter_period=False)
-    assert all(r.coverage["coverage_status"] == "unassessed_open_period" for r in open_period.values())
+    assert all(cast(dict, r.coverage)["coverage_status"] == "unassessed_open_period" for r in open_period.values())
 
 
 def test_coverage_ignores_rows_outside_the_window():

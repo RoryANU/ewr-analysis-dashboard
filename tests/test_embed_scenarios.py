@@ -48,7 +48,7 @@ class TestResolvePath:
 
 
 @pytest.fixture
-def template(tmp_path) -> Path:
+def template(tmp_path: Path) -> Path:
     t = tmp_path / "page.html"
     t.write_text(f"<html><script>{em.PLACEHOLDER}</script></html>")
     return t

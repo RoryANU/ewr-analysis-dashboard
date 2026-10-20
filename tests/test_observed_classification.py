@@ -9,7 +9,7 @@ import sys
 import time
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import pytest
@@ -135,10 +135,11 @@ def test_message_rules_map_to_codes_and_javascript_only_reads_codes():
     start, end = "// ---- observed result classification", "function observedPanel(){"
     assert template.count(start) == template.count(end) == 1
     helpers = template[template.index(start) : template.index(end)]
+    result: observed.GaugeResult | subprocess.CompletedProcess[str]
     for case in cases:  # Python is the only place that reads exception text
         result = observed._error_result(RuntimeError(case["message"]))
-        assert result.retryable is case["retryable"] and result.error["code"] == case["code"]
-        assert result.error["retryable"] is case["retryable"]
+        assert result.retryable is case["retryable"] and cast(dict, result.error)["code"] == case["code"]
+        assert cast(dict, result.error)["retryable"] is case["retryable"]
     for code in {case["code"] for case in cases} | {"CONFIGURATION_REQUIRED", "INVALID_REQUEST", "NETWORK_TIMEOUT"}:
         assert code in helpers  # every backend code has front-end copy
     node = shutil.which("node") or str(Path(sys.executable).with_name("node"))

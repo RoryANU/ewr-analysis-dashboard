@@ -96,7 +96,7 @@ def _safe_id(value: str | None) -> str:
 def _iso_date(value: Any) -> str:
     import pandas as pd
 
-    return pd.Timestamp(value).strftime("%Y-%m-%d")
+    return cast(str, pd.Timestamp(value).strftime("%Y-%m-%d"))
 
 
 def _is_multigauge(value: Any) -> bool:
@@ -1050,7 +1050,7 @@ def diagnostic_handlers() -> dict[str, str]:
         if "all_handlers" not in _EWR_CACHE:
             cfg = data_inputs.get_ewr_calc_config(None)
             _EWR_CACHE["all_handlers"] = {key: handler for handler, keys in cfg.items() for key in keys}
-        return _EWR_CACHE["all_handlers"]
+        return cast(dict[str, str], _EWR_CACHE["all_handlers"])
 
 
 def _builtin_diagnostic_inventory(gauge: str) -> list[dict[str, Any]]:
@@ -1125,7 +1125,7 @@ _EVAL_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 
 def _water_year(d: Any) -> int:
     """py_ewr's water year label: the calendar year it starts in (1 Jul Y - 30 Jun Y+1)."""
-    return d.year if d.month >= 7 else d.year - 1
+    return cast(int, d.year if d.month >= 7 else d.year - 1)
 
 
 def ewr_eval(scn_id: str, gauge: str, code: str, pu: str = "") -> dict[str, Any]:
@@ -1586,7 +1586,7 @@ def mcnemar_p(gained: int, lost: int) -> float | None:
     n = gained + lost
     if n == 0:
         return None
-    return round(min(1.0, 2 * sum(math.comb(n, k) for k in range(min(gained, lost) + 1)) / 2**n), 4)
+    return cast(float, round(min(1.0, 2 * sum(math.comb(n, k) for k in range(min(gained, lost) + 1)) / 2**n), 4))
 
 
 def _feb29(w: int) -> bool:
@@ -1743,7 +1743,7 @@ def heatmap(q: dict[str, str]) -> dict[str, Any]:
     af, n_years = achievement_frequencies(df.to_numpy(dtype=float), df.index, thresholds, durations, sm, em, consec)
 
     def as_grid(a: Any) -> list[list[float]]:
-        return np.round(a.T, 3).tolist()  # (durations x thresholds), as plotted
+        return cast(list[list[float]], np.round(a.T, 3).tolist())  # (durations x thresholds), as plotted
 
     out = {
         "thresholds": thresholds.tolist(),
@@ -1984,7 +1984,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._set_cookie = matches[2]  # opened from the printed address: remember the token for the page's API calls
         return any(matches)
 
-    def _deny(self):
+    def _deny(self) -> None:
         self._json({"message": "access token required: use the address printed when the server started"}, 401)
 
     def _origin_allowed(self) -> bool:
