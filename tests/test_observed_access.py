@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import observed
+from ewr_analysis import observed
 
 SRC = Path(__file__).resolve().parents[1] / "src"
 FORBIDDEN = (

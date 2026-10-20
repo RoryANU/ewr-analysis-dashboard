@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import build_dashboard as bd
+from ewr_analysis import build_dashboard as bd
 
 MINI = Path(__file__).parent / "fixtures" / "mini"
 NS = 28

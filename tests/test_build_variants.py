@@ -1,13 +1,11 @@
-import sys
 import unittest
 from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+from ewr_analysis.build_dashboard import detect_variant_conflicts
 
-from build_dashboard import detect_variant_conflicts  # noqa: E402
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_detector():

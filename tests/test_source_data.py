@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import build_dashboard as bd
+from ewr_analysis import build_dashboard as bd
 
 ROOT = Path(__file__).resolve().parents[1]
 TOTAL_DAYS = 47117  # 129 water years (1 Jul 1895 - 30 Jun 2024) x 365.25 days

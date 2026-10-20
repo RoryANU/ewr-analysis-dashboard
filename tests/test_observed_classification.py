@@ -16,7 +16,7 @@ import pytest
 from requests import Response
 from requests.exceptions import ConnectionError, HTTPError, InvalidHeader, InvalidSchema, InvalidURL, MissingSchema, Timeout, URLRequired
 
-import observed
+from ewr_analysis import observed
 
 START, END = date(2000, 1, 1), date(2000, 1, 2)
 
@@ -130,7 +130,7 @@ def test_error_handler_works_without_requests(monkeypatch, tmp_path, error, retr
 def test_message_rules_map_to_codes_and_javascript_only_reads_codes():
     """Verify backend codes map to frontend copy without parsing legacy exception messages."""
     root = Path(__file__).resolve().parents[1]
-    template = (root / "src/dashboard_template.html").read_text()
+    template = (root / "src/ewr_analysis/dashboard_template.html").read_text()
     cases = json.loads((root / "tests/fixtures/observed_message_cases.json").read_text())
     start, end = "// ---- observed result classification", "function observedPanel(){"
     assert template.count(start) == template.count(end) == 1
@@ -203,7 +203,7 @@ def test_fetch_many_preserves_retryability_on_unhandled_worker_failures(monkeypa
 @pytest.mark.parametrize("error,retryable", [(FileNotFoundError("~/bom_water/cache/stations.json"), False), (RuntimeError("error_num 218"), True)])
 def test_retryability_survives_streamed_and_final_job_payloads(monkeypatch, tmp_path, error, retryable):
     """Verify server job payloads preserve measurement errors, retryability and coverage."""
-    import server
+    from ewr_analysis import server
 
     monkeypatch.setattr(observed, "GAUGE_STAGE", "Renamed download stage")
     monkeypatch.setattr(observed.time, "sleep", lambda delay: None)
@@ -358,7 +358,7 @@ def test_retry_wait_never_exceeds_advisory_deadline(monkeypatch, tmp_path):
 
 def test_non_gauge_progress_does_not_keep_the_fetch_stage_code():
     """Verify later analysis progress clears the gauge-stage code."""
-    import server
+    from ewr_analysis import server
 
     job: dict[str, Any] = {}
     server._progress_reporter(job, stage_code="gauges")("Any renamed gauge stage", 1, 2)

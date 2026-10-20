@@ -1,7 +1,6 @@
 """Regression tests for the per-gauge analyses in server.py: low-flow spells, date pairing of the duration curves and hydrograph
 volumes, duplicate dates in stored flows, and year-by-year pairing of EWR achievement."""
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,8 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-import server  # noqa: E402
+from ewr_analysis import server
 
 G = "400001"
 BK1 = dict(gauge="416001", ewr="BK1", pu="Macintyre River and Boomi River floodplain")  # >= 7,900 ML/d, MinSpell 5, Jul-Jun, max inter-event 4 yr
@@ -222,7 +220,7 @@ class RegimeTest(StoredFlows):
         self.store("a", idx, f, gauge="416001")
         out = server.regimes({"base": "a", "gauge": "416001"})
         lowest: dict[str, float] = {}
-        from flow_regime_mappings import regimes_for
+        from ewr_analysis.flow_regime_mappings import regimes_for
 
         for e in server.ewr_list("416001"):
             for rg in regimes_for(e["code"], e["state"]):

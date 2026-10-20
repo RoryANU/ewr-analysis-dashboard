@@ -1,13 +1,9 @@
 """Regression tests for server.achievement_frequencies: only fully observed water years form the denominator."""
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from server import achievement_frequencies as af
+from ewr_analysis.server import achievement_frequencies as af
 
 T, D = np.array([500.0]), np.array([10])
 
@@ -58,7 +54,7 @@ def test_partial_range_nov_feb_long_duration_not_suppressed():
 def test_nan_becomes_null_strict_json():
     import json
 
-    from server import _json_safe
+    from ewr_analysis.server import _json_safe
 
     idx = pd.date_range("2000-07-01", "2000-12-31")  # no complete year -> NaN
     out, n = af(np.full((len(idx), 1), 1000.0), idx, T, D, 7, 6)

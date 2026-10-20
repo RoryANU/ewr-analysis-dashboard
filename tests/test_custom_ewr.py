@@ -16,8 +16,8 @@ import pandas as pd
 import pytest
 from py_ewr import data_inputs
 
-import custom_ewr as c
-import server
+from ewr_analysis import custom_ewr as c
+from ewr_analysis import server
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "data/example_scenarios/dummy_broken_scenario_A_level_salinity.csv"

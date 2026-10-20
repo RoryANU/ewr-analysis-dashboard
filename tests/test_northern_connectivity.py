@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import northern_connectivity as nc
+from ewr_analysis import northern_connectivity as nc
 
 NAN = np.nan
 

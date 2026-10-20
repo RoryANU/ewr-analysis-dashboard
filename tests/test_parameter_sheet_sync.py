@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import sync_parameter_sheet as sync
+from ewr_analysis import sync_parameter_sheet as sync
 
 VALID_UPSTREAM = b"PlanningUnitName,Code,StartMonth,EndMonth,Multigauge,FlowLevelVolume\nExample,BF1,7,6,,F\n"
 
@@ -118,4 +118,4 @@ def test_matches_upstream():
         upstream = sync.fetch_upstream(timeout=20)
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         pytest.skip(f"GitHub unreachable: {e}")
-    assert sync.local_copy() == upstream, "out of date: run `python3 src/sync_parameter_sheet.py --update && python3 src/build_dashboard.py`"
+    assert sync.local_copy() == upstream, "out of date: run `python3 -m ewr_analysis.sync_parameter_sheet --update && python3 -m ewr_analysis.build_dashboard`"

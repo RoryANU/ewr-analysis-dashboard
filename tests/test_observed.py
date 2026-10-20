@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 from requests.exceptions import ConnectionError, HTTPError
 
-import observed
+from ewr_analysis import observed
 
 
 def raw_frame(gauge: str, dates, values=None) -> pd.DataFrame:
@@ -81,7 +81,7 @@ def test_quality_placeholders_are_dropped_but_valid_zero_is_kept(getter_stub):
 
 def test_old_cache_version_is_not_reused(getter_stub, tmp_path):
     calls, _ = getter_stub
-    old_key = hashlib.sha256("v2\0".encode() + b"412033\0F").hexdigest()
+    old_key = hashlib.sha256(b"v2\0" + b"412033\0F").hexdigest()
     raw_frame("412033", ["2000-01-01"], ["999"]).to_csv(tmp_path / f"{old_key}.csv", index=False)
     (tmp_path / f"{old_key}.json").write_text(json.dumps({"start": "2000-01-01", "end": "2000-01-01", "fetched_at": time.time()}))
 
@@ -312,7 +312,7 @@ def test_standard_frame_coerces_values_and_fills_daily_dates():
 
 
 def test_standard_frame_passes_the_existing_standard_timeseries_cleaner(tmp_path):
-    import server
+    from ewr_analysis import server
 
     standard = observed.to_standard_frame({("412033", "F"): raw_frame("412033", ["2000-01-01", "2000-01-03"], ["1", "3"])})
     path = tmp_path / "observed.csv"
@@ -328,7 +328,7 @@ def test_standard_frame_passes_the_existing_standard_timeseries_cleaner(tmp_path
 @pytest.mark.slow
 def test_observed_worker_matches_standard_upload_results_and_stored_series(monkeypatch, tmp_path):
     """Verify observed and uploaded readings produce matching analysis and stored series."""
-    import server
+    from ewr_analysis import server
 
     scenario = Path(__file__).resolve().parents[1] / "data/example_scenarios/dummy_goulburn_scenario_A.csv"
     gauges = ["405201", "405202", "405203", "405232"]

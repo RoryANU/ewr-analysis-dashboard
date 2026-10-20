@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-import build_dashboard as bd
+from ewr_analysis import build_dashboard as bd
 
 ROOT = Path(__file__).resolve().parents[1]
 SHEET = ROOT / "data/reference/parameter_sheet.csv"
@@ -48,8 +48,8 @@ def test_committed_html_embeds_the_current_index():
     """Verify the committed dashboard embeds the index produced from the current sheet."""
     html = (ROOT / "ewr_analysis_dashboard.html").read_text()
     m = re.search(r"^const EWRIDX=(\{.*\});", html, re.M)
-    assert m, "the page has no EWRIDX: run python3 src/build_dashboard.py"
-    assert json.loads(m.group(1)) == json.loads(json.dumps(bd.ewr_index(ROOT))), "stale page: run python3 src/build_dashboard.py"
+    assert m, "the page has no EWRIDX: run python3 -m ewr_analysis.build_dashboard"
+    assert json.loads(m.group(1)) == json.loads(json.dumps(bd.ewr_index(ROOT))), "stale page: run python3 -m ewr_analysis.build_dashboard"
 
 
 def test_handlers_come_from_the_pyewr_calc_config():

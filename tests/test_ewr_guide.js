@@ -3,7 +3,7 @@
 const fs = require('node:fs'), vm = require('node:vm');
 const assert = require('node:assert/strict'), {test} = require('node:test');
 const html = fs.readFileSync('ewr_analysis_dashboard.html','utf8');
-const source = fs.readFileSync('src/ewr_guide.js','utf8');
+const source = fs.readFileSync('src/ewr_analysis/ewr_guide.js','utf8');
 const idx = JSON.parse(html.match(/^const EWRIDX=(\{.*\});/m)[1]);
 const window_ = {};
 const ctx = vm.createContext({EWRIDX:idx, console, window:window_, document:{getElementById:() => null},
@@ -91,7 +91,7 @@ test('EWRs (every 4th row) render all their tutorial steps at several points wit
   }
 });
 test('the template wires the guide in: slot, panel, three collapse handles', () => {
-  const template = fs.readFileSync('src/dashboard_template.html','utf8');
+  const template = fs.readFileSync('src/ewr_analysis/dashboard_template.html','utf8');
   for (const m of ['__EWRIDX__', '__EWR_GUIDE_JS__', 'id="lpanel"', 'id="barHide"', 'id="gripL"', 'id="gripR"', 'id="tabT"', 'id="guideBtn"'])
     assert.equal(template.split(m).length, 2, `${m} must occur once in the template`);
 });

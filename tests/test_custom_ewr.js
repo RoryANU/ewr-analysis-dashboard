@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),{test}=require('node:test');
-const source=fs.readFileSync('src/custom_ewr.js','utf8'),parts=source.split('// ---- part 2: registry and dashboard state');
+const source=fs.readFileSync('src/ewr_analysis/custom_ewr.js','utf8'),parts=source.split('// ---- part 2: registry and dashboard state');
 const fixtures=JSON.parse(fs.readFileSync('tests/fixtures/uewr_validation_cases.json','utf8'));
 const ctx=vm.createContext({TextEncoder});vm.runInContext(parts[0]+';this.api={validateSpec,synthRows,mergeResults,cascadePlan,guideRow,ruleSentence,exportDefinition,parseDefinition,UEWR_FILE_LIMIT};',ctx);
 const api=ctx.api,plain=x=>JSON.parse(JSON.stringify(x)),clone=x=>JSON.parse(JSON.stringify(x));
@@ -33,7 +33,7 @@ test('delete cascade identifies results, all SDL rows and both chart selections'
  assert.deepEqual(plain(r.scenarioKeys),['a']);assert.deepEqual(plain(r.rowIndices),[0,1]);assert.equal(r.guideKeys.length,1);assert.equal(r.flowSelected,true);assert.equal(r.cellSelected,true);assert.equal(r.thresholdKeys.length,1);
 });
 
-const template=fs.readFileSync('src/dashboard_template.html','utf8');
+const template=fs.readFileSync('src/ewr_analysis/dashboard_template.html','utf8');
 function registryHarness({mirror=[],storedScenarios=[],definitions=[],fail=false}={}){
   const memory=new Map([['ewrUserEwrs',JSON.stringify(mirror)],['ewrCustomScenarios',JSON.stringify(storedScenarios)]]),server=new Map(definitions.map(s=>[s.id,clone(s)]));
   const h={fail,server,requests:[],memory},window={ewrGuideApi:{rows:[{g:'404216',c:'F1',pu:fixtures.base.pus[0],sdl:'one'}]},dispatchEvent(){}};

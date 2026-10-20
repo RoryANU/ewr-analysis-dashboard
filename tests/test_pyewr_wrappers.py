@@ -15,7 +15,7 @@ from py_ewr import data_inputs, evaluate_EWRs
 from py_ewr.scenario_handling import ScenarioHandler
 from snapshots import assert_snapshot
 
-import server
+from ewr_analysis import server
 
 ROOT = Path(__file__).resolve().parents[1]
 GOULBURN_A = ROOT / "data/example_scenarios/dummy_goulburn_scenario_A.csv"
@@ -362,7 +362,7 @@ class TestRunScenarioErrors:
             server.run_scenario(GOULBURN_A.read_bytes(), ["999999"], None, "Standard time-series", "x.csv")
 
     def test_northern_connectivity_scenario_must_exist(self, monkeypatch):
-        import northern_connectivity as nc
+        from ewr_analysis import northern_connectivity as nc
 
         monkeypatch.setattr(nc, "unpack_northern_connectivity", lambda path: {"CP1A": pd.DataFrame()})
         with pytest.raises(ValueError, match="scenario 'ZZ' not found in the workbook; available: CP1A"):

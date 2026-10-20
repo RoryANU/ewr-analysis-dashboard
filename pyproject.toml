@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ewr-analysis-dashboard"
 version = "0.0.0"
 description = "EWR analysis dashboard"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["py_ewr>=2.4.11", "pandas", "numpy", "shapely", "openpyxl", "requests"]
 
 [tool.setuptools.packages.find]
@@ -17,7 +17,7 @@ ewr_analysis = ["*.js", "*.html"]
 
 [tool.ruff]
 # Target Python version
-target-version = "py310"
+target-version = "py311"
 # The code base writes long, dense lines (data-pipeline one-liners with trailing comments); 160 keeps the formatter from
 # exploding them while still bounding line length.
 line-length = 160
@@ -35,7 +35,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 files = ["src", "tests"]
 mypy_path = "src"
 warn_unused_ignores = true
