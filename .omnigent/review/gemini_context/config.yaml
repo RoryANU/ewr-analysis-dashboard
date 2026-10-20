@@ -4,7 +4,7 @@ executor:
   type: omnigent
   config:
     harness: antigravity
-    model: gemini-2.5-pro  # or your preferred Gemini model
+    model: gemini-2.5-flash  # lighter model; gemini-2.5-pro returned repeated 503s
 os_env:
   enabled: true  # Allows reading repository source files outside the diff
 prompt: >
