@@ -661,31 +661,47 @@ def observed_worker(job_id: str, sdl: str, gauges: list[str], start: Any, end: A
         partner_rows = table[table.Gauge.astype(str).isin(gauges)]
         all_gauges = sorted(set(gauges) | _partner_gauges(partner_rows))
 
+        measurement_lock = threading.RLock()  # in-flight retry callbacks arrive from worker threads
+
+        def _measurement_payload(result: observed.GaugeResult) -> dict:
+            # Legacy keys (status, message, retryable) stay; `error` is the additive envelope.
+            return {
+                "status": result.status,
+                "message": result.message,
+                "retryable": result.retryable,
+                "error": result.error,
+                "attempts": result.attempts,
+                "max_attempts": observed.MAX_ATTEMPTS,
+            }
+
         def report_gauge(gauge: str, var: str, result: observed.GaugeResult) -> None:
-            progress = dict(job.get("progress", {}))
-            gauge_progress = dict(progress.get("gauges", {}))
-            per_gauge = dict(gauge_progress.get(gauge, {}))
-            per_gauge[var.lower()] = {"status": result.status, "message": result.message, "retryable": result.retryable}
-            gauge_progress[gauge] = per_gauge
-            progress["gauges"] = gauge_progress
-            job["progress"] = progress
+            with measurement_lock:
+                progress = dict(job.get("progress", {}))
+                gauge_progress = dict(progress.get("gauges", {}))
+                per_gauge = dict(gauge_progress.get(gauge, {}))
+                per_gauge[var.lower()] = _measurement_payload(result)
+                gauge_progress[gauge] = per_gauge
+                progress["gauges"] = gauge_progress
+                job["progress"] = progress
+
+        report_stage = _progress_reporter(job, stage_code="gauges")
+
+        def report_progress(*args) -> None:
+            with measurement_lock:
+                report_stage(*args)
 
         _progress_reporter(job, stage_code="gauges")(observed.GAUGE_STAGE, 0, len(all_gauges))
         results, statuses = observed.fetch_many(
             all_gauges,
             start,
             end,
-            progress=_progress_reporter(job, stage_code="gauges"),
+            progress=report_progress,
             refresh=refresh,
             status_progress=report_gauge,
+            inflight_progress=report_gauge,
         )
         job["gauge_status"] = {
-            gauge: {
-                var.lower(): {"status": result.status, "message": result.message, "retryable": result.retryable}
-                for (g, var), result in statuses.items()
-                if g == gauge
-            }
-            for gauge in all_gauges
+            gauge: {var.lower(): _measurement_payload(result) for (g, var), result in statuses.items() if g == gauge} for gauge in all_gauges
         }
         if not results:
             raise ValueError("No selected gauges returned flow or level data")

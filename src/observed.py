@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import json
+import logging
 import os
 import random
 import re
@@ -13,10 +14,14 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import date, timedelta
+from math import isfinite
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
 
 import pandas as pd
 
@@ -29,6 +34,7 @@ GAUGE_ID = re.compile(r"(?:A)?\d+[A-Z]*", re.I)
 DEFAULT_TIMEOUT = 90.0  # per gauge and variable; a full record takes the services 10-60 s to start sending
 DEFAULT_TTL = 24 * 60 * 60
 DEFAULT_RETRIES = 2
+MAX_ATTEMPTS = DEFAULT_RETRIES + 1  # initial request + automatic retries
 GAUGE_STAGE = "Fetching gauges"
 RETRY_AFTER = re.compile(r"retry after (\d+(?:\.\d+)?) seconds", re.I)
 BUSY_ERROR = re.compile(r"too many requests in queue|error_num\D*218|\bsource busy\b", re.I)
@@ -42,6 +48,40 @@ class GaugeResult:
     status: str
     message: str = ""
     retryable: bool = False
+    error: dict | None = None  # additive envelope (code, retryable, retry_after_s, ...); None unless status is error/retry_wait
+    attempts: int = 1
+
+
+class _SourceFailure(Exception):
+    """Carry source-attempt metadata without changing public fetch signatures."""
+
+    def __init__(self, cause: Exception, *, var: str, attempts: int, last_delay: float | None = None):
+        super().__init__(str(cause))
+        self.cause = cause
+        self.var = var
+        self.attempts = attempts
+        self.last_delay = last_delay
+
+
+@dataclass
+class _MeasurementState:
+    var: str
+    callback: Callable[[GaugeResult], None] | None = None
+    max_attempts_used: int = 1
+
+
+_FETCH_STATE: ContextVar[_MeasurementState | None] = ContextVar("observed_measurement_state", default=None)
+
+
+def _emit_inflight(result: GaugeResult) -> None:
+    state = _FETCH_STATE.get()
+    if state is None or state.callback is None:
+        return
+    try:
+        state.callback(result)
+    except Exception as exc:
+        # Progress reporting must not turn a successful request into a failure; do not log the callback's own text.
+        logging.getLogger(__name__).warning("Gauge progress callback failed (%s)", type(exc).__name__)
 
 
 def _http_status(exc: Exception) -> int | None:
@@ -52,22 +92,72 @@ def _http_status(exc: Exception) -> int | None:
     return int(match[1]) if match else None
 
 
-def _error_result(exc: Exception) -> GaugeResult:
-    """Keep query failures distinct from empty records and local setup failures."""
+def _redact_detail(text: str) -> str:
+    """Remove URL credentials/query strings and common labelled credentials."""
+
+    def redact_url(match: re.Match[str]) -> str:
+        try:
+            parts = urlsplit(match[0])
+            return str(urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", "")))
+        except ValueError:
+            return "[REDACTED URL]"
+
+    text = re.sub(r"""(?i)\b[a-z][a-z0-9+.-]*://[^\s<>'"]+""", redact_url, text)
+    text = re.sub(
+        r"""(?ix)
+        (["']?\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|
+        id[_-]?token|token|password|passwd|secret|client[_-]?secret|
+        subscription[_-]?key)\b["']?\s*[:=]\s*)
+        (?:"[^"]*"|'[^']*'|[^\s,;}\]]+)
+        """,
+        lambda match: match[1] + "[REDACTED]",
+        text,
+    )
+    text = re.sub(r"""(?im)(["']?\b(?:proxy-)?authorization\b["']?\s*[:=]\s*)[^\r\n]+""", lambda match: match[1] + "[REDACTED]", text)
+    return re.sub(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*", r"\1 [REDACTED]", text)
+
+
+def _parsed_retry_after(exc: Exception) -> float | None:
+    # Same status restriction as _fetch_source.
+    if _http_status(exc) not in {429, 503}:
+        return None
+    asked = RETRY_AFTER.search(str(exc))
+    if asked is None:
+        return None
+    seconds = float(asked[1])
+    return seconds if isfinite(seconds) else None
+
+
+def _error_result(exc: Exception, *, var: str | None = None, attempts: int = 1) -> GaugeResult:
+    """Classify raw exceptions here; clients consume `error.code`, never exception text."""
+    last_delay = None
+    if isinstance(exc, _SourceFailure):
+        attempts = exc.attempts
+        last_delay = exc.last_delay
+        if var is None:
+            var = exc.var
+        exc = exc.cause
+    if var is None:
+        state = _FETCH_STATE.get()
+        var = state.var if state is not None else "F"
+
     request_errors: tuple[type[Exception], ...] = ()
     invalid_requests: tuple[type[Exception], ...] = ()
     http_errors: tuple[type[Exception], ...] = ()
+    request_network_errors: tuple[type[Exception], ...] = ()
     try:
+        from requests.exceptions import ConnectionError as RequestsConnectionError
         from requests.exceptions import HTTPError, InvalidHeader, InvalidSchema, InvalidURL, MissingSchema, RequestException, URLRequired
+        from requests.exceptions import Timeout as RequestTimeout
     except ImportError:
         pass  # Reporting a missing dependency must not require that dependency.
     else:
         request_errors = (RequestException,)
         invalid_requests = (InvalidHeader, InvalidSchema, InvalidURL, MissingSchema, URLRequired)
         http_errors = (HTTPError,)
+        request_network_errors = (RequestsConnectionError, RequestTimeout)
 
     message = f"{type(exc).__name__}: {exc}"
-    # Keep station/busy message rules aligned with describeResult in src/dashboard_template.html.
     missing_stations = (re.search(r"stations\.json", message, re.I) and re.search(r"bom_water", message, re.I)) or re.search(
         r"BoM station cache missing", message, re.I
     )
@@ -80,14 +170,50 @@ def _error_result(exc: Exception) -> GaugeResult:
             or re.search(r"network is unreachable|no route to host|name resolution|connection (?:reset|aborted|refused)", message, re.I) is not None
         )
     )
+    # Retryability is unchanged from the pre-envelope rules.
     transient = bool(busy) or network_error or isinstance(exc, (*request_errors, json.JSONDecodeError))
     retryable = transient or not isinstance(exc, (OSError, ImportError, ValueError, TypeError))
-    code = _http_status(exc)
-    if code is not None or isinstance(exc, http_errors):
-        retryable = code in {408, 425, 429} or (code is not None and 500 <= code < 600)
+    http_code = _http_status(exc)
+    if http_code is not None or isinstance(exc, http_errors):
+        retryable = http_code in {408, 425, 429} or (http_code is not None and 500 <= http_code < 600)
     if missing_stations or isinstance(exc, (*invalid_requests, FileNotFoundError, PermissionError, NotADirectoryError, IsADirectoryError)):
         retryable = False
-    return GaugeResult(pd.DataFrame(), "error", message, retryable=bool(retryable))
+    retryable = bool(retryable)
+
+    local_configuration = isinstance(exc, ImportError) or (isinstance(exc, OSError) and not isinstance(exc, request_errors))
+    if missing_stations:
+        error_code = "STATION_LIST_SETUP_REQUIRED"
+    elif not retryable and (http_code in {401, 403} or local_configuration):
+        error_code = "CONFIGURATION_REQUIRED"
+    elif not retryable and (isinstance(exc, (*invalid_requests, ValueError, TypeError)) or (http_code is not None and 400 <= http_code < 500)):
+        error_code = "INVALID_REQUEST"
+    elif busy or http_code in {425, 429, 503}:
+        error_code = "SERVICE_BUSY"
+    elif network_error or isinstance(exc, request_network_errors) or http_code in {408, 504}:
+        error_code = "NETWORK_TIMEOUT"
+    else:
+        error_code = "UNEXPECTED_ERROR"
+
+    retry_after_s = None
+    if error_code == "SERVICE_BUSY":
+        retry_after_s = _parsed_retry_after(exc)
+        if retry_after_s is None:
+            retry_after_s = last_delay if last_delay is not None else 60.0
+
+    detail = _redact_detail(message)
+    attempts = max(1, attempts)
+    error = {
+        "code": error_code,
+        "retryable": retryable,
+        "retry_after_s": retry_after_s,
+        "measurement": "level" if var in {"L", "level"} else "flow",
+        "attempts": attempts,
+        "max_attempts": MAX_ATTEMPTS,
+        "diagnostic_id": uuid4().hex,
+        "detail": detail,
+    }
+    # The legacy message is redacted too, otherwise it would bypass detail redaction.
+    return GaugeResult(pd.DataFrame(), "error", detail, retryable=retryable, error=error, attempts=attempts)
 
 
 def sdl_gauges(sdl: str) -> list[str]:
@@ -109,11 +235,22 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
     from requests.exceptions import RequestException
     from requests.exceptions import Timeout as RequestTimeout
 
+    if retries < 0:
+        raise ValueError("retries must be nonnegative")
+    retry_limit = min(retries, DEFAULT_RETRIES)  # the contract promises at most MAX_ATTEMPTS attempts
     deadline = time.monotonic() + timeout
-    for attempt in range(retries + 1):
+    attempts_used = 0
+    last_delay = None
+    for attempt in range(retry_limit + 1):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError(f"Gauge {gauge} exceeded {timeout:g} s advisory timeout")
+            expired = TimeoutError(f"Gauge {gauge} exceeded {timeout:g} s advisory timeout")
+            raise _SourceFailure(expired, var=var, attempts=max(1, attempts_used), last_delay=last_delay) from expired
+        attempts_used = attempt + 1
+        state = _FETCH_STATE.get()
+        if state is not None:
+            state.max_attempts_used = max(state.max_attempts_used, attempts_used)
+        _emit_inflight(GaugeResult(pd.DataFrame(), "running", attempts=attempts_used))
         future: Future = Future()
 
         def pull(result=future):
@@ -133,15 +270,21 @@ def _fetch_source(gauge: str, start: date, end: date, var: str, timeout: float, 
             network = isinstance(exc, (ConnectionError, RequestsConnectionError, socket.gaierror)) or (
                 isinstance(exc, OSError) and not isinstance(exc, (RequestException, json.JSONDecodeError))
             )
-            transient = _error_result(exc).retryable and (busy or timed_out or network or code is not None)
+            transient = _error_result(exc, var=var).retryable and (busy or timed_out or network or code is not None)
             delay = (10.0 if attempt == 0 else 30.0) if busy or timed_out or code in {408, 425, 429} else 0.5 * 2**attempt * random.uniform(0.5, 1.5)
             if (asked := RETRY_AFTER.search(str(exc))) and code in {429, 503}:
                 delay = max(delay, float(asked[1]))  # honour the server's own back-off; a long one outlasts the deadline and is not retried here
-            if not transient or attempt == retries or delay >= deadline - time.monotonic():
+            if not transient or attempt == retry_limit or delay >= deadline - time.monotonic():
                 if isinstance(exc, TimeoutError):
-                    raise TimeoutError(f"Gauge {gauge} exceeded {timeout:g} s advisory timeout") from exc
-                raise
+                    final_exc: Exception = TimeoutError(f"Gauge {gauge} exceeded {timeout:g} s advisory timeout")
+                else:
+                    final_exc = exc
+                raise _SourceFailure(final_exc, var=var, attempts=attempts_used, last_delay=last_delay) from exc
+            waiting = _error_result(_SourceFailure(exc, var=var, attempts=attempts_used, last_delay=delay), var=var)
+            waiting.status = "retry_wait"
+            _emit_inflight(waiting)
             time.sleep(delay)
+            last_delay = delay
     raise ValueError("retries must be nonnegative")
 
 
@@ -204,9 +347,14 @@ def _fetch_gauge_cached(
 ) -> GaugeResult:
     """Fetch one gauge (each missing date range within `timeout`) through an extending raw-data cache."""
     if var not in {"F", "L"}:
-        return GaugeResult(pd.DataFrame(), "unsupported", f"Unsupported variable {var}")
+        result = _error_result(ValueError(f"Unsupported variable {var}"), var=var)
+        result.status = "unsupported"
+        result.error = None  # an unavailable variable is not a failure: no envelope
+        return result
     if start > end:
-        return GaugeResult(pd.DataFrame(), "error", "Start date must not follow end date")
+        result = _error_result(ValueError("Start date must not follow end date"), var=var)
+        result.message = "Start date must not follow end date"  # legacy text stays exact
+        return result
     # The cache holds one contiguous covered interval. It is extended only by a fresh entry that the request overlaps or
     # adjoins; otherwise (refresh, expired, disjoint) the request replaces it, so coverage never claims unfetched days.
     cached = None if refresh else _read_cache(gauge, var)
@@ -243,7 +391,7 @@ def _fetch_gauge_cached(
             return GaugeResult(result, "empty", "No data returned for this gauge and period")
         return GaugeResult(result, "ok")
     except Exception as exc:  # a bug here must not take down the other gauges' fetches
-        return _error_result(exc)
+        return _error_result(exc, var=var)
 
 
 def fetch_gauge(
@@ -258,11 +406,23 @@ def fetch_gauge(
     retries: int = DEFAULT_RETRIES,
 ) -> GaugeResult:
     """Deduplicate concurrent fetches for the same gauge/variable cache entry."""
-    key = (gauge, var)
-    with _CACHE_LOCKS_GUARD:
-        lock = _CACHE_LOCKS.setdefault(key, threading.Lock())
-    with lock:
-        return _fetch_gauge_cached(gauge, start, end, var, refresh=refresh, timeout=timeout, ttl=ttl, retries=retries)
+    state = _FETCH_STATE.get()
+    token = None
+    if state is None:
+        state = _MeasurementState(var)
+        token = _FETCH_STATE.set(state)
+    try:
+        key = (gauge, var)
+        with _CACHE_LOCKS_GUARD:
+            lock = _CACHE_LOCKS.setdefault(key, threading.Lock())
+        with lock:
+            result = _fetch_gauge_cached(gauge, start, end, var, refresh=refresh, timeout=timeout, ttl=ttl, retries=retries)
+        if result.status in {"ok", "empty"}:
+            result.attempts = state.max_attempts_used  # worst source range, not the sum of head/tail requests
+        return result
+    finally:
+        if token is not None:
+            _FETCH_STATE.reset(token)
 
 
 def fetch_many(
@@ -276,16 +436,28 @@ def fetch_many(
     timeout: float = DEFAULT_TIMEOUT,
     status_progress: Callable[[str, str, GaugeResult], None] | None = None,
     retries: int = DEFAULT_RETRIES,
+    inflight_progress: Callable[[str, str, GaugeResult], None] | None = None,
 ) -> tuple[dict[tuple[str, str], pd.DataFrame], dict[tuple[str, str], GaugeResult]]:
     """Fetch flow and level independently; report progress once both variables finish per gauge."""
     frames: dict[tuple[str, str], pd.DataFrame] = {}
     statuses: dict[tuple[str, str], GaugeResult] = {}
+    callback_lock = threading.Lock()
+
+    def notify(callback, gauge: str, var: str, result: GaugeResult) -> None:
+        if callback is not None:
+            with callback_lock:
+                callback(gauge, var, result)
+
+    def fetch_one(gauge: str, var: str) -> GaugeResult:
+        callback = (lambda result: notify(inflight_progress, gauge, var, result)) if inflight_progress is not None else None
+        token = _FETCH_STATE.set(_MeasurementState(var, callback))
+        try:
+            return fetch_gauge(gauge, start, end, var, refresh=refresh, timeout=timeout, retries=retries)
+        finally:
+            _FETCH_STATE.reset(token)
+
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(gauges) or 1))) as pool:
-        pending = {
-            pool.submit(fetch_gauge, gauge, start, end, var, refresh=refresh, timeout=timeout, retries=retries): (gauge, var)
-            for gauge in gauges
-            for var in ("F", "L")
-        }
+        pending = {pool.submit(fetch_one, gauge, var): (gauge, var) for gauge in gauges for var in ("F", "L")}
         completed_gauges: set[str] = set()
         done = 0
         for future in as_completed(pending):
@@ -293,10 +465,9 @@ def fetch_many(
             try:
                 result = future.result()
             except Exception as exc:
-                result = _error_result(exc)
+                result = _error_result(exc, var=var)
             statuses[(gauge, var)] = result
-            if status_progress:
-                status_progress(gauge, var, result)
+            notify(status_progress, gauge, var, result)
             if result.status == "ok":
                 frames[(gauge, var)] = result.frame
             if gauge not in completed_gauges and all((gauge, item) in statuses for item in ("F", "L")):

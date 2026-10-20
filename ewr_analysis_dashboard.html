@@ -507,7 +507,7 @@ function chooseObservedSdl(sdl){ if(S.obs.sdl===sdl) return; observedWatch++; S.
 let observedWatch=0;
 async function copyObservedDetails(id,button){
   const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauge=unit?.gauges.find(g=>g.id===id);
-  const text=observedDetailsText(id,gauge?.name||"",S.obs.status[id]||{});
+  const text=observedDetailsText(id,gauge?.name||"",S.obs.status[id]||{},{period:S.obs.filter?`${S.obs.start} to ${S.obs.end}`:"all available data",timezone:(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone;}catch{return "";}})()});
   try{
     if(typeof navigator==="undefined"||!navigator.clipboard?.writeText)throw Error("Clipboard unavailable");
     await navigator.clipboard.writeText(text); button.textContent="Copied";
@@ -516,9 +516,36 @@ async function copyObservedDetails(id,button){
     fallback.hidden=false; field.value=text; field.focus(); field.select(); button.textContent="Select details to copy";
   }
 }
+let observedTick=null;
+/** Count down in place (no re-render) while a SERVICE_BUSY cooldown blocks manual Retry; re-render when it ends. */
+function ensureCooldownTick(){
+  const live=()=>Object.values(S.obs.cooldown||{}).some(c=>c.until>observedNow());
+  if(observedTick||!live())return;
+  const plan=()=>retryPlan((OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl)?.gauges||[]).map(g=>g.id),S.obs.status,S.obs.cooldown||{});
+  let readyKey=JSON.stringify(plan().ready);
+  observedTick=setInterval(()=>{
+    const current=plan(), nextKey=JSON.stringify(current.ready), changed=nextKey!==readyKey;
+    readyKey=nextKey;
+    if(!live()){clearInterval(observedTick);observedTick=null;render();return;}
+    if(changed){render();return;} // the first gauge became ready (or the count changed) while others still wait
+    const button=$("panel").querySelector("[data-obs-wait]");
+    if(button)button.textContent=retryWaitLabel(current.waitSeconds);
+  },1000);
+}
 function updateObservedStatus(status={}){
-  for(const [id,states] of Object.entries(status))S.obs.status[id]={...(S.obs.status[id]||{}),...states};
+  S.obs.cooldown||={};
+  for(const [id,states] of Object.entries(status)){
+    S.obs.status[id]={...(S.obs.status[id]||{}),...states};
+    for(const [v,x] of Object.entries(states||{})){
+      // Start the cooldown once per diagnostic id: repeated polls of the same failure must not restart it.
+      if(x?.status==="error"&&x.error?.code==="SERVICE_BUSY"||x?.status==="rate_limited"){
+        const key=cooldownKey(id,v), diag=x.error?.diagnostic_id||x.message||"legacy";
+        if(S.obs.cooldown[key]?.diag!==diag)S.obs.cooldown[key]={diag,until:observedNow()+(x.error?.retry_after_s??60)*1000};
+      }
+    }
+  }
   S.obs.displayIds=[...new Set([...S.obs.displayIds,...Object.keys(status)])];
+  ensureCooldownTick();
 }
 async function runObserved(gauges,merge=false){
   if(!S.obs.sdl||!gauges.length||S.obs.job)return;
@@ -526,9 +553,9 @@ async function runObserved(gauges,merge=false){
   const token=++observedWatch;
   const previousIds=S.obs.displayIds?.length?S.obs.displayIds:Object.keys(S.obs.status||{});
   S.obs.displayIds=merge?[...new Set([...previousIds,...gauges])]:[...gauges]; S.obs.completed=false;
-  S.obs.completeOpen=false; if(!merge)S.obs.detailsOpen=new Set();
+  if(!merge)S.obs.detailsOpen=new Set();
   S.obs.notice=""; S.obs.progress=null; S.obs.status=merge?{...S.obs.status}:{}; S.obs.ranges=merge?{...S.obs.ranges}:{};
-  for(const id of gauges){delete S.obs.status[id];delete S.obs.ranges[id];}
+  S.obs.cooldown||={};for(const id of gauges){delete S.obs.status[id];delete S.obs.ranges[id];for(const v of Object.keys(VAR_NAME))delete S.obs.cooldown[cooldownKey(id,v)];}
   S.obs.runIds=[...gauges]; S.obs.job="starting"; render();
   try{
     const response=await fetch("/api/observed/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdl:S.obs.sdl,gauges,filter_period:S.obs.filter,start:S.obs.filter?S.obs.start:null,end:S.obs.filter?S.obs.end:null,refresh:S.obs.refresh,merge})});
@@ -537,11 +564,12 @@ async function runObserved(gauges,merge=false){
     if(response.status===409&&started.job) S.obs.job=started.job;
     else if(!response.ok||!started.job) throw Error(started.message||"Observed run could not be started");
     else S.obs.job=started.job;
-    while(token===observedWatch){
+    const jobId=S.obs.job;
+    while(token===observedWatch&&S.obs.job===jobId){
       await new Promise(resolve=>setTimeout(resolve,800));
       if(token!==observedWatch)return;
       const q=await (await fetch("/api/job?id="+encodeURIComponent(S.obs.job),{cache:"no-store"})).json();
-      if(token!==observedWatch)return;
+      if(token!==observedWatch||S.obs.job!==jobId)return; // a late poll from an older run must not overwrite the current one
       updateObservedStatus(q.gauge_status||q.progress?.gauges||{});
       if(q.status==="running") { S.obs.progress=q.progress||null; render(); continue; }
       if(q.status!=="done") throw Error(q.message||"Observed run failed");
@@ -584,7 +612,7 @@ function initObserved(){
 $("panel").addEventListener("click",event=>{const b=event.target.closest("[data-obs]");if(!b)return;const action=b.dataset.obs,unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl),gauges=unit?.gauges||[];
   if(action==="all")S.obs.gauges=new Set(gauges.map(g=>g.id)); else if(action==="none")S.obs.gauges.clear();
   else if(action==="runAll")return runObserved(gauges.map(g=>g.id)); else if(action==="runSelected")return runObserved(gauges.filter(g=>S.obs.gauges.has(g.id)).map(g=>g.id));
-  else if(action==="retry")return runObserved(retryableGaugeIds(gauges.map(g=>g.id),S.obs.status),true);
+  else if(action==="retry")return runObserved(retryableGaugeIds(gauges.map(g=>g.id),S.obs.status,S.obs.cooldown||{}),true);
   else if(action==="copyDetails")return copyObservedDetails(b.dataset.obsGaugeId,b);
   else if(action==="cancel"){observedWatch++;S.obs.job=null;S.obs.runIds=[];S.obs.completed=false;S.obs.progress=null;S.obs.notice="Stopped watching this run; the server may finish it in the background.";}
   render();
@@ -598,43 +626,73 @@ $("panel").addEventListener("input",event=>{if(event.target.id==="obsSearch"){S.
 $("panel").addEventListener("toggle",event=>{
   const t=event.target;
   if(t.matches("details[data-obs-details]")){S.obs.detailsOpen||=new Set();t.open?S.obs.detailsOpen.add(t.dataset.obsDetails):S.obs.detailsOpen.delete(t.dataset.obsDetails);}
-  else if(t.matches("details[data-obs-complete]"))S.obs.completeOpen=t.open;
 },true);
 // ---- observed result classification (pure; no DOM or application state)
 const VAR_NAME={f:"Flow",l:"Water level"};
+// Records returned says only that data came back; it is not a coverage check. Phase 3 may earn "Complete" from coverage_complete.
+const ACTIVE_STATUSES=["pending","running","retry_wait"]; // unfinished: never terminal, never counted as checked
+const SUPPORT_CONTACT=""; // deployment config; empty falls back to "your IT support" (never show a placeholder)
+const DEFAULT_MAX_ATTEMPTS=3;
+let observedNow=()=>Date.now();
+const supportName=()=>SUPPORT_CONTACT||"your IT support";
+const countOf=(n,word)=>`${n} ${word}${n===1?"":"s"}`;
+const attemptsOf=x=>Math.max(1,Number(x?.error?.attempts??x?.attempts)||1), maxAttemptsOf=x=>Number(x?.error?.max_attempts??x?.max_attempts)||DEFAULT_MAX_ATTEMPTS;
+/** The attempt a person should see: a measurement waiting to retry shows the one that is coming. */
+const shownAttempt=x=>x?.status==="retry_wait"?attemptsOf(x)+1:attemptsOf(x);
+const isRetrying=x=>x?.status==="retry_wait"||(x?.status==="running"&&attemptsOf(x)>1);
+const stateIcon=s=>({ok:"✓",empty:"–",unsupported:"–",running:"⟳",retry_wait:"⟳",pending:"·"}[s]||(!s?"·":"✗"));
+const COMPLETE_LABEL="Records returned";
+const COVERAGE_FOOTNOTE="Records returned does not mean full coverage of the selected period.";
+/** Copy per backend error code. The front end never reads exception text: Python maps text to a code, this maps code to words. */
+const triedText=x=>{const n=attemptsOf(x);return n>1?` We already retried ${countOf(n-1,"time")}. Tried ${countOf(n,"time")}.`:"";};
+const ERROR_COPY={
+  STATION_LIST_SETUP_REQUIRED:()=>({label:"Weather-bureau station list not set up",why:"The local copy of the Bureau of Meteorology station list is missing, so this gauge can't be looked up.",action:"Your IT support needs to run a one-time setup. Copy details → send to IT.",skip:"Not retried — needs setup"}),
+  CONFIGURATION_REQUIRED:()=>({label:"Needs IT support",why:"A local setting, permission or dependency blocks this request.",action:`This needs IT support. Use Copy details and send it to ${supportName()}.`,skip:"Not retried — needs setup"}),
+  INVALID_REQUEST:()=>({label:"Setup or request needs attention",why:"This request cannot succeed without a change.",action:"Check the request and local setup before trying again."}),
+  SERVICE_BUSY:(name,x)=>({label:"Data service busy",why:"The Bureau's server is handling too many requests."+triedText(x),action:"Retry when available."}),
+  NETWORK_TIMEOUT:(name,x)=>({label:"Timed out",why:"The data service didn't answer in time."+triedText(x),action:"Retry."}),
+  UNEXPECTED_ERROR:(name,x)=>({label:"Unexpected problem",why:attemptsOf(x)>1?`Unexpected problem loading ${name} — we already retried ${countOf(attemptsOf(x)-1,"time")}. Tried ${countOf(attemptsOf(x),"time")}.`:"Something went wrong on our side.",action:"Retry; if it persists, copy details for support."}),
+};
 /** Describe one measurement without changing the raw status or message. */
 function describeResult(v,x){
-  const status=x?.status, message=String(x?.message||""), name=VAR_NAME[v]||v;
-  const description=(label,why,action,retryable=false,severity="info")=>({label,why,action,retryable,severity});
-  if(!status)return description("Waiting",`${name} has not been checked yet.`,"");
-  if(status==="pending"||status==="running")return description(status==="pending"?"Waiting":"Checking",`${name} is being checked.`,"");
+  const status=x?.status, name=VAR_NAME[v]||v;
+  const description=(label,why,action,retryable=false,severity="info",skip="")=>({label,why,action,retryable,severity,skip});
+  if(!status||status==="pending")return description("Waiting",`${name} has not been checked yet.`,"");
+  if(status==="running"||status==="retry_wait"){
+    if(!isRetrying(x))return description("Checking",`${name} is being checked.`,"");
+    return description(`Retrying automatically (attempt ${shownAttempt(x)} of ${maxAttemptsOf(x)})…`,`${name} could not be loaded. We’re trying again.`,"");
+  }
   if(status==="ok")return description("Available",`${name} records were returned.`,"",false,"success");
-  if(status==="empty")return description("No records for this period","The gauge has nothing recorded for the dates you chose.","Widen the date range or ignore this gauge.");
+  if(status==="empty")return description("No records for this period","No observations returned — river conditions for this period are unknown.","Widen the date range to investigate, or record why this gauge is excluded.");
   if(status==="unsupported")return description("Not available from this source","This source doesn't provide this measurement for this gauge.","");
-  // Keep station/busy message rules aligned with _error_result in src/observed.py.
-  if((/stations\.json/i.test(message)&&/bom_water/i.test(message))||/BoM station cache missing/i.test(message))
-    return description("Weather-bureau station list not set up","The local copy of the Bureau of Meteorology station list is missing, so this gauge can't be looked up.","One-time setup. See docs/observed-gauge-pull-guide.md. Retrying won't help.",false,"error");
-  // Explicit server decisions take precedence over legacy status-only retry rules.
-  const retryable=typeof x?.retryable==="boolean"?x.retryable:["timeout","rate_limited","error"].includes(status);
-  if(!retryable)return description("Setup or request needs attention","This request cannot succeed without a change.","Check the request and local setup before trying again.",false,"error");
-  if(/too many requests in queue|error_num\D*218|\bsource busy\b/i.test(message))
-    return description("Data service busy","The Bureau's server is handling too many requests.","Retry later.",true,"error");
-  if(status==="timeout")return description("Timed out","The data service didn't answer in time.","Retry.",true,"error");
-  if(status==="rate_limited")return description("Slowed down by data service","Too many requests too quickly.","Retry in a minute.",true,"error");
-  return description("Unexpected problem","Something went wrong on our side.","Retry; if it persists, copy details for support.",true,"error");
+  const code=typeof x?.error?.code==="string"?x.error.code:"";
+  // An explicit server decision (envelope, then legacy boolean) wins; only a bare legacy status falls back to the status name.
+  const retryable=typeof x?.error?.retryable==="boolean"?x.error.retryable:typeof x?.retryable==="boolean"?x.retryable:["timeout","rate_limited","error"].includes(status);
+  if(code){
+    const copy=(ERROR_COPY[code]||ERROR_COPY.UNEXPECTED_ERROR)(name,x);
+    return description(copy.label,copy.why,copy.action,retryable,"error",copy.skip||"");
+  }
+  // Legacy payload (no envelope): generic copy from status and the explicit boolean only. Message text is for Copy details.
+  if(status==="rate_limited")return description("Data service busy","The Bureau's server is handling too many requests.","Retry when available.",retryable,"error");
+  if(status==="timeout")return description("Timed out","The data service didn't answer in time.","Retry.",retryable,"error");
+  // A false retry flag says the request will not succeed as sent; it does not say why, so no cause is claimed.
+  return description("Unexpected problem","Something went wrong on our side.",retryable?"Retry; if it persists, copy details for support.":`Copy details and send them to ${supportName()}.`,retryable,"error");
 }
 /** Account for both requested measurements, including one that has not reported yet. */
 function classifyGauge(states){
   const vars=Object.keys(VAR_NAME), status=v=>states?.[v]?.status;
-  const okVars=vars.filter(v=>status(v)==="ok"), badVars=vars.filter(v=>status(v)&&!["ok","pending","running"].includes(status(v)));
+  const okVars=vars.filter(v=>status(v)==="ok"), badVars=vars.filter(v=>status(v)&&!["ok",...ACTIVE_STATUSES].includes(status(v)));
+  // Keep empty and failed apart: "both not ok" must not read as "no records".
+  const emptyVars=vars.filter(v=>["empty","unsupported"].includes(status(v))), failedVars=badVars.filter(v=>!emptyVars.includes(v));
   let outcome;
   if(vars.every(v=>!status(v)))outcome="waiting";
-  else if(vars.some(v=>!status(v)||["pending","running"].includes(status(v))))outcome="running";
+  else if(vars.some(v=>!status(v)||ACTIVE_STATUSES.includes(status(v))))outcome="running";
   else if(okVars.length===vars.length)outcome="complete";
   else if(okVars.length)outcome="partial";
   else if(vars.every(v=>["empty","unsupported"].includes(status(v))))outcome="nodata";
   else outcome="failed";
-  return {outcome,okVars,badVars};
+  const partialKind=outcome==="partial"?(okVars.includes("f")?"nolevel":"noflow"):null;
+  return {outcome,okVars,emptyVars,failedVars,badVars,partialKind};
 }
 /** Count checked outcomes separately from gauges still waiting or checking. */
 function summarizeGauges(gaugeIds,status={}){
@@ -645,34 +703,64 @@ function summarizeGauges(gaugeIds,status={}){
   }
   return summary;
 }
-function retryableGaugeIds(gaugeIds,status={}){
-  return gaugeIds.filter(id=>Object.entries(status[id]||{}).some(([v,x])=>describeResult(v,x).retryable));
+const cooldownKey=(id,v)=>`${id}|${v}`;
+/** Seconds until every measurement of a gauge is out of cooldown: Retry re-requests the whole gauge, so the longest wait rules. */
+function gaugeWaitSeconds(id,cooldown={},now=observedNow()){
+  return Math.max(0,...Object.keys(VAR_NAME).map(v=>Math.ceil(((cooldown[cooldownKey(id,v)]?.until??0)-now)/1000)));
 }
-function observedDetailsText(id,name,states){
-  const measurements=Object.entries(VAR_NAME).filter(([v])=>states[v]?.status!=="ok").map(([v,label])=>`${label}\nStatus: ${states[v]?.status||"not reported"}\nMessage: ${states[v]?.message||""}`);
-  return [`Gauge: ${id}`,`Name: ${name||"Unnamed gauge"}`,...measurements.map(x=>"\n"+x)].join("\n");
+/** Gauges a manual Retry would re-request: something retryable, and no measurement still cooling down after SERVICE_BUSY. */
+function retryableGaugeIds(gaugeIds,status={},cooldown={},now=observedNow()){
+  return gaugeIds.filter(id=>Object.entries(status[id]||{}).some(([v,x])=>describeResult(v,x).retryable)&&gaugeWaitSeconds(id,cooldown,now)===0);
+}
+/** ready: gauges Retry can start now; waiting: retryable gauges still cooling down; waitSeconds: until the first becomes ready. */
+function retryPlan(gaugeIds,status={},cooldown={},now=observedNow()){
+  const ready=retryableGaugeIds(gaugeIds,status,cooldown,now), all=retryableGaugeIds(gaugeIds,status,{},now);
+  const waiting=all.filter(id=>!ready.includes(id));
+  return {ready,waiting:waiting.length,waitSeconds:waiting.length?Math.max(1,Math.min(...waiting.map(id=>gaugeWaitSeconds(id,cooldown,now)))):0};
+}
+const retryWaitLabel=seconds=>`Data service busy — retry in ${seconds===60?"a minute":seconds>60?countOf(Math.ceil(seconds/60),"minute"):seconds+"s"}`;
+/** Failed gauges where every measurement exhausted its retries on timeouts/network: nothing ever answered. A subset of Failed. */
+function neverAnswered(gaugeIds,status={}){
+  return gaugeIds.filter(id=>{const states=status[id]||{};return classifyGauge(states).outcome==="failed"&&Object.keys(VAR_NAME).every(v=>states[v]?.status==="error"&&states[v]?.error?.code==="NETWORK_TIMEOUT"&&states[v]?.error?.retryable===true);}).length;
+}
+/** One line per gauge while any measurement is retrying, e.g. "Flow: retrying (2 of 3) · Level ✓". */
+function rollupText(states){
+  if(!Object.keys(VAR_NAME).some(v=>isRetrying(states?.[v])))return "";
+  return Object.entries(VAR_NAME).map(([v,name])=>isRetrying(states[v])?`${name}: retrying (${shownAttempt(states[v])} of ${maxAttemptsOf(states[v])})`:`${name} ${stateIcon(states[v]?.status)}`).join(" · ");
+}
+function observedDetailsText(id,name,states,context={}){
+  // Plain text for support. Envelope fields are added only when the server sent them; legacy messages are copied verbatim, never interpreted.
+  const measurements=Object.entries(VAR_NAME).filter(([v])=>states[v]?.status!=="ok").map(([v,label])=>{
+    const x=states[v], lines=[label,`Status: ${x?.status||"not reported"}`,`Message: ${x?.error?.detail??x?.message??""}`];
+    if(x?.error){lines.push(`Code: ${x.error.code||"unknown"}`,`Attempts: ${attemptsOf(x)} of ${maxAttemptsOf(x)}`);if(x.error.diagnostic_id)lines.push(`Diagnostic ID: ${x.error.diagnostic_id}`);const next=describeResult(v,x).action;if(next)lines.push(`Next step: ${next}`);}
+    return lines.join("\n");
+  });
+  const header=[`Gauge: ${id}`,`Name: ${name||"Unnamed gauge"}`,context.period?`Period: ${context.period}`:"",context.timezone?`Time zone: ${context.timezone}`:""].filter(Boolean);
+  return [...header,...measurements.map(x=>"\n"+x)].join("\n");
 }
 const resultTextKey=text=>String(text||"").trim().replace(/\s+/g," ").toLowerCase();
 function observedPanel(){
   const unit=OBSERVED_UNITS.find(x=>x.sdl===S.obs.sdl), gauges=unit?.gauges||[], selected=gauges.filter(g=>S.obs.gauges.has(g.id)).length;
   const selectedGaugeId=S.sel.type==="gauge"?META.gauges[S.sel.i]:"", selectedGaugeRange=selectedGaugeId?S.obs.ranges[selectedGaugeId]:null;
-  const failures=retryableGaugeIds(gauges.map(g=>g.id),S.obs.status).length;
+  const retry=retryPlan(gauges.map(g=>g.id),S.obs.status,S.obs.cooldown||{}), failures=retry.ready.length;
   const byId=new Map(gauges.map(g=>[g.id,g])), reportIds=S.obs.displayIds?.length?S.obs.displayIds:S.obs.runIds?.length?S.obs.runIds:[...gauges.filter(g=>S.obs.status[g.id]).map(g=>g.id),...Object.keys(S.obs.status||{}).filter(id=>!byId.has(id))];
   const summary=summarizeGauges(reportIds,S.obs.status), unfinished=summary.waiting+summary.running;
-  const tally=summary.total?[`${summary.checked} of ${summary.total} checked`,...["complete","partial","nodata","failed"].filter(k=>summary[k]).map(k=>`${summary[k]} ${k==="nodata"?"no data":k}`)].join(" · ")+(unfinished?` (${unfinished} not finished)`:""):"";
+  // One state model: every bucket is a classifyGauge outcome, so the four buckets sum to `checked`.
+  const tally=summary.total?`${summary.checked} of ${summary.total} ${summary.total===1?"gauge":"gauges"} finished`+(unfinished?` · ${unfinished} ${S.obs.job?"still loading":"not finished"}`:"")+(!S.obs.job&&neverAnswered(reportIds,S.obs.status)?` · ${neverAnswered(reportIds,S.obs.status)} never answered`:""):"";
+  const breakdown=summary.total?`Both measurements returned: ${summary.complete} · One returned: ${summary.partial} · No records: ${summary.nodata} · Failed: ${summary.failed}`:"";
   const progress=S.obs.progress, stage=progress?.stage||"Preparing gauges";
   const statusText=S.obs.job?(progress?.stage_code==="gauges"?"":stage):(S.obs.notice||"");
   const statusLine=statusText?`<div class="obs-status${S.obs.notice.startsWith("Failed")?" obs-error":""}">${esc(statusText)}</div>`:"";
-  const stateIcon=s=>({ok:"✓",empty:"–",unsupported:"–",running:"⟳",pending:"·"}[s]||(!s?"·":"✗"));
-  const outcomes={complete:{label:"Complete",icon:"✓",tone:"success"},partial:{label:"Partial",icon:"⚠",tone:"warning"},nodata:{label:"No data",icon:"–",tone:"muted"},failed:{label:"Failed",icon:"✗",tone:"error"},waiting:{label:"Waiting",icon:"·",tone:"muted"},running:{label:"Checking…",icon:"⟳",tone:"muted"}};
+  const outcomes={complete:{label:COMPLETE_LABEL,icon:"✓",tone:"success"},partial:{label:"Partial",icon:"⚠",tone:"warning"},nodata:{label:"No records",icon:"–",tone:"muted"},failed:{label:"Failed",icon:"✗",tone:"error"},waiting:{label:"Waiting",icon:"·",tone:"muted"},running:{label:"Checking…",icon:"⟳",tone:"muted"}};
   const resultRow=id=>{
-    const g=byId.get(id)||{id,name:""}, states=S.obs.status[id]||{}, outcome=classifyGauge(states).outcome, display=outcomes[outcome];
+    const g=byId.get(id)||{id,name:""}, states=S.obs.status[id]||{}, cls=classifyGauge(states), outcome=cls.outcome, display=outcome==="partial"?{...outcomes.partial,label:cls.partialKind==="noflow"?"Partial — no flow":"Partial — no water level"}:outcomes[outcome];
     const chips=Object.entries(VAR_NAME).map(([v,name])=>{
       const x=states[v], description=describeResult(v,x), label=x?.status==="unsupported"?"Not available":description.label;
       const tone=x?.status==="ok"?"success":["error","timeout","rate_limited"].includes(x?.status)?"error":"muted";
       const action=x?.status!=="ok"&&typeof description.action==="string"&&description.action.trim()&&resultTextKey(description.action)!==resultTextKey(label)?description.action:"";
+      const skipped=description.skip&&attemptsOf(x)===1&&failures&&!S.obs.job&&!retry.ready.includes(id)?description.skip:"";
       const icon=x?.status==="ok"?`role="img" aria-label="${esc(label)}"`:`aria-hidden="true"`;
-      return `<div class="obs-measurement-item"><span class="obs-measurement obs-tone-${esc(tone)}" data-obs-measurement="${esc(v)}"><b>${esc(name)}</b> <span ${icon}>${esc(stateIcon(x?.status))}</span>${x?.status==="ok"?"":` <span class="obs-reason">${esc(label)}</span>`}</span>${action?`<p class="obs-action">${esc(action)}</p>`:""}</div>`;
+      return `<div class="obs-measurement-item"><span class="obs-measurement obs-tone-${esc(tone)}" data-obs-measurement="${esc(v)}"><b>${esc(name)}</b> <span ${icon}>${esc(stateIcon(x?.status))}</span>${x?.status==="ok"?"":` <span class="obs-reason">${esc(label)}</span>`}</span>${action?`<p class="obs-action">${esc(action)}</p>`:""}${skipped?`<p class="obs-action obs-skip">${esc(skipped)}</p>`:""}</div>`;
     }).join("");
     const explanations=Object.entries(VAR_NAME).map(([v,name])=>{
       const x=states[v], description=describeResult(v,x), seen=new Set([resultTextKey(description.label)]);
@@ -682,15 +770,16 @@ function observedPanel(){
       });
       return prose.length?`<dt>${esc(name)}</dt><dd>${prose.map(text=>`<p>${esc(text)}</p>`).join("")}</dd>`:"";
     }).join("");
-    const raw=Object.entries(VAR_NAME).map(([v,name])=>`<dt>${esc(name)}</dt><dd>Status: ${esc(states[v]?.status||"not reported")}${states[v]?.message?`<pre>${esc(states[v].message)}</pre>`:""}</dd>`).join("");
+    const raw=Object.entries(VAR_NAME).map(([v,name])=>`<dt>${esc(name)}</dt><dd>Status: ${esc(states[v]?.status||"not reported")}${states[v]?.error?`<br>Code: ${esc(states[v].error.code||"unknown")} · Attempts: ${esc(attemptsOf(states[v]))} of ${esc(maxAttemptsOf(states[v]))}${states[v].error.diagnostic_id?` · Diagnostic ID: ${esc(states[v].error.diagnostic_id)}`:""}`:""}${(states[v]?.error?.detail??states[v]?.message)?`<pre>${esc(states[v]?.error?.detail??states[v].message)}</pre>`:""}</dd>`).join("");
     const range=S.obs.ranges[id];
     const copyable=Object.keys(VAR_NAME).some(v=>states[v]?.status!=="ok");
-    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span></div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">Copy details</button><div data-obs-copy-fallback hidden><p>Clipboard unavailable. Select and copy these technical details.</p><textarea readonly aria-label="Technical details to copy"></textarea></div>`:""}</details></article>`;
+    return `<article class="obs-gauge-status obs-outcome-${esc(outcome)}" data-obs-result="${esc(id)}" data-outcome="${esc(outcome)}"><div class="obs-gauge-heading"><span class="obs-outcome obs-tone-${esc(display.tone)}"><span aria-hidden="true">${esc(display.icon)}</span> ${esc(display.label)}</span><span class="obs-gauge-identity"><b>${esc(id)}</b> · ${esc(g.name||"Unnamed gauge")}</span>${rollupText(states)?`<span class="obs-rollup">${esc(rollupText(states))}</span>`:""}</div><div class="obs-measurements">${chips}</div><details class="obs-details" data-obs-details="${esc(id)}"${S.obs.detailsOpen?.has(id)?" open":""}><summary aria-label="${esc(`Details for gauge ${id}`)}">Details</summary><dl><dt>Gauge</dt><dd>${esc(id)}</dd><dt>Name</dt><dd>${esc(g.name||"Not recorded")}</dd></dl>${explanations?`<dl class="obs-explanations">${explanations}</dl>`:""}<div class="obs-technical"><b>Technical details</b><dl>${raw}${range?`<dt>Record dates</dt><dd>${esc(range.start)} to ${esc(range.end)}</dd>`:""}</dl></div>${copyable?`<button type="button" data-obs="copyDetails" data-obs-gauge-id="${esc(id)}">Copy details</button><div data-obs-copy-fallback hidden><p>Clipboard unavailable. Select and copy these technical details.</p><textarea readonly aria-label="Technical details to copy"></textarea></div>`:""}</details></article>`;
   };
-  const finished=!!S.obs.completed&&!S.obs.job, rank={failed:0,partial:1,nodata:2,running:3,waiting:4,complete:5};
-  const ordered=finished?[...reportIds].sort((a,b)=>rank[classifyGauge(S.obs.status[a]).outcome]-rank[classifyGauge(S.obs.status[b]).outcome]):reportIds;
-  const complete=finished?ordered.filter(id=>classifyGauge(S.obs.status[id]).outcome==="complete"):[];
-  const results=ordered.filter(id=>!finished||classifyGauge(S.obs.status[id]).outcome!=="complete").map(resultRow).join("");
+  const finished=!!S.obs.completed&&!S.obs.job, rank={failed:0,nodata:1,noflow:2,nolevel:3,running:4,waiting:5,complete:6};
+  const rankOf=id=>{const c=classifyGauge(S.obs.status[id]);return rank[c.outcome==="partial"?c.partialKind:c.outcome];};
+  // Worst first (error, empty, no-flow, no-level, then records returned). No folding until coverage is verified (Phase 3).
+  const ordered=finished?[...reportIds].sort((a,b)=>rankOf(a)-rankOf(b)):reportIds;
+  const results=ordered.map(resultRow).join("");
   const rows=gauges.filter(g=>!S.obs.query||`${g.id} ${g.name}`.toLowerCase().includes(S.obs.query.toLowerCase())).map(g=>{
     const states=S.obs.status[g.id]||{}, short=v=>`${VAR_NAME[v]} ${stateIcon(states[v]?.status)}`;
     return `<label class="obs-gauge"><input type="checkbox" data-obs-gauge="${esc(g.id)}"${S.obs.gauges.has(g.id)?" checked":""}><span><b>${esc(g.id)}</b>${g.name?` · ${esc(g.name)}`:""}<small> ${esc(short("f"))} · ${esc(short("l"))}</small></span></label>`;
@@ -704,9 +793,9 @@ function observedPanel(){
     ${S.obs.filter?`<div class="obs-tools"><label class="obs-field">Period <span><input type="date" id="obsStart" value="${esc(S.obs.start)}" required> to <input type="date" id="obsEnd" value="${esc(S.obs.end)}" required></span></label></div>`:`<div class="obs-status">Period: all available data</div>`}
     ${selectedGaugeId?`<div class="obs-status">Selected gauge ${esc(selectedGaugeId)} · ${selectedGaugeRange?`available records ${esc(selectedGaugeRange.start)} to ${esc(selectedGaugeRange.end)}`:"record range will appear after data is fetched"}</div>`:""}
     <label class="obs-gauge"><input type="checkbox" id="obsRefresh"${S.obs.refresh?" checked":""}>Refresh cached data</label>
-    <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry ${failures} failed</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
-    <div class="obs-progress-status" aria-live="polite">${S.obs.job?`<progress class="obs-progress" max="${esc(Math.max(1,progress?.total||1))}" value="${esc(progress?.done||0)}"></progress>${statusLine}`:""}${tally?`<div class="obs-status">${esc(tally)}</div>`:""}${!S.obs.job?statusLine:""}</div>
-    ${results}${complete.length?`<details class="obs-complete" data-obs-complete${S.obs.completeOpen?" open":""}><summary>Show ${complete.length} complete ${complete.length===1?"gauge":"gauges"}</summary>${complete.map(resultRow).join("")}</details>`:""}
+    <div class="obs-actions"><button type="button" data-obs="runAll"${!OBSERVED_AVAILABLE||!unit||!gauges.length||!!S.obs.job?" disabled":""}>Run all ${gauges.length} gauges</button><button type="button" data-obs="runSelected"${!OBSERVED_AVAILABLE||!unit||!selected||!!S.obs.job?" disabled":""}>Run selected (${selected})</button>${failures&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry">Retry ${failures} failed</button>`:retry.waiting&&!S.obs.job?`<button type="button" class="ghost" data-obs="retry" data-obs-wait disabled>${esc(retryWaitLabel(retry.waitSeconds))}</button>`:""}${S.obs.job?`<button type="button" class="ghost" data-obs="cancel">Cancel</button>`:""}</div>
+    <div class="obs-progress-status" aria-live="polite">${S.obs.job?`<progress class="obs-progress" max="${esc(Math.max(1,progress?.total||1))}" value="${esc(progress?.done||0)}"></progress>${statusLine}`:""}${tally?`<div class="obs-status">${esc(tally)}</div><div class="obs-status">${esc(breakdown)}</div><div class="obs-status obs-footnote">${esc(COVERAGE_FOOTNOTE)}</div>`:""}${!S.obs.job?statusLine:""}</div>
+    ${results}
   </section>`;
 }
 function render(){

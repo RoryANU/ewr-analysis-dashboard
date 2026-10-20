@@ -123,29 +123,32 @@ def test_error_handler_works_without_requests(monkeypatch, tmp_path, error, retr
     assert all(result.status == "error" and result.retryable is False for result in results.values())
 
 
-def test_message_rules_agree_between_python_and_javascript():
+def test_message_rules_map_to_codes_and_javascript_only_reads_codes():
     root = Path(__file__).resolve().parents[1]
-    adapter = (root / "src/observed.py").read_text()
     template = (root / "src/dashboard_template.html").read_text()
     cases = json.loads((root / "tests/fixtures/observed_message_cases.json").read_text())
-    assert "src/dashboard_template.html" in adapter  # Keep both rule sites linked for future edits.
     start, end = "// ---- observed result classification", "function observedPanel(){"
     assert template.count(start) == template.count(end) == 1
     helpers = template[template.index(start) : template.index(end)]
-    assert "src/observed.py" in helpers
-    for case in cases:
-        assert observed._error_result(RuntimeError(case["message"])).retryable is case["retryable"]
+    for case in cases:  # Python is the only place that reads exception text
+        result = observed._error_result(RuntimeError(case["message"]))
+        assert result.retryable is case["retryable"] and result.error["code"] == case["code"]
+        assert result.error["retryable"] is case["retryable"]
+    for code in {case["code"] for case in cases} | {"CONFIGURATION_REQUIRED", "INVALID_REQUEST", "NETWORK_TIMEOUT"}:
+        assert code in helpers  # every backend code has front-end copy
     node = shutil.which("node") or str(Path(sys.executable).with_name("node"))
     script = """
 const fs=require('node:fs'),vm=require('node:vm');
 const [helpers,cases]=JSON.parse(fs.readFileSync(0,'utf8')),ctx=vm.createContext({});
 vm.runInContext(helpers,ctx);ctx.cases=cases;
-process.stdout.write(JSON.stringify(vm.runInContext("cases.map(c=>describeResult('f',{status:'error',message:c.message}))",ctx)));
+process.stdout.write(JSON.stringify(vm.runInContext(`cases.map(c=>[
+  describeResult('f',{status:'error',retryable:c.retryable,error:{code:c.code,retryable:c.retryable}}),
+  describeResult('f',{status:'error',retryable:true,message:c.message})])`,ctx)));
 """
     result = subprocess.run([node, "-e", script], input=json.dumps([helpers, cases]), text=True, capture_output=True, check=True)
-    for case, description in zip(cases, json.loads(result.stdout), strict=True):
-        assert description["retryable"] is case["retryable"]
-        assert description["label"] == case["label"]
+    for case, (by_code, legacy) in zip(cases, json.loads(result.stdout), strict=True):
+        assert by_code["retryable"] is case["retryable"] and by_code["label"] == case["label"]
+        assert legacy["label"] == "Unexpected problem"  # legacy message text is never parsed
 
 
 def test_empty_records_and_invalid_requests_are_not_retryable(monkeypatch, tmp_path):
@@ -220,8 +223,14 @@ def test_retryability_survives_streamed_and_final_job_payloads(monkeypatch, tmp_
     final = json.loads(json.dumps(job["stats"]["gauge_status"]))
     assert streamed == [final]
     assert final == job["gauge_status"]
-    assert final["412033"]["f"] == {"status": "ok", "message": "", "retryable": False}
-    assert final["412033"]["l"] == {"status": "error", "message": f"{type(error).__name__}: {error}", "retryable": retryable}
+    assert final["412033"]["f"] == {"status": "ok", "message": "", "retryable": False, "error": None, "attempts": 1, "max_attempts": 3}
+    level = final["412033"]["l"]  # legacy keys are unchanged; `error` is the additive envelope
+    assert {k: level[k] for k in ("status", "message", "retryable")} == {
+        "status": "error",
+        "message": f"{type(error).__name__}: {error}",
+        "retryable": retryable,
+    }
+    assert level["error"]["retryable"] is retryable and level["error"]["measurement"] == "level" and level["max_attempts"] == 3
 
 
 @pytest.mark.parametrize(

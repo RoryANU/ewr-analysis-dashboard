@@ -42,17 +42,20 @@ test('classifyGauge: every pair of terminal measurement statuses',()=>{
   for(const f of statuses)for(const l of statuses){
     const states={f:{status:f},l:{status:l}}, okVars=['f','l'].filter(v=>states[v].status==='ok'), badVars=['f','l'].filter(v=>states[v].status!=='ok');
     const outcome=okVars.length===2?'complete':okVars.length?'partial':[f,l].every(s=>['empty','unsupported'].includes(s))?'nodata':'failed';
-    assert.deepEqual(run(`classifyGauge(${JSON.stringify(states)})`),{outcome,okVars,badVars},`${f}/${l}`);
+    const emptyVars=badVars.filter(v=>['empty','unsupported'].includes(states[v].status)), failedVars=badVars.filter(v=>!emptyVars.includes(v));
+    const partialKind=outcome==='partial'?(okVars.includes('f')?'nolevel':'noflow'):null;
+    assert.deepEqual(run(`classifyGauge(${JSON.stringify(states)})`),{outcome,okVars,emptyVars,failedVars,badVars,partialKind},`${f}/${l}`);
   }
 });
 test('classifyGauge: waiting and in-progress measurements cannot look complete',()=>{
   const run=observedHarness();
-  for(const input of ['undefined','null','{}','{f:{},l:null}'])assert.deepEqual(run(`classifyGauge(${input})`),{outcome:'waiting',okVars:[],badVars:[]});
-  for(const pending of [undefined,'pending','running'])for(const terminal of ['ok','empty','unsupported','error','timeout','rate_limited'])for(const v of ['f','l']){
+  for(const input of ['undefined','null','{}','{f:{},l:null}'])assert.deepEqual(run(`classifyGauge(${input})`),{outcome:'waiting',okVars:[],emptyVars:[],failedVars:[],badVars:[],partialKind:null});
+  for(const pending of [undefined,'pending','running','retry_wait'])for(const terminal of ['ok','empty','unsupported','error','timeout','rate_limited'])for(const v of ['f','l']){
     const other=v==='f'?'l':'f', states={[v]:pending?{status:pending}:{},[other]:{status:terminal}};
-    assert.deepEqual(run(`classifyGauge(${JSON.stringify(states)})`),{outcome:'running',okVars:terminal==='ok'?[other]:[],badVars:terminal==='ok'?[]:[other]});
+    const empty=['empty','unsupported'].includes(terminal);
+    assert.deepEqual(run(`classifyGauge(${JSON.stringify(states)})`),{outcome:'running',okVars:terminal==='ok'?[other]:[],emptyVars:empty?[other]:[],failedVars:terminal==='ok'||empty?[]:[other],badVars:terminal==='ok'?[]:[other],partialKind:null});
   }
-  assert.deepEqual(run('classifyGauge({f:{status:"pending"},l:{status:"running"}})'),{outcome:'running',okVars:[],badVars:[]});
+  assert.deepEqual(run('classifyGauge({f:{status:"pending"},l:{status:"retry_wait"}})'),{outcome:'running',okVars:[],emptyVars:[],failedVars:[],badVars:[],partialKind:null});
 });
 test('describeResult: labels distinguish unavailable records, query failures and setup failures',()=>{
   const run=observedHarness(), cases=[
@@ -60,29 +63,39 @@ test('describeResult: labels distinguish unavailable records, query failures and
     [{status:'empty'},'No records for this period',false,'info'],
     [{status:'unsupported'},'Not available from this source',false,'info'],
     [{status:'timeout'},'Timed out',true,'error'],
-    [{status:'rate_limited'},'Slowed down by data service',true,'error'],
+    [{status:'rate_limited'},'Data service busy',true,'error'],
     [{status:'error',message:'unexpected failure'},'Unexpected problem',true,'error'],
-    [{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json'},'Weather-bureau station list not set up',false,'error'],
-    [{status:'error',message:'BOM_WATER/cache/STATIONS.JSON',retryable:true},'Weather-bureau station list not set up',false,'error'],
-    [{status:'error',message:'BoM station cache missing'},'Weather-bureau station list not set up',false,'error'],
-    [{status:'error',message:'too many requests in queue'},'Data service busy',true,'error'],
-    [{status:'error',message:'error_num 218'},'Data service busy',true,'error'],
-    [{status:'error',message:'{"error_num": 218}'},'Data service busy',true,'error'],
-    [{status:'error',message:'PermissionError: cannot read settings',retryable:false},'Setup or request needs attention',false,'error'],
+    // legacy payloads (no envelope): message text is never parsed, so station/busy wording stays generic
+    [{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json'},'Unexpected problem',true,'error'],
+    [{status:'error',message:'too many requests in queue'},'Unexpected problem',true,'error'],
+    [{status:'error',message:'error_num 218'},'Unexpected problem',true,'error'],
+    [{status:'error',message:'PermissionError: cannot read settings',retryable:false},'Unexpected problem',false,'error'], // a false flag does not name a cause
+    // envelope: the code decides the words, the envelope's own retryable decides retry
+    [{status:'error',message:'x',retryable:true,error:{code:'STATION_LIST_SETUP_REQUIRED',retryable:false}},'Weather-bureau station list not set up',false,'error'],
+    [{status:'error',message:'x',error:{code:'CONFIGURATION_REQUIRED',retryable:false}},'Needs IT support',false,'error'],
+    [{status:'error',message:'x',error:{code:'INVALID_REQUEST',retryable:false}},'Setup or request needs attention',false,'error'],
+    [{status:'error',message:'x',error:{code:'SERVICE_BUSY',retryable:true,attempts:3}},'Data service busy',true,'error'],
+    [{status:'error',message:'x',error:{code:'NETWORK_TIMEOUT',retryable:true,attempts:3}},'Timed out',true,'error'],
+    [{status:'error',message:'x',error:{code:'UNEXPECTED_ERROR',retryable:true,attempts:3}},'Unexpected problem',true,'error'],
+    [{status:'error',message:'x',error:{code:'SOMETHING_NEW',retryable:true}},'Unexpected problem',true,'error'],
+    [{status:'error',message:'x',error:{code:'SOMETHING_NEW',retryable:false}},'Unexpected problem',false,'error'],
+    [{status:'running',attempts:1},'Checking',false,'info'],
+    [{status:'running',attempts:2,error:null},'Retrying automatically (attempt 2 of 3)…',false,'info'],
+    [{status:'retry_wait',attempts:1,error:{code:'SERVICE_BUSY',attempts:1,max_attempts:3,retryable:true}},'Retrying automatically (attempt 2 of 3)…',false,'info'],
     [{status:'pending'},'Waiting',false,'info'],
     [{status:'running'},'Checking',false,'info'],
     [{},'Waiting',false,'info'],
   ];
   for(const [input,label,retryable,severity] of cases){
     const result=run(`describeResult('f',${JSON.stringify(input)})`);
-    assert.deepEqual(Object.keys(result).sort(),['action','label','retryable','severity','why']);
+    assert.deepEqual(Object.keys(result).sort(),['action','label','retryable','severity','skip','why']);
     assert.equal(result.label,label);assert.equal(result.retryable,retryable);assert.equal(result.severity,severity);
     assert.ok(result.why);assert.equal(typeof result.action,'string');
   }
   assert.match(run("describeResult('f',null)").why,/Flow/);
   assert.match(run("describeResult('l',undefined)").why,/Water level/);
   // Terminal non-failures never become retryable, even with an inconsistent flag.
-  for(const status of ['ok','empty','unsupported','pending','running'])assert.equal(run(`describeResult('l',{status:'${status}',retryable:true})`).retryable,false);
+  for(const status of ['ok','empty','unsupported','pending','running','retry_wait'])assert.equal(run(`describeResult('l',{status:'${status}',retryable:true})`).retryable,false);
   for(const status of ['error','timeout','rate_limited'])assert.equal(run(`describeResult('l',{status:'${status}',retryable:false})`).retryable,false);
 });
 test('observed retry button and selection use the same retryability decisions',()=>{
@@ -93,12 +106,12 @@ test('observed retry button and selection use the same retryability decisions',(
     const gauges=['setup','busy','timeout','empty','unsupported','permission','mixed'].map(id=>({id,name:id}));
     const OBSERVED_UNITS=[{sdl:'Test',gauges}], META={};
     const S={sel:{type:'none'},obs:{sdl:'Test',gauges:new Set(),ranges:{},query:'',notice:'',status:{
-      setup:{f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json'}},
-      busy:{f:{status:'error',message:'error_num 218',retryable:true}},
+      setup:{f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json',error:{code:'STATION_LIST_SETUP_REQUIRED',retryable:false}}},
+      busy:{f:{status:'error',message:'error_num 218',retryable:true,error:{code:'SERVICE_BUSY',retryable:true,attempts:3}}},
       timeout:{l:{status:'timeout',retryable:true}},
       empty:{f:{status:'empty'}},unsupported:{f:{status:'unsupported'}},
       permission:{l:{status:'error',retryable:false}},
-      mixed:{f:{status:'error',message:'~/bom_water/cache/stations.json'},l:{status:'error',message:'too many requests in queue'}}
+      mixed:{f:{status:'error',message:'~/bom_water/cache/stations.json',error:{code:'STATION_LIST_SETUP_REQUIRED',retryable:false}},l:{status:'error',message:'too many requests in queue',error:{code:'SERVICE_BUSY',retryable:true,attempts:3}}}
     }}};
     const OBSERVED_AVAILABLE=true,esc=String;
     let requested;
@@ -117,12 +130,14 @@ test('observed classification helpers preserve their inputs',()=>{
   const run=observedHarness();
   assert.equal(run(`(()=>{const states={f:{status:'ok'},l:{status:'error',message:'error_num 218',retryable:true}},before=JSON.stringify(states);classifyGauge(states);describeResult('l',states.l);return JSON.stringify(states)===before;})()`),true);
 });
-test('observed message rules use shared samples with the Python adapter',()=>{
+test('observed error codes use shared samples with the Python adapter, and message text is never parsed',()=>{
   const run=observedHarness(),cases=JSON.parse(fs.readFileSync('tests/fixtures/observed_message_cases.json','utf8'));
   for(const sample of cases){
-    const result=run(`describeResult('f',${JSON.stringify({status:'error',message:sample.message})})`);
-    assert.equal(result.retryable,sample.retryable,sample.message);
-    assert.equal(result.label,sample.label,sample.message);
+    const byCode=run(`describeResult('f',${JSON.stringify({status:'error',retryable:sample.retryable,error:{code:sample.code,retryable:sample.retryable}})})`);
+    assert.equal(byCode.retryable,sample.retryable,sample.message);
+    assert.equal(byCode.label,sample.label,sample.message);
+    const legacy=run(`describeResult('f',${JSON.stringify({status:'error',retryable:true,message:sample.message})})`);
+    assert.equal(legacy.label,'Unexpected problem',sample.message);
   }
 });
 test('summarizeGauges: every outcome contributes once, with only terminal outcomes checked',()=>{
@@ -162,9 +177,13 @@ function observedPanelHarness(){
 const observedStatusRows=html=>[...html.matchAll(/<article class="obs-gauge-status[^"]*"[^>]*>([\s\S]*?)<\/article>/g)].map(m=>m[1]);
 test('observed panel: 16 rows, honest header, exact tally, and waiting/checking labels',()=>{
   const h=observedPanelHarness(),html=h.html(),rows=observedStatusRows(html);
-  const tally='12 of 16 checked · 4 complete · 5 partial · 2 no data · 1 failed (4 not finished)';
+  const tally='12 of 16 gauges finished · 4 still loading', breakdown='Both measurements returned: 4 · One returned: 5 · No records: 2 · Failed: 1';
+  const footnote='Records returned does not mean full coverage of the selected period.';
   assert.doesNotMatch(html,/Checking gauges:|Renamed download stage/);
-  assert.ok(html.includes(`>${tally}</div>`));
+  assert.ok(html.includes(`>${tally}</div>`));assert.ok(html.includes(`>${breakdown}</div>`));assert.ok(html.includes(`>${footnote}</div>`));
+  assert.doesNotMatch(html.replace(/<[^>]*>/g,' '),/\bcomplete\b|ignore this gauge/i); // visible text only; internal outcome names stay 'complete'
+  assert.doesNotMatch(html,/\baria-(?:label|description)\s*=\s*"[^"]*\bcomplete\b[^"]*"/i);
+  assert.match(observedStatusRows(html)[9],/class="obs-outcome[^>]*><span aria-hidden="true">–<\/span> No records/); // G10: both empty
   assert.match(html,/<progress class="obs-progress" max="16" value="12">/);
   assert.equal(rows.length,16);
   assert.match(rows[14],/<span aria-hidden="true">·<\/span> Waiting/);assert.match(rows[14],/<b>G15<\/b> · Gauge 15/);
@@ -183,18 +202,17 @@ test('observed panel: 16 rows, honest header, exact tally, and waiting/checking 
   assert.doesNotMatch(h.html(),/0 of 1</);
   assert.doesNotMatch(h.html(),/Checking gauges:/);
 });
-test('observed panel: completion sorts by outcome and collapses complete gauges, keeping the tally above the notice',()=>{
+test('observed panel: completion shows every gauge in outcome order, keeping the tally above the notice',()=>{
   const h=observedPanelHarness();
   h.run(`for(const id of ['G13','G14','G15','G16'])S.obs.status[id]={f:{status:'empty'},l:{status:'empty'}};
     S.obs.job=null;S.obs.runIds=[];S.obs.completed=true;S.obs.progress=null;S.obs.notice='Loaded 9 EWR results for Test.';`);
-  const html=h.html(),tally='16 of 16 checked · 4 complete · 5 partial · 6 no data · 1 failed';
-  assert.ok(html.includes(`>${tally}</div>`));
+  const html=h.html(),tally='16 of 16 gauges finished', breakdown='Both measurements returned: 4 · One returned: 5 · No records: 6 · Failed: 1';
+  assert.ok(html.includes(`>${tally}</div>`));assert.ok(html.includes(`>${breakdown}</div>`));
   assert.ok(html.indexOf(tally)<html.indexOf('Loaded 9 EWR results for Test.'));
   assert.equal(observedStatusRows(html).length,16);
   assert.doesNotMatch(html,/<progress/);
-  assert.deepEqual([...html.matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]),['G12','G5','G6','G7','G8','G9','G10','G11','G13','G14','G15','G16','G1','G2','G3','G4']);
-  assert.match(html,/<details class="obs-complete" data-obs-complete><summary>Show 4 complete gauges<\/summary>/);
-  assert.equal((html.match(/data-obs-complete/g)||[]).length,1);
+  assert.deepEqual([...html.matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]),['G12','G10','G11','G13','G14','G15','G16','G5','G6','G7','G8','G9','G1','G2','G3','G4']);
+  assert.doesNotMatch(html,/data-obs-complete|Show \d+ complete/); // no folding until coverage is verified (Phase 3)
 });
 test('observed panel: running and cancelled views keep original order and never group successful rows',()=>{
   const h=observedPanelHarness(),ids=()=>[...h.html().matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]);
@@ -204,13 +222,13 @@ test('observed panel: running and cancelled views keep original order and never 
   assert.deepEqual(ids(),original);assert.doesNotMatch(h.html(),/data-obs-complete/);
   h.run('S.obs.displayIds=[...S.obs.runIds];S.obs.runIds=[];S.obs.job=null;S.obs.completed=false');
   assert.deepEqual(ids(),original);assert.doesNotMatch(h.html(),/data-obs-complete/);
-  assert.match(h.html(),/13 of 16 checked · 5 complete · 4 partial · 2 no data · 2 failed \(3 not finished\)/);
+  assert.match(h.html(),/>13 of 16 gauges finished · 3 not finished<\/div>/);
 });
 test('observed panel: measurement reasons stay in their own chip and raw details replace hover titles',()=>{
   const h=observedPanelHarness();
   h.run(`S.obs.runIds=['G1'];gauges[0].name='';S.obs.status.G1={
-    f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json',retryable:false},
-    l:{status:'error',message:'error_num 218: too many requests in queue',retryable:true}};`);
+    f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json',retryable:false,error:{code:'STATION_LIST_SETUP_REQUIRED',retryable:false,attempts:1,max_attempts:3,diagnostic_id:'diag-f'}},
+    l:{status:'error',message:'error_num 218: too many requests in queue',retryable:true,error:{code:'SERVICE_BUSY',retryable:true,attempts:3,max_attempts:3,retry_after_s:30,diagnostic_id:'diag-l'}}};`);
   const html=h.html(),row=observedStatusRows(html)[0];
   const chips=[...row.matchAll(/<span class="obs-measurement[^>]*data-obs-measurement="([fl])">([\s\S]*?)<\/span><\/span>/g)];
   assert.equal(chips.length,2);
@@ -228,7 +246,7 @@ test('observed panel: measurement reasons stay in their own chip and raw details
 test('observed panel: retry counts only requested gauges, singular waiting and escaped fallback rows',()=>{
   const h=observedPanelHarness();
   h.run('S.obs.runIds=["G13"];S.obs.progress={stage:"Fetching gauges",done:0,total:1}');
-  assert.match(h.html(),/>0 of 1 checked \(1 not finished\)<\/div>/);
+  assert.match(h.html(),/>0 of 1 gauge finished · 1 still loading<\/div>/);
   assert.equal(observedStatusRows(h.html()).length,1);
   h.run('S.obs.runIds=["<gauge>"];S.obs.status["<gauge>"]={f:{status:"error",message:"<message>"},l:{status:"empty"}}');
   let html=h.html();assert.match(html,/&lt;gauge&gt;/);assert.match(html,/&lt;message&gt;/);assert.doesNotMatch(html,/<gauge>|<message>/);
@@ -264,7 +282,7 @@ test('observed panel: duplicate chip/why/action copy is omitted and prose is esc
 });
 test('observed panel: decorative icons are hidden while a stand-alone success icon is labelled',()=>{
   const h=observedPanelHarness(),rows=observedStatusRows(h.html());
-  assert.match(rows[0],/class="obs-outcome[^>]*><span aria-hidden="true">✓<\/span> Complete/);
+  assert.match(rows[0],/class="obs-outcome[^>]*><span aria-hidden="true">✓<\/span> Records returned/);
   assert.match(rows[0],/data-obs-measurement="f"><b>Flow<\/b> <span role="img" aria-label="Available">✓<\/span>/);
   assert.match(rows[4],/data-obs-measurement="l"><b>Water level<\/b> <span aria-hidden="true">✗<\/span> <span class="obs-reason">Unexpected problem/);
 });
@@ -295,6 +313,7 @@ function observedRunHarness(){
     function refresh(){render();}function flowsChanged(){}function fillPolicyOptions(){}function renderCustomList(){}
     function observedSdlIndex(){return 0;}function addCustom(){CUSTOM.push({P:1});}
   `,ctx);
+  vm.runInContext(observedHelpers,ctx);
   vm.runInContext(section('function persistObserved(){','function observedSdlIndex(){'),ctx);
   vm.runInContext(section('let observedWatch=0;','function initObserved(){'),ctx);
   vm.runInContext(section('$("panel").addEventListener("click",event=>{const b=event.target.closest("[data-obs]")','$("panel").addEventListener("change",event=>{const t=event.target;'),ctx);
@@ -303,14 +322,14 @@ function observedRunHarness(){
 const observedResponse=(body,status=200)=>({ok:status<400,status,json:async()=>body});
 for(const mode of ['clipboard','unavailable','denied'])test(`Copy details: ${mode} uses plain text or a focused selection fallback`,async()=>{
   const h=observedRunHarness(),copied=[];
-  vm.runInContext(observedHelpers,h.ctx);
   h.run(`OBSERVED_UNITS[0].gauges[0].name='Gauge <one>';S.obs.status.G1={f:{status:'ok'},l:{status:'error',message:'raw <error>'}};`);
   h.ctx.navigator=mode==='unavailable'?{}:{clipboard:{writeText:async text=>{if(mode==='denied')throw Error('denied');copied.push(text);}}};
   const field={value:'',focused:false,selected:false,focus(){this.focused=true;},select(){this.selected=true;}};
   const fallback={hidden:true,querySelector:()=>field};
   const button={dataset:{obs:'copyDetails',obsGaugeId:'G1'},textContent:'Copy details',closest:()=>({querySelector:()=>fallback})};
   await h.listeners.click({target:{closest:()=>button}});
-  const expected='Gauge: G1\nName: Gauge <one>\n\nWater level\nStatus: error\nMessage: raw <error>';
+  const zone=Intl.DateTimeFormat().resolvedOptions().timeZone; // the copied text names the period and the viewer's time zone
+  const expected=`Gauge: G1\nName: Gauge <one>\nPeriod: all available data\nTime zone: ${zone}\n\nWater level\nStatus: error\nMessage: raw <error>`;
   if(mode==='clipboard'){assert.deepEqual(copied,[expected]);assert.equal(button.textContent,'Copied');assert.equal(fallback.hidden,true);}
   else{assert.equal(field.value,expected);assert.equal(fallback.hidden,false);assert.equal(field.focused,true);assert.equal(field.selected,true);assert.equal(button.textContent,'Select details to copy');}
 });
@@ -391,7 +410,6 @@ test('runObserved: retry preserves scenario results for gauges outside the retry
 test('runObserved: cancel keeps checked and waiting gauges and ignores late poll results',async()=>{
   const h=observedRunHarness();let polls=0,release,ready;
   const polling=new Promise(resolve=>{ready=resolve;});
-  vm.runInContext(observedHelpers,h.ctx);
   h.ctx.fetch=async url=>{
     if(url==='/api/observed/run')return observedResponse({job:'job'});
     if(!polls++)return observedResponse({status:'running',progress:{gauges:{G1:{f:{status:'ok'},l:{status:'ok'}}}}});
@@ -685,4 +703,119 @@ test('stale user results cannot leak achieved years, drought years or near-miss 
  const r=row(0,0,0,'U_STALE',[.8,.8,.8,.8]);r.user='u_stale';r.userVer=2;r[8].uewrVerAt={2:1};r[8].nyAt={2:100};r[8].nmAt={2:[3,5]};r[12]={dry:{fr:[.8,.8,.8,.8],n:[10,10,10,10]}};
  const run=harness([r]);assert.equal(run('eyOf(ROWS[0],2)'),null);assert.equal(run('nyOf(ROWS[0],2)'),null);assert.equal(run('nyFull(ROWS[0],2)'),null);
  run("S.period='dry'");assert.equal(run('eyOf(ROWS[0],2)'),null);assert.equal(run('nyOf(ROWS[0],2)'),null);
+});
+
+test('phase 1: empty wording, empty/failed separation and partial kinds (exact literals)',()=>{
+  const run=observedHarness();
+  const e=run(`describeResult('f',{status:'empty'})`);
+  assert.equal(e.why,'No observations returned — river conditions for this period are unknown.');
+  assert.equal(e.action,'Widen the date range to investigate, or record why this gauge is excluded.');
+  assert.ok(Object.values(e).every(v=>!/ignore this gauge/i.test(String(v)))); // tripwire; supplements the exact checks above
+  const mixed=run(`classifyGauge({f:{status:'empty'},l:{status:'error'}})`);
+  assert.equal(mixed.outcome,'failed');assert.deepEqual(mixed.emptyVars,['f']);assert.deepEqual(mixed.failedVars,['l']);
+  const noFlow=run(`classifyGauge({f:{status:'empty'},l:{status:'ok'}})`),noLevel=run(`classifyGauge({f:{status:'ok'},l:{status:'empty'}})`);
+  assert.deepEqual([noFlow.outcome,noFlow.partialKind,noLevel.outcome,noLevel.partialKind],['partial','noflow','partial','nolevel']);
+  assert.equal(run(`classifyGauge({f:{status:'running'},l:{status:'ok'}})`).outcome,'running');
+  assert.equal(run('COMPLETE_LABEL'),'Records returned');
+});
+test('phase 1: partial badges name the missing measurement and no-flow sorts above no-level; Failed: 0 stays visible',()=>{
+  const h=observedPanelHarness();
+  h.run(`S.obs.job=null;S.obs.completed=true;S.obs.progress=null;S.obs.runIds=['NO_LEVEL','NO_FLOW','OK'];
+    for(const id of ['NO_LEVEL','NO_FLOW','OK'])gauges.push({id,name:id});
+    OBSERVED_UNITS[0].gauges=gauges;
+    S.obs.status={NO_LEVEL:{f:{status:'ok'},l:{status:'empty'}},NO_FLOW:{f:{status:'empty'},l:{status:'ok'}},OK:{f:{status:'ok'},l:{status:'ok'}}};`);
+  const html=h.html(),rows=observedStatusRows(html);
+  assert.deepEqual([...html.matchAll(/data-obs-result="([^"]+)"/g)].map(m=>m[1]),['NO_FLOW','NO_LEVEL','OK']);
+  assert.match(rows[0],/Partial — no flow/);assert.match(rows[1],/Partial — no water level/);assert.match(rows[2],/Records returned/);
+  assert.ok(html.includes('>3 of 3 gauges finished</div>'));
+  assert.ok(html.includes('>Both measurements returned: 1 · One returned: 2 · No records: 0 · Failed: 0</div>'));
+});
+
+// ---- Phase 2: error envelope, retry presentation, legacy errors -----------------------------------------------------
+const busyEnvelope=(extra={})=>({status:'error',message:'busy',retryable:true,error:{code:'SERVICE_BUSY',retryable:true,retry_after_s:30,attempts:3,max_attempts:3,diagnostic_id:'d1',...extra}});
+test('phase 2: SERVICE_BUSY cooldown starts once per failure, counts down, honours retry_after_s=0 and restarts on a new failure',()=>{
+  const h=observedRunHarness(),ticks=[];
+  h.ctx.setInterval=fn=>{ticks.push(fn);return 7;};h.ctx.clearInterval=()=>{ticks.length=0;};
+  h.run('var T=1000;observedNow=()=>T;');
+  const update=(id,x)=>h.run(`updateObservedStatus({G2:{f:${JSON.stringify(x)},l:{status:'ok'}}})`);
+  update('G2',busyEnvelope());
+  assert.equal(h.run('S.obs.cooldown["G2|f"].until'),31000);
+  h.run('T=11000');update('G2',busyEnvelope()); // the same failure arrives again on the next poll
+  assert.equal(h.run('S.obs.cooldown["G2|f"].until'),31000);
+  assert.deepEqual(plain(h.run('retryPlan(["G2"],S.obs.status,S.obs.cooldown)')),{ready:[],waiting:1,waitSeconds:20});
+  assert.equal(h.run('retryWaitLabel(20)'),'Data service busy — retry in 20s');assert.equal(h.run('retryWaitLabel(60)'),'Data service busy — retry in a minute');
+  h.run('T=31000');assert.deepEqual(plain(h.run('retryPlan(["G2"],S.obs.status,S.obs.cooldown)')),{ready:['G2'],waiting:0,waitSeconds:0});
+  update('G2',busyEnvelope({diagnostic_id:'d2',retry_after_s:0}));assert.equal(h.run('S.obs.cooldown["G2|f"].until'),31000); // 0 means no wait, not the 60 s default
+  update('G2',busyEnvelope({diagnostic_id:'d3',retry_after_s:null}));assert.equal(h.run('S.obs.cooldown["G2|f"].until'),91000); // no hint: 60 s
+  assert.equal(ticks.length,1); // one timer, not one per poll
+});
+test('phase 2: panel shows retry attempts, one rollup line per gauge, never answered, skip note and a disabled countdown Retry',()=>{
+  const h=observedPanelHarness();
+  h.run(`observedNow=()=>1000;S.obs.job=null;S.obs.completed=true;S.obs.progress=null;S.obs.runIds=['A','B','C','D'];
+    for(const id of ['A','B','C','D'])gauges.push({id,name:id});
+    (()=>{const to={status:'error',message:'t',retryable:true,error:{code:'NETWORK_TIMEOUT',retryable:true,attempts:3,max_attempts:3,diagnostic_id:'t'}};
+      const setup={status:'error',message:'s',retryable:false,error:{code:'STATION_LIST_SETUP_REQUIRED',retryable:false,attempts:1,max_attempts:3,diagnostic_id:'s'}};
+      const busy={status:'error',message:'b',retryable:true,error:{code:'SERVICE_BUSY',retryable:true,retry_after_s:30,attempts:3,max_attempts:3,diagnostic_id:'b'}};
+      S.obs.status={A:{f:to,l:to},B:{f:setup,l:setup},C:{f:to,l:{status:'ok'}},D:{f:busy,l:busy}};})();`);
+  let html=h.html(),rows=observedStatusRows(html);
+  assert.ok(html.includes('>4 of 4 gauges finished · 1 never answered</div>')); // only A: every measurement timed out; setup/busy/partial are excluded
+  assert.match(html,/data-obs="retry">Retry 3 failed<\/button>/);
+  assert.equal((rows[rows.length-1].match(/Not retried — needs setup/g)||[]).length,0);
+  const setupRow=rows.find(r=>/data-obs-result="B"/.test(r)||/<b>B<\/b>/.test(r));
+  assert.equal((setupRow.match(/Not retried — needs setup/g)||[]).length,2);
+  assert.match(setupRow,/Your IT support needs to run a one-time setup\. Copy details → send to IT\./);
+  assert.match(rows.find(r=>/<b>A<\/b>/.test(r)),/We already retried 2 times\. Tried 3 times\./);
+  assert.doesNotMatch(html,/\[contact\]/);
+  h.run(`S.obs.status={D:S.obs.status.D};S.obs.runIds=['D'];S.obs.cooldown={'D|f':{diag:'b',until:31000},'D|l':{diag:'b',until:31000}};`);
+  assert.match(h.html(),/<button[^>]*data-obs="retry" data-obs-wait disabled>Data service busy — retry in 30s<\/button>/);
+  h.run('observedNow=()=>31000');assert.match(h.html(),/data-obs="retry">Retry 1 failed<\/button>/);
+  // in flight: the retry label shows the attempt that is coming, one rollup line, and the gauge still counts as loading
+  h.run(`S.obs.job='job';S.obs.completed=false;S.obs.runIds=['A'];S.obs.cooldown={};S.obs.status={A:{f:{status:'retry_wait',message:'t',retryable:true,attempts:1,max_attempts:3,error:{code:'NETWORK_TIMEOUT',retryable:true,attempts:1,max_attempts:3}},l:{status:'ok'}}};`);
+  html=h.html();
+  assert.match(html,/Flow: retrying \(2 of 3\) · Water level ✓/);
+  assert.match(html,/Retrying automatically \(attempt 2 of 3\)…/);
+  assert.ok(html.includes('>0 of 1 gauge finished · 1 still loading</div>'));
+  assert.equal(observedStatusRows(html).length,1);
+  assert.doesNotMatch(html,/never answered/);
+});
+test('phase 2: configuration errors name the configured contact, or "your IT support" when none is set',()=>{
+  const run=observedHarness(),x={status:'error',error:{code:'CONFIGURATION_REQUIRED',retryable:false}};
+  assert.equal(run(`describeResult('f',${JSON.stringify(x)})`).action,'This needs IT support. Use Copy details and send it to your IT support.');
+  assert.equal(run(`describeResult('f',${JSON.stringify(x)}).skip`),'Not retried — needs setup');
+  assert.equal(run(`describeResult('f',${JSON.stringify({status:'error',error:{code:'NETWORK_TIMEOUT',retryable:true,attempts:1}})}).why`),"The data service didn't answer in time.");
+});
+test('phase 2: Copy details carries code, attempts, diagnostic id, next step, period and time zone; legacy errors copy their message verbatim',()=>{
+  const run=observedHarness(),states={f:{status:'error',message:'m',error:{code:'SERVICE_BUSY',retryable:true,attempts:3,max_attempts:3,diagnostic_id:'abc'}},l:{status:'ok'}};
+  assert.equal(run(`observedDetailsText('G1','Name',${JSON.stringify(states)},{period:'2000-01-01 to 2000-02-01',timezone:'Australia/Sydney'})`),
+    'Gauge: G1\nName: Name\nPeriod: 2000-01-01 to 2000-02-01\nTime zone: Australia/Sydney\n\nFlow\nStatus: error\nMessage: m\nCode: SERVICE_BUSY\nAttempts: 3 of 3\nDiagnostic ID: abc\nNext step: Retry when available.');
+  assert.equal(run(`observedDetailsText('G1','Name',{f:{status:'error',message:'FileNotFoundError: ~/bom_water/cache/stations.json'},l:{status:'ok'}})`),'Gauge: G1\nName: Name\n\nFlow\nStatus: error\nMessage: FileNotFoundError: ~/bom_water/cache/stations.json');
+});
+
+test('phase 2: a gauge stays blocked until every measurement is out of cooldown, and the timer re-renders when the first gauge becomes ready',()=>{
+  const run=observedHarness();
+  const status={A:{f:busyEnvelope(),l:{status:'error',message:'t',retryable:true,error:{code:'NETWORK_TIMEOUT',retryable:true,attempts:3}}},B:{f:busyEnvelope(),l:{status:'ok'}}};
+  const cooldown={'A|f':{diag:'a',until:30000},'B|f':{diag:'b',until:60000}};
+  const plan=now=>plan_(now);function plan_(now){return run(`retryPlan(["A","B"],${JSON.stringify(status)},${JSON.stringify(cooldown)},${now})`);}
+  assert.deepEqual(plan(1000),{ready:[],waiting:2,waitSeconds:29}); // A's ready Level timeout does not release its cooling Flow
+  assert.deepEqual(plan(30000),{ready:['A'],waiting:1,waitSeconds:30});
+  assert.equal(run('retryWaitLabel(300)'),'Data service busy — retry in 5 minutes');
+  const h=observedRunHarness(),ticks=[];let renders=0;
+  h.ctx.setInterval=fn=>{ticks.push(fn);return 7;};h.ctx.clearInterval=()=>{ticks.length=0;};
+  const button={textContent:''};h.ctx.$=()=>({addEventListener(){},querySelector:()=>button});
+  h.run(`var T=1000;observedNow=()=>T;OBSERVED_UNITS[0].gauges=[{id:'A'},{id:'B'}];
+    S.obs.status={A:${JSON.stringify(status.A)},B:${JSON.stringify(status.B)}};S.obs.cooldown=${JSON.stringify(cooldown)};
+    var renderCount=0;render=()=>{renderCount++;};ensureCooldownTick();`);
+  assert.equal(ticks.length,1);
+  h.run('T=2000');ticks[0]();assert.equal(h.run('renderCount'),0);assert.equal(button.textContent,'Data service busy — retry in 28s');
+  h.run('T=30000');ticks[0]();assert.equal(h.run('renderCount'),1); // A became ready while B still waits: the button must be rebuilt
+  h.run('T=61000');ticks[0]();assert.equal(h.run('renderCount'),2);assert.equal(ticks.length,0); // all expired: timer stops
+});
+test('phase 2: the "Not retried" note is withheld when the gauge is included in Retry, and detail beats message',()=>{
+  const h=observedPanelHarness();
+  h.run(`observedNow=()=>1000;S.obs.job=null;S.obs.completed=true;S.obs.progress=null;S.obs.runIds=['M'];gauges.push({id:'M',name:'M'});
+    S.obs.status={M:{f:{status:'error',message:'legacy text',retryable:false,error:{code:'STATION_LIST_SETUP_REQUIRED',retryable:false,attempts:1,max_attempts:3,detail:'DETAIL WINS'}},l:{status:'error',message:'t',retryable:true,error:{code:'NETWORK_TIMEOUT',retryable:true,attempts:3,max_attempts:3}}}};`);
+  const html=h.html();
+  assert.match(html,/data-obs="retry">Retry 1 failed<\/button>/);
+  assert.doesNotMatch(html,/Not retried — needs setup/); // Retry re-requests the whole gauge, so the claim would be false
+  assert.match(html,/<pre>DETAIL WINS<\/pre>/);assert.doesNotMatch(html,/legacy text/);
 });

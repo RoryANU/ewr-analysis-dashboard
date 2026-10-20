@@ -369,3 +369,266 @@ def test_observed_worker_matches_standard_upload_results_and_stored_series(monke
     expected_flow = server.load_series("baseline", "flow").sort_index().sort_index(axis=1)
     actual_flow = server.load_series(server._observed_scenario_id(sdl), "flow").sort_index().sort_index(axis=1)
     pd.testing.assert_frame_equal(actual_flow, expected_flow)
+
+
+# ---- error envelope (additive; legacy status/message/retryable stay) ----------------------------------------------
+@pytest.mark.parametrize(
+    "exc,code,retryable",
+    [
+        (FileNotFoundError("~/bom_water/cache/stations.json"), "STATION_LIST_SETUP_REQUIRED", False),
+        (ImportError("Missing gauge dependency"), "CONFIGURATION_REQUIRED", False),
+        (ValueError("Invalid date range"), "INVALID_REQUEST", False),
+        (RuntimeError("source busy"), "SERVICE_BUSY", True),
+        (TimeoutError("No response"), "NETWORK_TIMEOUT", True),
+        (KeyError("bug"), "UNEXPECTED_ERROR", True),
+    ],
+)
+def test_error_envelope_codes(exc, code, retryable):
+    result = observed._error_result(exc, var="L")
+    assert result.status == "error"
+    assert result.message == f"{type(exc).__name__}: {exc}"
+    assert result.retryable is retryable
+    assert result.attempts == 1
+    assert result.error["code"] == code
+    assert result.error["retryable"] is retryable
+    assert result.error["measurement"] == "level"
+    assert result.error["attempts"] == 1
+    assert result.error["max_attempts"] == 3
+    assert len(result.error["diagnostic_id"]) == 32 and int(result.error["diagnostic_id"], 16) >= 0
+    assert result.error["detail"] == result.message
+    assert result.error["retry_after_s"] == (60.0 if code == "SERVICE_BUSY" else None)
+
+
+@pytest.mark.parametrize(
+    "status,code,retryable",
+    [
+        (400, "INVALID_REQUEST", False),
+        (401, "CONFIGURATION_REQUIRED", False),
+        (403, "CONFIGURATION_REQUIRED", False),
+        (404, "INVALID_REQUEST", False),
+        (408, "NETWORK_TIMEOUT", True),
+        (425, "SERVICE_BUSY", True),
+        (429, "SERVICE_BUSY", True),
+        (502, "UNEXPECTED_ERROR", True),
+        (503, "SERVICE_BUSY", True),
+        (504, "NETWORK_TIMEOUT", True),
+    ],
+)
+def test_http_envelope_preserves_retryability(status, code, retryable):
+    result = observed._error_result(HTTPError(f"HTTP {status}"), var="F")
+    assert result.error["code"] == code
+    assert result.retryable is retryable and result.error["retryable"] is retryable
+
+
+def test_requests_and_json_error_classification():
+    from requests.exceptions import Timeout as RequestTimeout
+
+    for exc in (RequestTimeout("timed out"), ConnectionError("connection lost")):
+        result = observed._error_result(exc, var="F")
+        assert result.error["code"] == "NETWORK_TIMEOUT" and result.retryable is True
+    result = observed._error_result(json.JSONDecodeError("bad JSON", "", 0), var="F")
+    assert result.error["code"] == "UNEXPECTED_ERROR" and result.retryable is True
+
+
+def test_error_details_and_legacy_message_are_redacted():
+    exc = RuntimeError(
+        "GET https://alice:password123@example.test/data?token=query-secret#fragment-secret "
+        'api_key="key-secret" token=token-secret client_secret=client-secret '
+        "Authorization: Bearer bearer-secret"
+    )
+    result = observed._error_result(exc, var="F")
+    for text in (result.message, result.error["detail"]):
+        assert "https://example.test/data" in text and "[REDACTED]" in text
+        for secret in ("alice", "password123", "query-secret", "fragment-secret", "key-secret", "token-secret", "client-secret", "bearer-secret"):
+            assert secret not in text
+    assert result.message == result.error["detail"]
+
+
+def test_setup_error_uses_one_attempt_without_sleep(getter_stub, monkeypatch):
+    calls, answer = getter_stub
+    sleeps = []
+    monkeypatch.setattr(observed.time, "sleep", sleeps.append)
+
+    def fail(*args):
+        raise FileNotFoundError("~/bom_water/cache/stations.json")
+
+    answer["fetch"] = fail
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), var="L")
+    assert len(calls) == 1 and sleeps == []
+    assert result.attempts == result.error["attempts"] == 1
+    assert result.error["measurement"] == "level"
+    assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
+
+
+@pytest.mark.parametrize("retries", [2, 10])
+def test_busy_exhaustion_reports_actual_attempts_and_last_sleep(getter_stub, monkeypatch, retries):
+    calls, answer = getter_stub
+    sleeps = []
+    monkeypatch.setattr(observed.time, "sleep", sleeps.append)
+
+    def fail(*args):
+        raise HTTPError("HTTP 503 source busy")
+
+    answer["fetch"] = fail
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), retries=retries)
+    assert len(calls) == 3 and sleeps == [10.0, 30.0]
+    assert result.status == "error" and result.retryable is True
+    assert result.error["code"] == "SERVICE_BUSY"
+    assert result.attempts == result.error["attempts"] == 3 and result.error["max_attempts"] == 3
+    assert result.error["retry_after_s"] == 30.0
+
+
+@pytest.mark.parametrize("seconds", [0.0, 7.0, 45.0])
+def test_busy_retry_after_takes_precedence_over_last_sleep(getter_stub, monkeypatch, seconds):
+    calls, answer = getter_stub
+    sleeps = []
+    monkeypatch.setattr(observed.time, "sleep", sleeps.append)
+
+    def fail(*args):
+        raise HTTPError(f"HTTP 503 source busy; retry after {seconds:g} seconds")
+
+    answer["fetch"] = fail
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert len(calls) == 3
+    assert sleeps == [max(10.0, seconds), max(30.0, seconds)]
+    assert result.error["retry_after_s"] == seconds and result.attempts == 3
+
+
+def test_busy_without_header_or_sleep_uses_sixty_seconds():
+    assert observed._error_result(RuntimeError("source busy"), var="F").error["retry_after_s"] == 60.0
+
+
+def test_deadline_can_end_busy_query_before_three_attempts(getter_stub, monkeypatch):
+    calls, answer = getter_stub
+    sleeps = []
+    monkeypatch.setattr(observed.time, "sleep", sleeps.append)
+    monkeypatch.setattr(observed.time, "monotonic", lambda: 0.0)
+
+    def fail(*args):
+        raise HTTPError("HTTP 503 source busy")
+
+    answer["fetch"] = fail
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2), timeout=1.0)
+    assert len(calls) == 1 and sleeps == []
+    assert result.status == "error" and result.retryable is True and result.attempts == 1
+    assert result.error["retry_after_s"] == 60.0
+
+
+def test_timeout_exhaustion_reports_three_attempts(getter_stub, monkeypatch):
+    calls, answer = getter_stub
+    sleeps = []
+    monkeypatch.setattr(observed.time, "sleep", sleeps.append)
+
+    def fail(*args):
+        raise TimeoutError("upstream timed out")
+
+    answer["fetch"] = fail
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert len(calls) == 3 and sleeps == [10.0, 30.0]
+    assert result.error["code"] == "NETWORK_TIMEOUT" and result.error["retry_after_s"] is None
+    assert result.attempts == result.error["attempts"] == 3
+    assert result.message == "TimeoutError: Gauge 412033 exceeded 90 s advisory timeout"
+
+
+def test_inflight_order_and_completion_only_status_progress(getter_stub, monkeypatch):
+    calls, answer = getter_stub
+    events, completions, progress = [], [], []
+
+    def fail(*args):
+        raise RuntimeError("source busy")
+
+    def sleep(delay):
+        events.append((observed._FETCH_STATE.get().var, "sleep", delay))
+
+    def inflight(gauge, var, result):
+        assert gauge == "412033"
+        events.append((var, result.status, result.attempts))
+        if result.status == "retry_wait":
+            assert result.error["code"] == "SERVICE_BUSY" and result.error["attempts"] == result.attempts
+            assert result.error["retry_after_s"] == (10.0 if result.attempts == 1 else 30.0)
+        else:
+            assert result.status == "running" and result.error is None
+
+    def completed(gauge, var, result):
+        completions.append((gauge, var, result))
+        events.append((var, result.status, result.attempts))
+
+    answer["fetch"] = fail
+    monkeypatch.setattr(observed.time, "sleep", sleep)
+    frames, statuses = observed.fetch_many(
+        ["412033"],
+        date(2000, 1, 1),
+        date(2000, 1, 2),
+        workers=1,
+        progress=lambda *args: progress.append(args),
+        status_progress=completed,
+        inflight_progress=inflight,
+    )
+    assert frames == {} and len(calls) == 6
+    assert len(statuses) == len(completions) == 2
+    assert progress == [(observed.GAUGE_STAGE, 1, 1)]
+    for var in ("F", "L"):
+        assert [(status, value) for item, status, value in events if item == var] == [
+            ("running", 1),
+            ("retry_wait", 1),
+            ("sleep", 10.0),
+            ("running", 2),
+            ("retry_wait", 2),
+            ("sleep", 30.0),
+            ("running", 3),
+            ("error", 3),
+        ]
+
+
+@pytest.mark.parametrize("terminal_status", ["ok", "empty", "error"])
+def test_attempts_across_two_cache_ranges(getter_stub, monkeypatch, terminal_status):
+    calls, answer = getter_stub
+    frame = pd.DataFrame({"value": [1.0]})
+    outcomes = [
+        ConnectionError("connection lost"),
+        frame,
+        FileNotFoundError("BoM station cache missing") if terminal_status == "error" else frame,
+    ]
+    monkeypatch.setattr(observed.time, "sleep", lambda delay: None)
+    monkeypatch.setattr(observed, "_normalise", lambda raw: raw)
+
+    def fetch(*args):
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome.copy()
+
+    def cached(gauge, start, end, var="F", **kwargs):
+        try:
+            for left, right in ((start, start), (end, end)):
+                observed._fetch_source(gauge, left, right, var, kwargs["timeout"], kwargs["retries"])
+            return observed.GaugeResult(frame if terminal_status == "ok" else pd.DataFrame(), terminal_status)
+        except Exception as exc:
+            return observed._error_result(exc, var=var)
+
+    answer["fetch"] = fetch
+    monkeypatch.setattr(observed, "_fetch_gauge_cached", cached)
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert len(calls) == 3 and result.status == terminal_status
+    if terminal_status == "error":
+        assert result.attempts == result.error["attempts"] == 1  # the failing range had one attempt
+        assert result.error["code"] == "STATION_LIST_SETUP_REQUIRED" and result.retryable is False
+    else:
+        assert result.attempts == 2 and result.error is None and result.retryable is False  # worst range, not 3 requests
+
+
+def test_invalid_date_range_keeps_legacy_message_and_adds_envelope(getter_stub):
+    calls, _ = getter_stub
+    result = observed.fetch_gauge("412033", date(2000, 1, 2), date(2000, 1, 1))
+    assert calls == [] and result.status == "error"
+    assert result.message == "Start date must not follow end date" and result.retryable is False
+    assert result.error["code"] == "INVALID_REQUEST" and result.attempts == result.error["attempts"] == 1
+
+
+def test_ok_and_empty_results_have_no_envelope(getter_stub):
+    _, answer = getter_stub
+    ok = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 2))
+    assert (ok.status, ok.error, ok.attempts) == ("ok", None, 1)
+    answer["fetch"] = lambda gauge, start, end, var: pd.DataFrame(columns=observed.RAW_COLUMNS)
+    empty = observed.fetch_gauge("412034", date(2000, 1, 1), date(2000, 1, 2))
+    assert (empty.status, empty.error) == ("empty", None)
