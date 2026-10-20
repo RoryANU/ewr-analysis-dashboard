@@ -788,3 +788,18 @@ def test_coverage_ignores_rows_outside_the_window():
     inside = _cov(["2024-01-02", "2024-01-03"], [1, 0], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
     noisy = _cov(["2023-12-31", "2024-01-02", "2024-01-03", "2024-01-04"], [0, 1, 0, 9], start=D(2024, 1, 2), end=D(2024, 1, 3), policy=POLICY)
     assert noisy == inside  # zeros, later timestamps or placeholders outside [start, end] change nothing
+
+
+def test_stale_cache_placeholder_rows_never_come_back_as_zero_readings(getter_stub, tmp_path):
+    """Cache entries written before the placeholder filter hold 'No Record' (255/201/151/>=999) rows with VALUE 0."""
+    calls, _ = getter_stub
+    frame = raw_frame("412033", pd.date_range("2000-01-01", periods=4))
+    frame["QUALITYCODE"] = [140, 255, 201, 999]
+    frame["VALUE"] = ["5.0", "0", "0", "0"]
+    data_path, meta_path = observed._cache_paths("412033", "F")
+    observed.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(data_path, index=False)
+    meta_path.write_text(json.dumps({"start": "2000-01-01", "end": "2000-01-04", "fetched_at": time.time()}), encoding="utf-8")
+    result = observed.fetch_gauge("412033", date(2000, 1, 1), date(2000, 1, 4))
+    assert calls == []  # served from cache
+    assert result.status == "ok" and list(result.frame["VALUE"]) == [5.0]  # the three placeholder zeros are gone

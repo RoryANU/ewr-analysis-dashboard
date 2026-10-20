@@ -336,7 +336,8 @@ def _read_cache(gauge: str, var: str) -> tuple[pd.DataFrame, dict[str, Any]] | N
         return None
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        frame = pd.read_csv(data_path, parse_dates=["DATETIME"])
+        # Re-apply the placeholder filter: entries written before it existed hold "No Record" rows with a VALUE of 0.
+        frame = _normalise(pd.read_csv(data_path, parse_dates=["DATETIME"]))
         return frame, meta
     except (OSError, ValueError, json.JSONDecodeError):
         return None
